@@ -34,7 +34,7 @@ module ConstantsModule
   integer(I4B), parameter :: LENBIGLINE = 5000
   integer(I4B), parameter :: LENHUGELINE = 50000
   integer(I4B), parameter :: LENVARNAME = 16
-  integer(I4B), parameter :: LENMODELNAME = 16
+  integer(I4B), parameter :: LENMODELNAME = 100 !16 !JV
   integer(I4B), parameter :: LENSOLUTIONNAME = 16
   integer(I4B), parameter :: LENAUXNAME = 16
   integer(I4B), parameter :: LENBOUNDNAME = 40

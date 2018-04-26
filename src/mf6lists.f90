@@ -9,12 +9,15 @@ module ListsModule
   implicit none
   private
   public :: basemodellist, basesolutionlist, solutiongrouplist, &
-            baseexchangelist
+            baseexchangelist, halomodellist !JV
   public :: lists_da
 
   ! -- list of all models in simulation
   type(ListType) :: basemodellist
 
+  ! -- list of all exchange models in simulation !JV
+  type(ListType) :: halomodellist !JV
+  
   ! -- list of all solutions in simulation
   type(ListType) :: basesolutionlist
 

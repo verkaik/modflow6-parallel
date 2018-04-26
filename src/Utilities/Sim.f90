@@ -441,28 +441,37 @@ subroutine sim_message(iv,message)
   endif
 end subroutine sim_message
 
-subroutine ustop(stopmess,ioutlocal)
+subroutine ustop(stopmess,ioutlocal,writestd)
   ! **************************************************************************
   ! Stop program, with option to print message before stopping.
   ! **************************************************************************
   !
   !    SPECIFICATIONS:
   ! --------------------------------------------------------------------------
+  ! -- modules
+  use MpiExchangeGenModule, only: mpi_finalize !JV
   ! -- dummy
   implicit none
   character, optional, intent(in) :: stopmess*(*)
   integer(I4B),   optional, intent(in) :: ioutlocal
+  logical, optional, intent(in) :: writestd !JV
   ! -- local
   character(len=*), parameter :: fmt = '(1x,a)'
   character(len=*), parameter :: msg = 'Stopping due to error(s)'
   logical :: errorfound
+  logical :: lwstd !JV
   !---------------------------------------------------------------------------
+  if (present(writestd)) then !JV
+    lwstd = writestd !JV
+  else !JV
+    lwstd = .true. !JV
+  end if !JV
   call print_notes()
   call print_warnings()
   errorfound = print_errors()
   if (present(stopmess)) then
     if (stopmess.ne.' ') then
-      write(*,fmt) stopmess
+      if (lwstd) write(*,fmt) stopmess !JV
       write(iout,fmt) stopmess
       if (present(ioutlocal)) then
         if (ioutlocal > 0 .and. ioutlocal .ne. iout) then
@@ -482,6 +491,8 @@ subroutine ustop(stopmess,ioutlocal)
   endif
   !
   close(iout)
+  ! -- Finalize MPI if required
+  call mpi_finalize() !JV
   stop
 end subroutine ustop
 
@@ -550,6 +561,7 @@ end subroutine ustop
 ! ------------------------------------------------------------------------------
     ! -- modules
     use SimVariablesModule, only: isimcnvg, numnoconverge
+    use MpiExchangeGenModule, only: writestd !JV
     ! -- formats
     character(len=*), parameter :: fmtnocnvg =                                 &
       "(1x, 'Simulation convergence failure occurred ', i0, ' time(s).')"
@@ -562,9 +574,9 @@ end subroutine ustop
     endif
     !
     if(isimcnvg == 0) then
-      call ustop('Premature termination of simulation.', iout)
+      call ustop('Premature termination of simulation.', iout, writestd)
     else
-      call ustop('Normal termination of simulation.', iout)
+      call ustop('Normal termination of simulation.', iout, writestd)
     endif
     !
     ! -- Return

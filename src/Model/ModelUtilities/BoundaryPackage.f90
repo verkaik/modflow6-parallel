@@ -238,18 +238,22 @@ module BndModule
     ! -- format
 ! ------------------------------------------------------------------------------
     !
-    call this%obs%obs_ar()
-    !
-    ! -- Allocate arrays in package superclass
-    call this%allocate_arrays()
-    !
-    ! -- read optional initial package parameters
-    call this%read_initial_attr()
+    if (.not.this%p_ishalo) then !JV
+      !
+      call this%obs%obs_ar()
+      !
+      ! -- Allocate arrays in package superclass
+      call this%allocate_arrays()
+      !
+      ! -- read optional initial package parameters
+      call this%read_initial_attr()
+      !
+    endif !JV
     !
     ! -- setup pakmvrobj for standard stress packages
     if (this%imover == 1) then
       allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%maxbound, 0, this%origin)
+      call this%pakmvrobj%ar(this%maxbound, 0, this%origin, this%p_ishalo) !JV
     endif
     !
     ! -- return

@@ -100,6 +100,7 @@ module GwfMvrModule
   use BudgetModule,           only: BudgetType, budget_cr
   use NumericalPackageModule, only: NumericalPackageType
   use BlockParserModule,      only: BlockParserType
+  use MpiMvrModule,           only: MpiMvrType !JV
 
   implicit none
   private
@@ -120,6 +121,7 @@ module GwfMvrModule
     character(len=LENPACKAGENAME),                                             &
       dimension(:), pointer                       :: paknames                   !array of package names
     type(MvrType), pointer, dimension(:)          :: mvr => null()              !array of movers
+    type(MpiMvrType), pointer                     :: MvrMpi => null()           ! MPI water mover object !JV
     type(BudgetType), pointer                     :: budget => null()           !mover budget object
   contains
     procedure :: mvr_ar
@@ -236,14 +238,18 @@ module GwfMvrModule
     use TdisModule, only: kper, nper
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
     use ArrayHandlersModule, only: ifind
+    use MpiExchangeGenModule, only: mpi_destroy_modelname_halo !JV
     ! -- dummy
     class(GwfMvrType),intent(inout) :: this
     ! -- local
-    integer(I4B) :: i, ierr, nlist, ipos
+    integer(I4B) :: i, j, ierr, nlist, ipos
     integer(I4B) :: ii, jj
     logical :: isfound, endOfBlock
     character(len=LINELENGTH) :: line, errmsg
     character(len=LENMODELNAME) :: mname
+    logical :: lskip !JV
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname1 !JV
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname2 !JV
     ! -- formats
     character(len=*),parameter :: fmtblkerr = &
       "('Error.  Looking for BEGIN PERIOD iper.  Found ', a, ' instead.')"
@@ -289,6 +295,7 @@ module GwfMvrModule
       write(this%iout, '(/,2x,a,i0)') 'READING WATER MOVERS FOR PERIOD ', kper
       nlist = -1
       i = 1
+      j = 1 !JV
       !
       ! -- set mname to '' if this is an exchange mover, or to the model name
       if(this%iexgmvr == 0) then
@@ -296,9 +303,17 @@ module GwfMvrModule
       else
         mname = ''
       endif
+      !
+      ! -- MPI parallel: initialize global mover counter
+      call this%MvrMpi%mpi_init_ngmvr() !JV
+      !
       do
         call this%parser%GetNextLine(endOfBlock)
         if (endOfBlock) exit
+        !
+        ! -- Set mover ID
+        this%mvr(i)%id = j !JV
+        !
         call this%parser%GetCurrentLine(line)
         !
         ! -- Raise error if movers exceeds maxmvr
@@ -311,13 +326,19 @@ module GwfMvrModule
         endif
         !
         ! -- Process the water mover line (mname = '' if this is an exchange)
-        call this%mvr(i)%set(line, this%parser%iuactive, this%iout, mname)
+        call this%mvr(i)%set(line, this%parser%iuactive, this%iout, mname, lskip) !JV
+        !
+        ! -- MPI parallel: set global mover data
+        call this%MvrMpi%mpi_set_mover(this%mvr(i)%pname1_read, this%mvr(i)%pname2_read)
         !
         ! -- Echo input
         if(this%iprpak == 1) call this%mvr(i)%echo(this%iout)
         !
         ! -- increment counter
-        i = i + 1
+        if (.not.lskip) then !JV
+          i = i + 1
+        endif !JV
+        j = j + 1 !JV
       end do
       write(this%iout,'(/,1x,a,1x,i6,/)') 'END OF DATA FOR PERIOD', kper
       nlist = i - 1
@@ -329,16 +350,20 @@ module GwfMvrModule
       !
       ! -- Check to make sure all providers and receivers are in pakorigins
       do i = 1, this%nmvr
-        ipos = ifind(this%pakorigins, this%mvr(i)%pname1)
+        pname1 = this%mvr(i)%pname1 !JV
+        call mpi_destroy_modelname_halo(pname1) !JV
+        ipos = ifind(this%pakorigins, pname1) !JV
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. PROVIDER ',                       &
-            trim(this%mvr(i)%pname1), ' NOT LISTED IN PACKAGES BLOCK.'
+            trim(pname1), ' NOT LISTED IN PACKAGES BLOCK.' !JV
           call store_error(errmsg)
         endif
-        ipos = ifind(this%pakorigins, this%mvr(i)%pname2)
+        pname2 = this%mvr(i)%pname2 !JV
+        call mpi_destroy_modelname_halo(pname2) !JV
+        ipos = ifind(this%pakorigins, pname2) !JV
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. RECEIVER ',                       &
-            trim(this%mvr(i)%pname2), ' NOT LISTED IN PACKAGES BLOCK.'
+            trim(pname2), ' NOT LISTED IN PACKAGES BLOCK.' !JV
           call store_error(errmsg)
         endif
       enddo
@@ -354,8 +379,12 @@ module GwfMvrModule
       !
       ! --
       do i = 1, this%nmvr
-        ii = ifind(this%pakorigins, this%mvr(i)%pname1)
-        jj = ifind(this%pakorigins, this%mvr(i)%pname2)
+        pname1 = this%mvr(i)%pname1 !JV
+        pname2 = this%mvr(i)%pname2 !JV
+        call mpi_destroy_modelname_halo(pname1) !JV
+        call mpi_destroy_modelname_halo(pname2) !JV
+        ii = ifind(this%pakorigins, pname1) !JV
+        jj = ifind(this%pakorigins, pname2) !JV
         ipos = (ii - 1) * this%maxpackages + jj
         this%ientries(ipos) = this%ientries(ipos) + 1
         ! -- opposite direction
@@ -1000,6 +1029,8 @@ module GwfMvrModule
     !
     ! -- Allocate
     allocate(this%mvr(this%maxmvr))
+    allocate(this%MvrMpi) !JV
+    call this%MvrMpi%mpi_set_maxmvr(this%maxmvr) !JV
     allocate(this%pakorigins(this%maxpackages))
     allocate(this%paknames(this%maxpackages))
     !

@@ -68,6 +68,9 @@ module NumericalModelModule
     procedure :: set_xptr
     procedure :: set_rhsptr
     procedure :: set_iboundptr
+    procedure :: set_xptr_halo !JV
+    procedure :: set_rhsptr_halo !JV
+    procedure :: set_iboundptr_halo !JV
     procedure :: get_nsubtimes
     procedure :: get_mrange
     procedure :: get_mcellid
@@ -312,6 +315,24 @@ module NumericalModelModule
     this%ibound => iboundsln(this%moffset + 1:this%moffset + this%neq)
   end subroutine set_iboundptr
 
+  subroutine set_xptr_halo(this) !JV
+    use MemoryManagerModule, only: mem_allocate
+    class(NumericalModelType) :: this
+    call mem_allocate(this%x, this%neq, 'X', this%name)
+  end subroutine set_xptr_halo
+
+  subroutine set_rhsptr_halo(this) !JV
+    use MemoryManagerModule, only: mem_allocate
+    class(NumericalModelType) :: this
+    call mem_allocate(this%rhs, this%neq, 'RHS', this%name)
+  end subroutine set_rhsptr_halo
+
+  subroutine set_iboundptr_halo(this) !JV
+    use MemoryManagerModule, only: mem_allocate
+    class(NumericalModelType) :: this
+    call mem_allocate(this%ibound, this%neq, 'IACTIVE', this%name)
+  end subroutine set_iboundptr_halo !JV
+  
   function get_nsubtimes(this) result(nsubtimes)
     integer(I4B) :: nsubtimes
     class(NumericalModelType) :: this

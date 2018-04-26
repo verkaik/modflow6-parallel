@@ -31,6 +31,7 @@ module UzfModule
 
   private
   public :: uzf_create
+  public :: ftype !JV
 
   type, extends(BndType) :: UzfType
     ! output integers
@@ -228,6 +229,18 @@ contains
     integer(I4B) :: i, n
 ! ------------------------------------------------------------------------------
     !
+    ! -- setup pakmvrobj
+    if (this%imover /= 0) then
+      allocate(this%pakmvrobj)
+      call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin,         &
+                             this%p_ishalo) !JV
+    endif
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     call this%obs%obs_ar()
     !
     ! -- Allocate arrays in package superclass
@@ -271,12 +284,6 @@ contains
     ! -- setup the budget
     call budget_cr(this%budget, this%origin)
     call this%budget%budget_df(this%bditems, this%name, 'L**3')
-    !
-    ! -- setup pakmvrobj
-    if (this%imover /= 0) then
-      allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin)
-    endif
     !
     ! -- return
     return
@@ -1052,6 +1059,16 @@ contains
     ! -- Return if no UZF cells
     if(this%nodes == 0) return
     !
+    ! -- pakmvrobj cf
+    if(this%imover == 1) then
+      call this%pakmvrobj%cf()
+    endif
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     ! -- Store values at start of outer iteration to compare with calculated
     !    values for convergence check
     do n = 1, this%maxbound
@@ -1059,11 +1076,6 @@ contains
       this%rch0(n) = this%rch(n)
       this%gwd0(n) = this%gwd(n)
     end do
-    !
-    ! -- pakmvrobj cf
-    if(this%imover == 1) then
-      call this%pakmvrobj%cf()
-    endif
     !
     ! -- return
     return

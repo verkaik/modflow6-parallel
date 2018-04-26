@@ -35,6 +35,7 @@ module LakModule
   !
   character(len=LENFTYPE)       :: ftype = 'LAK'
   character(len=LENPACKAGENAME) :: text  = '             LAK'
+  public :: ftype !JV
   !
   type LakTabType
     real(DP), pointer, dimension(:)  :: tabstage => null()
@@ -1083,7 +1084,7 @@ contains
     ! -- dummy
     class(LakType), intent(inout) :: this
     integer(I4B), intent(in) :: ilak
-    character (len=*), intent(in) :: filename
+    character (len=*), intent(inout) :: filename !JV
 
     ! -- local
     character(len=LINELENGTH) :: errmsg
@@ -3371,6 +3372,18 @@ contains
       ! -- format
   ! ------------------------------------------------------------------------------
     !
+    ! -- setup pakmvrobj
+    if (this%imover /= 0) then
+      allocate(this%pakmvrobj)
+      call this%pakmvrobj%ar(this%noutlets, this%nlakes, this%origin,             &
+                             this%p_ishalo) !JV
+    endif
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     call this%obs%obs_ar()
     !
     ! -- Allocate arrays in LAK and in package superclass
@@ -3378,12 +3391,6 @@ contains
     !
     ! -- read optional initial package parameters
     call this%read_initial_attr()
-    !
-    ! -- setup pakmvrobj
-    if (this%imover /= 0) then
-      allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%noutlets, this%nlakes, this%origin)
-    endif
     !
     ! -- return
     return
@@ -3596,6 +3603,16 @@ contains
     real(DP) :: r0
     real(DP) :: r
   ! ------------------------------------------------------------------------------
+    ! -- pakmvrobj cf
+    if(this%imover == 1) then
+      call this%pakmvrobj%cf()
+    end if
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     !!
     !! -- Calculate lak conductance and update package RHS and HCOF
     !call this%lak_cfupdate()
@@ -3610,11 +3627,6 @@ contains
     !  write(*,'(4x,1x,i4.4,1x,g15.7)') n, this%xnewpak(n)
       this%s0(n) = this%xnewpak(n)
     end do
-    !
-    ! -- pakmvrobj cf
-    if(this%imover == 1) then
-      call this%pakmvrobj%cf()
-    end if
     !
     ! -- find highest active cell
     do n = 1, this%nlakes

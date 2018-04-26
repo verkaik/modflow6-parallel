@@ -173,6 +173,11 @@ contains
       call this%pakmvrobj%cf()
     endif
     !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     ! -- Calculate hcof and rhs for each ghb entry
     do i=1,this%nbound
         node=this%nodelist(i)

@@ -54,7 +54,7 @@
     use InputOutputModule, only: getunit, openfile
     use ConstantsModule, only: LINELENGTH, DZERO
     ! -- dummy
-    character(len=*),intent(in) :: fname
+    character(len=*),intent(inout) :: fname !JV
     ! -- local
     integer(I4B) :: inunit
     ! -- formats
@@ -104,6 +104,7 @@
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
+    use MpiExchangeGenModule, only: writestd !JV
     use ConstantsModule, only: DONE, DZERO, ISTDOUT
     ! -- local
     ! -- formats
@@ -159,7 +160,9 @@
     if(kstp /= 1) delt = tsmult(kper) * delt
     !
     ! -- Print stress period and time step to console
-    write(ISTDOUT, fmtspts) kper, kstp
+    if (writestd) then !JV
+      write(ISTDOUT, fmtspts) kper, kstp
+    endif !JV
     !
     ! -- Store totim and pertim, which are times at end of previous time step
     totimsav = totim

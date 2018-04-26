@@ -2,7 +2,8 @@ module MvrModule
   
   use KindModule, only: DP, I4B
   use ConstantsModule, only: LENMODELNAME, LENPACKAGENAME, LINELENGTH,         &
-                             LENBUDTXT, LENAUXNAME, DZERO, DONE
+                             LENBUDTXT, LENAUXNAME, DZERO, DONE,               &
+                             LENORIGIN !JV
   
   implicit none
   private
@@ -12,6 +13,9 @@ module MvrModule
     [character(len=12) :: 'FACTOR', 'EXCESS', 'THRESHOLD', 'UPTO']
   
   type MvrType
+    integer(I4B)                                 :: id = 0                      !mover ID !JV
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname1_read = ''            !provider package name !JV
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname2_read = ''            !receiver package name !JV
     character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname1 = ''                 !provider package name
     character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname2 = ''                 !receiver package name
     integer(I4B)                                 :: irch1 = 0                   !provider reach number
@@ -39,7 +43,7 @@ module MvrModule
   
   contains
   
-  subroutine set(this, line, inunit, iout, mname)
+  subroutine set(this, line, inunit, iout, mname, lskip) !JV
 ! ******************************************************************************
 ! set -- Setup mvr object
 !        If mname == '', then read mname out of line
@@ -51,12 +55,14 @@ module MvrModule
     use InputOutputModule, only: urword
     use SimModule, only: ustop, store_error, store_error_unit
     use MemoryManagerModule, only: mem_setptr
+    use MpiExchangeModule, only: MpiWorld !JV
     ! -- dummy
     class(MvrType) :: this
     character(len=*), intent(inout) :: line
     integer(I4B), intent(in) :: inunit
     integer(I4B), intent(in) :: iout
     character(len=LENMODELNAME), intent(in) :: mname
+    logical, intent(out) :: lskip !JV
     ! -- local
     character(len=LENMODELNAME+LENPACKAGENAME+1) :: origin
     integer(I4B) :: lloc, istart, istop, ival, i
@@ -65,6 +71,7 @@ module MvrModule
     logical :: valid
     character(len=LINELENGTH) :: errmsg
     logical :: mnamel
+    logical :: lok1, lok2 !JV
 ! ------------------------------------------------------------------------------
     !
     ! -- Check for valid mname and set logical mnamel flag
@@ -85,7 +92,12 @@ module MvrModule
       this%pname1 = line(istart:istop)
     endif
     call urword(line, lloc, istart, istop, 1, ival, rval, iout, inunit)
+    ! -- Store original provider name and set correct model name in case of
+    !    halo model
+    this%pname1_read = this%pname1 !JV
+    call MpiWorld%mpi_getmodel(this%pname1, lok1) !JV
     this%pname1 = trim(this%pname1) // ' ' // line(istart:istop)
+    this%pname1_read = trim(this%pname1_read) // ' ' // line(istart:istop) !JV
     !
     ! -- Read id for the provider
     call urword(line, lloc, istart, istop, 2, ival, rval, iout, inunit)
@@ -99,7 +111,12 @@ module MvrModule
       this%pname2 = line(istart:istop)
     endif
     call urword(line, lloc, istart, istop, 1, ival, rval, iout, inunit)
+    ! -- Store original provider name and set correct model name in case of
+    !    halo model
+    this%pname2_read = this%pname2 !JV
+    call MpiWorld%mpi_getmodel(this%pname2, lok2) !JV
     this%pname2 = trim(this%pname2) // ' ' // line(istart:istop)
+    this%pname2_read = trim(this%pname2_read) // ' ' // line(istart:istop) !JV
     !
     ! -- Read id for the receiver
     call urword(line, lloc, istart, istop, 2, ival, rval, iout, inunit)
@@ -194,6 +211,12 @@ module MvrModule
       call ustop()
     endif
     this%qfrommvr_ptr => temp_ptr(this%irch2)
+    !
+    if (.not.lok1 .or. .not.lok2) then !JV
+      lskip = .true. !JV
+    else !JV
+      lskip = .false. !JV
+    endif !JV
     !
     ! -- return
     return

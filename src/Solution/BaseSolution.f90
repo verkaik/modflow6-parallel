@@ -22,8 +22,12 @@ module BaseSolutionModule
     procedure (sln_fp), deferred :: sln_fp
     procedure (sln_da), deferred :: sln_da
     procedure (slnsave), deferred :: save
+    procedure (slnallocatemodellist), deferred :: allocatemodellist !JV
     procedure (slnaddmodel), deferred :: addmodel
     procedure (slnassignexchanges), deferred :: slnassignexchanges
+    procedure (slnmpiaddgmodel), deferred :: slnmpiaddgmodel !JV
+    procedure (slnmpiinit), deferred :: slnmpiinit !JV
+    procedure (slnmpimvrinit), deferred :: slnmpimvrinit !JV
   end type BaseSolutionType
 
   abstract interface
@@ -38,6 +42,26 @@ module BaseSolutionModule
       class(BaseSolutionType) :: this
     end subroutine
 
+    subroutine slnmpiaddgmodel(this, mname, idsoln) !JV
+      use KindModule, only: I4B !JV 
+      import BaseSolutionType !JV
+      class(BaseSolutionType) :: this !JV
+      character(len=*), intent(in) :: mname !JV
+      integer(I4B), intent(in) :: idsoln !JV
+    end subroutine !JV
+    
+    subroutine slnmpiinit(this, sname) !JV
+      import BaseSolutionType !JV
+      class(BaseSolutionType) :: this !JV
+      character(len=*), intent(in) :: sname !JV
+    end subroutine !JV
+
+    subroutine slnmpimvrinit(this, sname) !JV
+      import BaseSolutionType !JV
+      class(BaseSolutionType) :: this !JV
+      character(len=*), intent(in) :: sname !JV
+    end subroutine !JV
+    
     subroutine sln_ar(this)
       import BaseSolutionType
       class(BaseSolutionType) :: this
@@ -68,6 +92,12 @@ module BaseSolutionModule
       character(len=*), intent(in) :: filename
     end subroutine
 
+    subroutine slnallocatemodellist(this) !JV
+      import BaseSolutionType !JV
+      import BaseModelType !JV
+      class(BaseSolutionType) :: this !JV
+    end subroutine !JV
+    
     subroutine slnaddmodel(this,mp)
       import BaseSolutionType
       import BaseModelType

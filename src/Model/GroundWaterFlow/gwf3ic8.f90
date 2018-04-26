@@ -59,7 +59,7 @@ module GwfIcModule
     return
   end subroutine ic_cr
 
-  subroutine ic_ar(this, x)
+  subroutine ic_ar(this, x, in_flag_halo) !JV
 ! ******************************************************************************
 ! ic_ar -- Allocate and read initial conditions
 ! ******************************************************************************
@@ -72,12 +72,21 @@ module GwfIcModule
     ! -- dummy
     class(GwfIcType) :: this
     real(DP), dimension(:), intent(inout) :: x
+    logical, intent(in), optional :: in_flag_halo !JV 
     ! -- locals
     integer(I4B) :: n
+    logical :: flag_halo !JV
 ! ------------------------------------------------------------------------------
     !
+    flag_halo = .false. !JV
+    if (present(in_flag_halo)) then !JV
+      flag_halo = in_flag_halo !JV
+    endif !JV
+    !
     ! -- Print a message identifying the initial conditions package.
-    write(this%iout,1) this%inunit
+    if (.not.flag_halo) then !JV
+      write(this%iout,1) this%inunit
+    endif !JV
   1 format(1x,/1x,'IC -- INITIAL CONDITIONS PACKAGE, VERSION 8, 3/28/2015', &
       ' INPUT READ FROM UNIT ',i0)
     !
@@ -85,10 +94,14 @@ module GwfIcModule
     call this%allocate_arrays(this%dis%nodes)
     !
     ! -- Read options
-    call this%read_options()
+    if (.not.flag_halo) then !JV
+      call this%read_options()
+    endif !JV
     !
     ! -- Read data
-    call this%read_data()
+    if (.not.flag_halo) then !JV
+      call this%read_data()
+    endif !JV
     !
     ! -- Assign x equal to strt
     do n = 1, this%dis%nodes

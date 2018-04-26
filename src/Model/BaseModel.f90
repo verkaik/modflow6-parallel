@@ -22,6 +22,7 @@ module BaseModelModule
     integer(I4B), pointer                :: iprflow          => null()          ! flag to print simulated flows
     integer(I4B), pointer                :: ipakcb           => null()          ! save_flows flag
     logical, pointer                     :: single_model_run => null()          ! indicate if it is a single model run
+    logical, pointer                     :: ishalo           => null()          ! indicate if the model is of type halo !JV
   contains
     procedure :: model_df
     procedure :: model_ar
@@ -128,6 +129,7 @@ module BaseModelModule
     call mem_allocate(this%iprflow, 'IPRFLOW', modelname)
     call mem_allocate(this%ipakcb, 'IPAKCB', modelname)
     call mem_allocate(this%idsoln, 'IDSOLN', modelname)
+    call mem_allocate(this%ishalo, 'ISHALO', modelname) !JV
     !
     this%name = modelname
     this%macronym = ''
@@ -139,6 +141,7 @@ module BaseModelModule
     this%ipakcb = 0
     this%inewton = 0 !default is standard formulation
     this%single_model_run = .false.
+    this%ishalo = .false. !JV
     !
     ! -- return
     return
@@ -170,6 +173,7 @@ module BaseModelModule
     call mem_deallocate(this%iprflow)
     call mem_deallocate(this%ipakcb)
     call mem_deallocate(this%idsoln)
+    call mem_deallocate(this%ishalo) !JV
     !
     ! -- return
     return

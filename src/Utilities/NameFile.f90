@@ -42,7 +42,7 @@ module NameFileModule
     use SimModule, only: store_error, ustop
     ! -- dummy
     class(NameFileType) :: this
-    character(len=*), intent(in) :: filename
+    character(len=*), intent(inout) :: filename !JV
     integer(I4B), intent(in) :: iout
     ! -- local
     character(len=LINELENGTH) :: errmsg, line
@@ -216,7 +216,7 @@ module NameFileModule
     !
     ! -- Open the list file
     iout = getunit()
-    call openfile(iout, 0, trim(fname), 'LIST', filstat_opt='REPLACE')
+    call openfile(iout, 0, fname, 'LIST', filstat_opt='REPLACE') !JV
     this%opened_listfile = .true.
     !
     ! -- return
@@ -259,7 +259,8 @@ module NameFileModule
       call this%iunit_obj%addfile(ftype, inunit, i, this%filename)
       !
       ! -- Open the file
-      call openfile(inunit, iout, trim(adjustl(words(2))),                     &
+      words(2) = adjustl(words(2)) !JV 
+      call openfile(inunit, iout, words(2),                                    & !JV
                     ftype, fmtarg, accarg, filstat)
     enddo
     !

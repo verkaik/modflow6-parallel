@@ -82,7 +82,7 @@ module GwfDisvModule
 ! ------------------------------------------------------------------------------
     allocate(disnew)
     dis => disnew
-    call disnew%allocate_scalars(name_model)
+    call disnew%allocate_scalars(name_model, 'DISV') !JV
     dis%inunit = inunit
     dis%iout = iout
     !
@@ -854,8 +854,9 @@ module GwfDisvModule
     inquire(unit=this%inunit, name=fname)
     fname = trim(fname) // '.grb'
     iunit = getunit()
-    write(this%iout, fmtgrdsave) iunit, trim(adjustl(fname))
-    call openfile(iunit, this%iout, trim(adjustl(fname)), 'DATA(BINARY)',      &
+    write(this%iout, fmtgrdsave) iunit, adjustl(fname)
+    fname = adjustl(fname) !JV
+    call openfile(iunit, this%iout, fname, 'DATA(BINARY)',                     & !JV
                   form, access, 'REPLACE')
     !
     ! -- write header information
@@ -1359,7 +1360,7 @@ module GwfDisvModule
     return
   end subroutine connection_vector
 
-  subroutine allocate_scalars(this, name_model)
+  subroutine allocate_scalars(this, name_model, dis_type) !JV
 ! ******************************************************************************
 ! allocate_scalars -- Allocate and initialize scalars
 ! ******************************************************************************
@@ -1371,15 +1372,17 @@ module GwfDisvModule
     ! -- dummy
     class(GwfDisvType) :: this
     character(len=*), intent(in) :: name_model
+    character(len=*), intent(in) :: dis_type !JV
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate parent scalars
-    call this%DisBaseType%allocate_scalars(name_model)
+    call this%DisBaseType%allocate_scalars(name_model, dis_type) !JV
     !
     ! -- Allocate
     call mem_allocate(this%nlay, 'NLAY', this%origin)
     call mem_allocate(this%ncpl, 'NCPL', this%origin)
     call mem_allocate(this%nvert, 'NVERT', this%origin)
+    call mem_allocate(this%ndim, 'DNDIM', this%origin) !JV
     !
     ! -- Initialize
     this%nlay = 0

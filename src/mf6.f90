@@ -21,16 +21,22 @@ program mf6
   use SolutionGroupModule,    only: SolutionGroupType, GetSolutionGroupFromList
   use ListsModule,            only: basesolutionlist, solutiongrouplist,       &
                                     basemodellist, baseexchangelist,           &
-                                    lists_da
-  use SimVariablesModule,     only: iout 
+                                    lists_da,                                  &
+                                    halomodellist !JV
+  use SimVariablesModule,     only: iout, isimdd !JV
   use SimModule,              only: converge_reset, converge_check,            &
                                     final_message
   use TdisModule,             only: tdis_tu, tdis_da,                          &
                                     endofsimulation
+  use MpiExchangeGenModule,   only: mpi_initialize, serialrun, writestd !JV
+  use MpiExchangeModule,      only: mpi_initialize_world, MpiWorld !JV
+  use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !JV
+  use NumericalSolutionModule, only: NumericalSolutionType !JV
   implicit none
   ! -- local
   class(SolutionGroupType), pointer :: sgp
   class(BaseSolutionType),  pointer :: sp
+  class(NumericalSolutionType), pointer :: nsp !JV
   class(BaseModelType),     pointer :: mp
   class(BaseExchangeType),  pointer :: ep
   integer(I4B) :: im, ic, is, isg
@@ -39,10 +45,16 @@ program mf6
   ! -- formats
 ! ------------------------------------------------------------------------------
   !
+  ! -- Initialize MPI if required
+  call mpi_initialize() !JV
+  call mpi_initialize_world() !JV
+  !
   ! -- Write banner to screen (unit 6) and start timer
   call write_centered('MODFLOW'//MFVNAM, ISTDOUT, 80)
   call write_centered(MFTITLE, ISTDOUT, 80)
   call write_centered('VERSION '//VERSION, ISTDOUT, 80)
+  if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '& !JV
+    //TRIM(MpiWorld%nrprocstr)//' MPI PROCESSES***',ISTDOUT, 80) !JV
   !
   ! -- Write if develop mode
   if (IDEVELOPMODE == 1) call write_centered('***DEVELOP MODE***', ISTDOUT, 80)
@@ -53,7 +65,7 @@ program mf6
   call write_centered(trim(adjustl(compiler)), ISTDOUT, 80)
   !
   ! -- Write disclaimer
-  write(ISTDOUT, FMTDISCLAIMER)
+  if (writestd) write(ISTDOUT, FMTDISCLAIMER) !JV
   ! -- get start time
   call start_time()
   !
@@ -68,6 +80,10 @@ program mf6
     mp => GetBaseModelFromList(basemodellist, im)
     call mp%model_df()
   enddo
+  !
+  ! -- Collective MPI communication scalars DIS
+  call mpi_halo_world(2) !JV
+  call mpi_set_halo_world() !JV
   !
   ! -- Define each exchange
   do ic = 1, baseexchangelist%Count()
@@ -88,6 +104,23 @@ program mf6
     mp => GetBaseModelFromList(basemodellist, im)
     call mp%model_ar()
   enddo
+  ! -- Allocate and read each model
+  do im = 1, halomodellist%Count() !JV
+    mp => GetBaseModelFromList(halomodellist, im) !JV
+    call mp%model_ar() !JV
+  enddo !JV
+  ! 
+  ! -- Local exchange
+  if (isimdd == 1) then !JV
+    do is=1,basesolutionlist%Count() !JV
+      sp => GetBaseSolutionFromList(basesolutionlist, is) !JV
+      select type (sp) !JV
+      class is (NumericalSolutionType) !JV
+        nsp => sp !JV
+      end select !JV
+      call nsp%MpiSol%mpi_local_exchange(nsp%name, 'INIT', .true.) !JV
+    enddo !JV
+  endif !JV
   !
   ! -- Allocate and read each exchange
   do ic = 1, baseexchangelist%Count()
@@ -121,6 +154,18 @@ program mf6
       ep => GetBaseExchangeFromList(baseexchangelist, ic)
       call ep%exg_rp()
     enddo
+    !
+    ! -- MPI parallel: initialize point-to-point mover
+    if (isimdd == 1) then !JV
+      do is=1,basesolutionlist%Count() !JV
+        sp => GetBaseSolutionFromList(basesolutionlist, is) !JV
+        select type (sp) !JV
+        class is (NumericalSolutionType) !JV
+          nsp => sp !JV
+        end select !JV
+        call nsp%slnmpimvrinit(nsp%name) !JV
+      enddo !JV
+    endif
     !
     ! -- Read and prepare each solution
     do is=1,basesolutionlist%Count()

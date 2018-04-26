@@ -11,11 +11,21 @@ module MemoryTypeModule
     real(DP), pointer :: value => null()
   end type MemoryTSType
   
+  ! -- Integer parameters
+  integer(I4B), parameter, public :: ilogicalsclr = 1 !JV
+  integer(I4B), parameter, public :: iintsclr     = 2 !JV
+  integer(I4B), parameter, public :: idblsclr     = 3 !JV
+  integer(I4B), parameter, public :: iaint1d      = 4 !JV
+  integer(I4B), parameter, public :: iaint2d      = 5 !JV
+  integer(I4B), parameter, public :: iadbl1d      = 6 !JV
+  integer(I4B), parameter, public :: iadbl2d      = 7 !JV
+  integer(I4B), parameter, public :: iats1d       = 8 !JV
   
   type MemoryType
     character(len=LENVARNAME)                              :: name                   !name of the array
     character(len=LENORIGIN)                               :: origin                 !name of origin
     character(len=50)                                      :: memtype                !type (INTEGER or DOUBLE)
+    integer(I4B)                                           :: memitype               !integer type !JV
     integer(I4B)                                           :: id                     !id, not used
     integer(I4B)                                           :: nrealloc = 0           !number of times reallocated
     integer(I4B)                                           :: isize                  !size of the array

@@ -26,6 +26,7 @@ module GwfModule
 
   private
   public :: gwf_cr
+  public :: gwf_cr_halo !JV
   public :: GwfModelType
 
   type, extends(NumericalModelType) :: GwfModelType
@@ -90,7 +91,8 @@ module GwfModule
                 '     ', 'MAW6 ', 'SFR6 ', 'LAK6 ', 'UZF6 ', & ! 25
                 'DISV6', 'MVR6 ', '     ', '     ', '     ', & ! 30
                 70 * '     '/
-
+  public :: cunit, niunit !JV
+  
   contains
 
   subroutine gwf_cr(filename, id, modelname, smr)
@@ -124,6 +126,7 @@ module GwfModule
     use GwfOcModule,                only: oc_cr
     use BudgetModule,               only: budget_cr
     use NameFileModule,             only: NameFileType
+    use MpiExchangeModule,          only: MpiWorld !JV 
     ! -- dummy
     character(len=*), intent(in)  :: filename
     integer(I4B), intent(in)           :: id
@@ -162,19 +165,21 @@ module GwfModule
     call namefile_obj%openlistfile(this%iout)
     !
     ! -- Write title to list file
-    call write_centered('MODFLOW'//MFVNAM, this%iout, 80)
-    call write_centered(MFTITLE, this%iout, 80)
-    call write_centered('GROUNDWATER FLOW MODEL (GWF)', this%iout, 80)
-    call write_centered('VERSION '//VERSION, this%iout, 80)
+    call write_centered('MODFLOW'//MFVNAM, this%iout, 80, force_write=.true.) !JV
+    call write_centered(MFTITLE, this%iout, 80, force_write=.true.) !JV
+    call write_centered('GROUNDWATER FLOW MODEL (GWF)', this%iout, 80,         &
+                        force_write=.true.) !JV
+    call write_centered('VERSION '//VERSION, this%iout, 80, force_write=.true.) !JV
     !
     ! -- Write if develop mode
     if (IDEVELOPMODE == 1) call write_centered('***DEVELOP MODE***',           &
-      this%iout, 80)
+      this%iout, 80, force_write=.true.) !JV
     !
     ! -- Write compiler version
     call get_compiler(compiler)
-    call write_centered(' ', this%iout, 80)
-    call write_centered(trim(adjustl(compiler)), this%iout, 80)
+    call write_centered(' ', this%iout, 80, force_write=.true.) !JV
+    call write_centered(trim(adjustl(compiler)), this%iout, 80,                &
+                        force_write=.true.) !JV
     !
     ! -- Write disclaimer
     write(this%iout, FMTDISCLAIMER)
@@ -254,6 +259,11 @@ module GwfModule
     call namefile_obj%get_unitnumber('GNC6', this%ingnc, 1)
     call namefile_obj%get_unitnumber('OBS6', this%inobs, 1)
     !
+    ! -- Terminate if ghost node correction is used in parallel
+    if(this%ingnc > 0) then !JV
+       call MpiWorld%mpi_not_supported('Ghost Node Correction') !JV
+    endif !JV
+    !
     ! -- Check to make sure that required ftype's have been specified
     call this%ftype_check(namefile_obj, indis)
     !
@@ -298,6 +308,98 @@ module GwfModule
     return
   end subroutine gwf_cr
 
+  subroutine gwf_cr_halo(id, modelname, nexg) ! JV
+! ******************************************************************************
+! gwf_cr_halo -- Create a new groundwater flow model object for exchange
+! Subroutine: (1) creates model object and add to exchange modellist
+!             (2) assign values
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ListsModule,                only: halomodellist
+    use BaseModelModule,            only: AddBaseModelToList
+    use SimModule,                  only: ustop, store_error, count_errors
+    use InputOutputModule,          only: write_centered
+    use ConstantsModule,            only: VERSION, MFVNAM, MFTITLE,            &
+                                          FMTDISCLAIMER, LINELENGTH,           &
+                                          LENPACKAGENAME, IDEVELOPMODE
+    use CompilerVersion
+    use MemoryManagerModule,        only: mem_allocate
+    use GwfDisModule,               only: dis_cr
+    use GwfDisvModule,              only: disv_cr
+    use GwfDisuModule,              only: disu_cr
+    use GwfNpfModule,               only: npf_cr
+    use Xt3dModule,                 only: xt3d_cr
+    use GwfMvrModule,               only: mvr_cr
+    use GwfIcModule,                only: ic_cr !JV
+    use ObsModule,                  only: obs_cr !JV
+    use MpiExchangeColModule,       only: mpi_get_distype
+    ! -- dummy
+    integer(I4B), intent(in)      :: id
+    character(len=*), intent(in)  :: modelname
+    integer(I4B), intent(in)      :: nexg
+    ! -- local
+    logical                       :: ldis, ldisu, ldisv
+    type(GwfModelType), pointer   :: this
+    class(BaseModelType), pointer :: model
+    integer :: in_dum, iout_dum
+    ! -- format
+! ------------------------------------------------------------------------------
+    !
+    ! -- Allocate a new GWF Model (this) and add it to halomodellist
+    allocate(this)
+    call this%allocate_scalars(modelname)
+    model => this   
+    call AddBaseModelToList(halomodellist, model)
+    
+    ! -- Assign values
+    this%name = modelname
+    this%macronym = 'GWF'
+    this%id = id
+    !
+    ! -- TODO: to be replaced by optional arguments
+    in_dum = -1
+    iout_dum = -1
+    !
+    ! -- Get the discretization type
+    call mpi_get_distype(modelname, ldis, ldisu, ldisv)
+    !
+    ! -- Create discretization object
+    if(ldis) then
+      call dis_cr(this%dis, this%name, in_dum, iout_dum) 
+    elseif(ldisu) then
+      call disu_cr(this%dis, this%name, in_dum, iout_dum)
+    elseif(ldisv) then
+      call disv_cr(this%dis, this%name, in_dum, iout_dum)
+    endif
+    !
+    ! -- Set the number of nodes
+    this%dis%nodes     = nexg
+    this%dis%nodesuser = nexg
+    this%neq           = nexg
+    !
+    ! -- Allocate discretization variables
+    call this%dis%allocate_arrays()
+    
+    ! -- Allocate model arrays, now that neq and nja are assigned
+    call this%allocate_arrays()
+    !
+    ! -- Create packages that are tied directly to model
+    call npf_cr(this%npf, this%name, in_dum, iout_dum)
+    call xt3d_cr(this%xt3d, this%name, in_dum, iout_dum)
+    call gnc_cr(this%gnc, this%name, in_dum, iout_dum)
+    call ic_cr(this%ic, this%name, in_dum, iout_dum, this%dis)
+    call mvr_cr(this%mvr, this%name, in_dum, iout_dum)
+    !
+    ! -- create obs package
+    !call obs_cr(this%obs, in_dum)
+    !
+    ! -- return
+    return
+  end subroutine gwf_cr_halo
+    
   subroutine gwf_df(this)
 ! ******************************************************************************
 ! gwf_df -- Define packages of the model
@@ -429,33 +531,46 @@ module GwfModule
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeGenModule, only: mpi_is_halo !JV
     ! -- dummy
     class(GwfModelType) :: this
     ! -- locals
     integer(I4B) :: ip
     class(BndType), pointer :: packobj
+    logical :: flag_halo !JV
 ! ------------------------------------------------------------------------------
     !
+    ! -- Get flag indicating that the model is of type halo
+    flag_halo = mpi_is_halo(this%name) !JV
+    !
     ! -- Allocate and read modules attached to model
-    if(this%inic  > 0) call this%ic%ic_ar(this%x)
+    if(this%inic  > 0) call this%ic%ic_ar(this%x, flag_halo) !JV
     if(this%innpf > 0) call this%npf%npf_ar(this%dis, this%ic,                 &
-                                            this%ibound, this%x)
+                                            this%ibound, this%x,               &
+                                            flag_halo) !JV
     if(this%inhfb > 0) call this%hfb%hfb_ar(this%ibound, this%xt3d, this%dis)
     if(this%insto > 0) call this%sto%sto_ar(this%dis, this%ibound)
     if(this%inmvr > 0) call this%mvr%mvr_ar()
     if(this%inobs > 0) call this%obs%gwf_obs_ar(this%ic, this%x, this%flowja)
     !
     ! -- Call dis_ar to write binary grid file
-    call this%dis%dis_ar(this%npf%icelltype)
+    if (.not.flag_halo) then !JV
+      call this%dis%dis_ar(this%npf%icelltype)
+    endif !JV
     !
     ! -- set up output control
-    call this%oc%oc_ar(this%x, this%dis, this%npf%hnoflo)
+    if (.not.flag_halo) then !JV
+      call this%oc%oc_ar(this%x, this%dis, this%npf%hnoflo)
+    endif !JV
     !
     ! -- Package input files now open, so allocate and read
     do ip=1,this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
-      call packobj%set_pointers(this%dis%nodes, this%ibound, this%x,           &
-                                this%xold, this%flowja)
+      if (.not.packobj%p_ishalo) then !JV
+        call packobj%set_pointers(this%dis%nodes, this%ibound, this%x,         &
+                                  this%xold, this%flowja)
+      endif !JV
       ! -- Read and allocate package
       call packobj%bnd_ar()
     enddo
@@ -523,6 +638,10 @@ module GwfModule
       this%xold(n)=this%x(n)
     enddo
     !
+    if (this%ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     ! -- Advance
     if(this%innpf > 0) call this%npf%npf_ad(this%dis%nodes, this%xold)
     if(this%insto > 0) call this%sto%sto_ad()
@@ -558,7 +677,9 @@ module GwfModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Call package cf routines
-    if(this%innpf > 0) call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
+    if(this%innpf > 0 .and. .not.this%ishalo) then !JV
+      call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
+    endif !JV
     do ip = 1, this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
       call packobj%bnd_cf()

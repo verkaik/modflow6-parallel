@@ -709,7 +709,7 @@ contains
     !    and open an OPEN/CLOSE file if specified.
     ! -- dummy
     integer(I4B), intent(in)        :: iu, iout, iclose
-    character(len=*), intent(in)    :: fname
+    character(len=*), intent(inout) :: fname !JV
     character(len=*), intent(inout) :: line
     integer(I4B), intent(inout)     :: icol, iprn, locat
     ! -- local

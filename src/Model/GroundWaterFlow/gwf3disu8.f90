@@ -77,7 +77,7 @@ module GwfDisuModule
     dis => disnew
     !
     ! -- Allocate scalars and assign data
-    call dis%allocate_scalars(name_model)
+    call dis%allocate_scalars(name_model, 'DISU') !JV
     dis%inunit = inunit
     dis%iout = iout
     !
@@ -711,7 +711,8 @@ module GwfDisuModule
     fname = trim(fname) // '.grb'
     iunit = getunit()
     write(this%iout, fmtgrdsave) iunit, trim(adjustl(fname))
-    call openfile(iunit, this%iout, trim(adjustl(fname)), 'DATA(BINARY)',      &
+    fname = adjustl(fname) !JV
+    call openfile(iunit, this%iout, fname, 'DATA(BINARY)',                     & !JV
                   form, access, 'REPLACE')
     !
     ! -- write header information
@@ -965,7 +966,7 @@ module GwfDisuModule
     return
   end subroutine connection_vector
 
-  subroutine allocate_scalars(this, name_model)
+  subroutine allocate_scalars(this, name_model, dis_type) !JV
 ! ******************************************************************************
 ! allocate_scalars -- Allocate and initialize scalar variables in this class
 ! ******************************************************************************
@@ -977,14 +978,16 @@ module GwfDisuModule
     ! -- dummy
     class(GwfDisuType) :: this
     character(len=*), intent(in) :: name_model
+    character(len=*), intent(in) :: dis_type !JV
     ! -- local
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate parent scalars
-    call this%DisBaseType%allocate_scalars(name_model)
+    call this%DisBaseType%allocate_scalars(name_model, dis_type) !JV
     !
     ! -- Allocate variables for DISU
     call mem_allocate(this%nvert, 'NVERT', this%origin)
+    call mem_allocate(this%ndim,  'DNDIM', this%origin) !JV
     !
     ! -- Set values
     this%ndim = 1

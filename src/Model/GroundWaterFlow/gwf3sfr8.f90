@@ -87,6 +87,7 @@ module SfrModule
   !
   private
   public :: sfr_create
+  public :: ftype !JV
   !
   type, extends(BndType) :: SfrType
     ! -- scalars
@@ -546,6 +547,19 @@ contains
     ! -- format
   ! ------------------------------------------------------------------------------
     !
+    ! -- setup pakmvrobj
+    if (this%imover /= 0) then
+      allocate(this%pakmvrobj)
+      call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin,           &
+                             this%p_ishalo) !JV
+    endif
+    !
+    ! -- set nbound and return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      this%nbound = this%maxbound !JV
+      return !JV
+    endif !JV
+    
     call this%obs%obs_ar()
     !
     ! -- Allocate arrays in package superclass
@@ -1032,12 +1046,6 @@ contains
     ival = this%bditems
     call this%budget%budget_df(ival, this%name, 'L**3')
     !
-    ! -- setup pakmvrobj
-    if (this%imover /= 0) then
-      allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin)
-    endif
-    !
     ! -- return
     return
   end subroutine sfr_ar
@@ -1223,6 +1231,16 @@ contains
     ! -- Return if no sfr reaches
     if(this%nbound == 0) return
     !
+    ! -- pakmvrobj cf
+    if(this%imover == 1) then
+      call this%pakmvrobj%cf()
+    endif
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
     ! -- find highest active cell
     do n = 1, this%nbound
       igwfnode = this%reaches(n)%igwftopnode
@@ -1234,11 +1252,6 @@ contains
       this%reaches(n)%igwfnode = igwfnode
       this%nodelist(n) = igwfnode
     end do
-    !
-    ! -- pakmvrobj cf
-    if(this%imover == 1) then
-      call this%pakmvrobj%cf()
-    endif
     !
     ! -- return
     return

@@ -76,6 +76,7 @@ module mawmodule
   !
   private
   public :: maw_create
+  public :: ftype !JV
   !
   type, extends(BndType) :: MawType
     ! -- scalars
@@ -448,7 +449,7 @@ contains
         rval = this%parser%GetDouble()
         if (rval <= DZERO) then
           write(errmsg,'(4x,a,1x,i6,1x,a)') &
-            '****ERROR. RADIUS FOR WELL', n, 'MUST BE GR5EATER THAN ZERO.'
+            '****ERROR. RADIUS FOR WELL', n, 'MUST BE GREATER THAN ZERO.' !JV
           call store_error(errmsg)
           cycle
         end if
@@ -1569,24 +1570,30 @@ contains
       ! -- format
   ! ------------------------------------------------------------------------------
     !
-    call this%obs%obs_ar()
+    ! -- setup pakmvrobj
+    if (this%imover /= 0) then
+      allocate(this%pakmvrobj)
+      call this%pakmvrobj%ar(this%nmawwells, this%nmawwells, this%origin,         &
+                             this%p_ishalo) !JV
+    endif
     !
     ! -- set omega value used for saturation calculations
     if (this%inewton > 0) then
       this%satomega = DEM6
     end if
     !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
+    call this%obs%obs_ar()
+    !
     ! -- Allocate arrays in MAW and in package superclass
     call this%maw_allocate_arrays()
     !
     ! -- read optional initial package parameters
     call this%read_initial_attr()
-    !
-    ! -- setup pakmvrobj
-    if (this%imover /= 0) then
-      allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%nmawwells, this%nmawwells, this%origin)
-    endif
     !
     ! -- return
     return
@@ -1899,13 +1906,18 @@ contains
     class(MawType) :: this
   ! ------------------------------------------------------------------------------
     !
-    ! -- Calculate maw conductance and update package RHS and HCOF
-    call this%maw_cfupdate()
-    !
     ! -- pakmvrobj cf
     if(this%imover == 1) then
       call this%pakmvrobj%cf()
     endif
+    !
+    ! -- Return in case this package belongs to a halo model
+    if (this%p_ishalo) then !JV
+      return !JV
+    endif !JV
+    !
+    ! -- Calculate maw conductance and update package RHS and HCOF
+    call this%maw_cfupdate()
     !
     ! -- Return
     return

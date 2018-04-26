@@ -22,15 +22,17 @@ module NumericalSolutionModule
   use SimVariablesModule,      only: iout
   use BlockParserModule,       only: BlockParserType
   use IMSLinearModule
+  use MpiExchangeModule,      only: MpiExchangeType !JV
 
   implicit none
   private
   public :: solution_create
+  public :: NumericalSolutionType !JV
 
   type, extends(BaseSolutionType) :: NumericalSolutionType
     character(len=LINELENGTH)                            :: fname
-    type(ListType)                                       :: modellist
-    type(ListType)                                       :: exchangelist
+    type(ListType), pointer                              :: modellist !JV
+    type(ListType), pointer                              :: exchangelist !JV
     integer(I4B), pointer                                :: id
     integer(I4B), pointer                                :: iu
     real(DP), pointer                                    :: ttform
@@ -109,6 +111,9 @@ module NumericalSolutionModule
     !
     ! sparse object
     type(sparsematrix)                                   :: sparse
+    !
+    type(MpiExchangeType), pointer                       :: MpiSol => NULL() !JV
+    type(MpiExchangeType), pointer                       :: MpiMvr => NULL() !JV
 
   contains
     procedure :: sln_df
@@ -118,9 +123,14 @@ module NumericalSolutionModule
     procedure :: sln_ca
     procedure :: sln_fp
     procedure :: sln_da
+    procedure :: allocatemodellist !JV
     procedure :: addmodel
+    procedure :: allocateexchangelist !JV
     procedure :: addexchange
     procedure :: slnassignexchanges
+    procedure :: slnmpiaddgmodel !JV
+    procedure :: slnmpiinit !JV
+    procedure :: slnmpimvrinit !JV
     procedure :: save
 
     procedure, private :: sln_connect
@@ -160,7 +170,7 @@ contains
     use SimVariablesModule, only: iout
     use InputOutputModule,  only: getunit, openfile
     ! -- dummy
-    character(len=*),intent(in) :: filename
+    character(len=*),intent(inout) :: filename !JV
     integer(I4B),intent(in) :: id
     ! -- local
     integer(I4B) :: inunit
@@ -360,7 +370,9 @@ contains
     this%convmodstart(1) = ieq
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
+      if (.not.mp%ishalo) then !JV
       ieq = ieq + mp%neq
+      endif !JV
       this%convmodstart(i+1) = ieq
     end do
     !
@@ -394,9 +406,11 @@ contains
     ! -- calculate and set offsets
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
+      if (.not. mp%ishalo) then !JV
       call mp%set_idsoln(this%id)
       call mp%set_moffset(this%neq)
       this%neq = this%neq + mp%neq
+      endif !JV
     enddo
     !
     ! -- Allocate and initialize solution arrays
@@ -405,9 +419,16 @@ contains
     ! -- Go through each model and point x, ibound, and rhs to solution
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
+      if (.not.mp%ishalo) then !JV
       call mp%set_xptr(this%x)
       call mp%set_rhsptr(this%rhs)
       call mp%set_iboundptr(this%active)
+      else !JV
+        ! -- Initialize the dummy halo arrays and return
+        call mp%set_xptr_halo() !JV
+        call mp%set_rhsptr_halo() !JV
+        call mp%set_iboundptr_halo() !JV
+      endif !JV
     enddo
     !
     ! -- Create the sparsematrix instance
@@ -437,6 +458,7 @@ contains
     use SimVariablesModule, only: iout
     use SimModule, only: ustop, store_error, count_errors
     use InputOutputModule, only: getunit, openfile
+    use MpiExchangeGenModule, only: serialrun !JV
     ! -- dummy
     class(NumericalSolutionType) :: this
     ! -- local
@@ -749,6 +771,11 @@ contains
     if ( this%linmeth==1 )then
       allocate(this%imslinear)
       WRITE(IOUT,*) '***IMS LINEAR SOLVER WILL BE USED***'
+      ! -- Set pointer to MpiSol
+      allocate(this%imslinear%MpiSol) !JV
+      if (.not.serialrun) then !JV
+        this%imslinear%MpiSol => this%MpiSol !JV
+      endif !JV
       call this%imslinear%imslinear_allocate(this%name, this%iu, IOUT,         &
                                              this%iprims, this%mxiter,         &
                                              ifdparam, imslinear,              &
@@ -1028,6 +1055,7 @@ contains
     ! -- modules
     use SimVariablesModule, only:iout
     use TdisModule, only: subtiming_begin, subtiming_end, perlen, totimsav
+    use MpiExchangeGenModule, only: parallelrun !JV
     ! -- dummy
     class(NumericalSolutionType) :: this
     integer(I4B), intent(in) :: kstp
@@ -1057,6 +1085,7 @@ contains
     real(DP) :: ttform
     real(DP) :: ttsoln
     real(DP) :: dxmax
+    real(DP) :: hncg !JV
     ! -- formats
     character(len=*), parameter :: fmtnocnvg =                                 &
       "(1X,'Solution ', i0, ' did not converge for stress period ', i0,        &
@@ -1197,6 +1226,12 @@ contains
           call mp%model_cf(kiter)
         enddo
         !
+        ! MPI parallel: point-to-point of X, IACTIVE, and SAT (rewetting)
+        if (parallelrun) then !JV
+          call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE_SAT',      &
+                                              .true.) !JV
+        endif !JV
+        !
         ! -- Add exchange coefficients to the solution
         do ic=1,this%exchangelist%Count()
           cp => GetNumericalExchangeFromList(this%exchangelist, ic)
@@ -1206,8 +1241,15 @@ contains
         ! -- Add model coefficients to the solution
         do im=1,this%modellist%Count()
           mp => GetNumericalModelFromList(this%modellist, im)
+          if (.not.mp%ishalo) then !JV
           call mp%model_fc(kiter, this%amat, this%nja, 1)
+          endif !JV
         enddo
+        !
+        ! -- MPI parallel: point-to-point of mover data
+        if (parallelrun) then !JV
+          call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !JV
+        endif !JV
         !
         ! -- Add exchange Newton-Raphson terms to solution
         do ic=1,this%exchangelist%Count()
@@ -1225,6 +1267,11 @@ contains
                             this%rhs, this%amat,                               &
                             iptc, ptcf)
         end do
+        !
+        ! -- MPI parallel: ptcf
+        if (parallelrun) then !JV
+          call this%MpiSol%mpi_global_exchange_absmax(ptcf) !JV
+        endif !JV
         !
         ! -- Add model Newton-Raphson terms to solution
         do im=1,this%modellist%Count()
@@ -1251,9 +1298,18 @@ contains
         !-------------------------------------------------------
         ! -- check convergence of solution
         call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter))
+        !
+        ! -- MPI parallel: head criterion
+        if (parallelrun) then !JV
+          hncg = this%hncg(kiter) !JV
+          call this%MpiSol%mpi_global_exchange_absmax(hncg) !JV
+        else !JV
+          hncg = abs(this%hncg(kiter)) !JV
+        endif !JV
+        !
         if (this%icnvg /= 0) then
           this%icnvg = 0
-          if (abs(this%hncg(kiter)) <= this%hclose) this%icnvg = 1
+          if (abs(hncg) <= this%hclose) this%icnvg = 1 !JV
         end if
         !
         ! -- Additional convergence check for pseudo-transient continuation
@@ -1374,7 +1430,9 @@ contains
         ! -- write summary for each model
         do im=1,this%modellist%Count()
           mp => GetNumericalModelFromList(this%modellist, im)
+          if (.not.mp%ishalo) then !JV
           call this%convergence_summary(mp%iout, im, itertot)
+          endif !JV
         end do
         !
         ! -- write summary for entire solution
@@ -1407,7 +1465,9 @@ contains
       ! -- Calculate flow for each model
       do im=1,this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
+        if (.not.mp%ishalo) then !JV
         call mp%model_cq(this%icnvg, isuppress_output)
+        endif
       enddo
       !
       ! -- Calculate flow for each exchange
@@ -1419,7 +1479,9 @@ contains
       ! -- Budget terms for each model
       do im=1,this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
+        if (.not.mp%ishalo) then !JV
         call mp%model_bd(this%icnvg, isuppress_output)
+        endif !JV
       enddo
       !
       ! -- Budget terms for each exchange
@@ -1654,6 +1716,27 @@ contains
     return
   end subroutine save
 
+  subroutine allocatemodellist(this) !JV
+! ******************************************************************************
+! allocatemodellist -- Allocate modellist
+! Subroutine: allocate this%modellist
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    if (.not.associated(this%modellist)) then
+      allocate(this%modellist)
+    endif
+    !
+    ! -- return
+    return
+  end subroutine allocatemodellist
+  
   subroutine addmodel(this, mp)
 ! ******************************************************************************
 ! addmodel -- Add Model
@@ -1679,6 +1762,25 @@ contains
     return
   end subroutine addmodel
 
+ subroutine allocateexchangelist(this)
+! ******************************************************************************
+! allocateexchangelist -- Allocate exchangelist
+! Subroutine: (1) allocate exchangelist
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+! ------------------------------------------------------------------------------
+    !
+    if (.not.associated(this%exchangelist)) then !JV
+      allocate(this%exchangelist) !JV
+    endif !JV
+    !
+    return
+  end subroutine allocateexchangelist
+  
   subroutine addexchange(this, exchange)
 ! ******************************************************************************
 ! addexchange -- Add exchange
@@ -1720,6 +1822,7 @@ contains
     ! -- Go through the list of exchange objects and if either model1 or model2
     !    are part of this solution, then include the exchange object as part of
     !    this solution.
+    call this%allocateexchangelist() !JV
     c => null()
     do ic=1,baseexchangelist%Count()
       cb => GetBaseExchangeFromList(baseexchangelist, ic)
@@ -1742,6 +1845,529 @@ contains
     return
   end subroutine slnassignexchanges
 
+  subroutine slnmpiaddgmodel(this, mname, idsoln) !JV
+! ******************************************************************************
+! Add global modelname to this solution
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    character(len=*), intent(in) :: mname
+    integer(I4B), intent(in) :: idsoln
+    ! -- local
+    class(NumericalModelType), pointer :: mp
+    integer(I4B) :: im
+! ------------------------------------------------------------------------------
+    !
+    if (.not.associated(this%MpiSol)) then
+      allocate(this%MpiSol)
+    endif
+    if (.not.associated(this%MpiMvr)) then
+      allocate(this%MpiMvr)
+    endif
+    call this%MpiSol%mpi_addmodel(1, mname)
+    !
+    ! -- return
+    return
+  end subroutine slnmpiaddgmodel
+  
+  subroutine slnmpiinit(this, sname) !JV
+! ******************************************************************************
+! Initialize MPI for this solution
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ConstantsModule, only: LENMODELNAME
+    use ArrayHandlersModule, only: ifind
+    use SimModule, only: ustop, store_error
+    use GwfModule, only: GwfModelType
+    use MpiExchangeGenModule, only: serialrun
+    use MpiExchangeModule, only: MpiWorld
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    character(len=*), intent(in) :: sname
+    ! -- local
+    class(NumericalModelType), pointer :: mp
+    class(NumericalExchangeType), pointer :: cp
+    type(GwfModelType), pointer :: m1, m2
+    character(len=LENMODELNAME) :: mname
+    character(len=LINELENGTH) :: errmsg
+    integer(I4B) :: im, i, isub1, isub2, ixp, nex, ip, ic
+    integer(I4B), dimension(:), allocatable :: iwrk
+    integer(I4B) :: irnk !JV
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    endif
+    !
+    this%MpiSol%name = 'MPI'//trim(sname)
+    !
+    ! -- loop over my local models within this solution
+    do im=1,this%modellist%Count()
+      mp => GetNumericalModelFromList(this%modellist, im)
+      ! -- add model to local MPI model list
+      call this%MpiSol%mpi_addmodel(2, mp%name)
+      if (mp%ishalo) then
+        read(mp%name,*) mname
+      else
+        mname = mp%name
+      endif
+      ! -- find the global subdomain number for this model
+      i = ifind(MpiWorld%gmodelnames, mname)
+      ! -- add subdomain to local MPI subdomain list
+      if (i > 0) then
+        isub1 = MpiWorld%gsubs(i)
+        call this%MpiSol%mpi_addsub(2, isub1)
+      else
+        write(errmsg,'(a)') 'Program error in slnmpiinit.'
+        call store_error(errmsg)
+        call ustop()
+      endif
+    enddo
+    !
+    ! -- initialize communicator
+    call this%MpiSol%mpi_local_exchange_init()
+    !
+    ! -- loop over exchanges and count exchange partners within this solution
+    allocate(iwrk(this%MpiSol%nrproc))
+    iwrk = 0
+    do ic=1,this%exchangelist%Count()
+      cp => GetNumericalExchangeFromList(this%exchangelist, ic)
+      call cp%get_m1m2(m1, m2)
+      ! -- Add to interface
+      if (cp%m2_ishalo) then
+        ! -- Get my model subdomain number and check
+        i = ifind(MpiWorld%gmodelnames, m1%name)
+        isub1 = MpiWorld%gsubs(i)
+        isub1 = this%MpiSol%procmap(isub1)
+        if (isub1 /= this%MpiSol%myproc) then
+          write(errmsg,'(a)') 'Program error in mpi_local_exchange_init.'
+          call store_error(errmsg)
+          call ustop()
+        endif
+        read(m2%name,*) mname
+        i = ifind(MpiWorld%gmodelnames, mname)
+        isub2 = MpiWorld%gsubs(i)
+        isub2 = this%MpiSol%procmap(isub2)
+        iwrk(isub2) = iwrk(isub2) + 1
+      end if
+    end do
+    this%MpiSol%nrxp = 0
+    do ip = 1, this%MpiSol%nrproc
+      if (iwrk(ip) > 0) then
+        this%MpiSol%nrxp = this%MpiSol%nrxp + 1
+      endif
+    enddo
+    !
+    ! -- Allocate local communication data structure
+    if (this%MpiSol%nrxp > 0) then
+      allocate(this%MpiSol%lxch(this%MpiSol%nrxp))
+    endif
+    !
+    ixp = 0
+    do ip = 1, this%MpiSol%nrproc
+      nex = iwrk(ip)
+      if (nex > 0) then
+        ixp = ixp + 1
+        allocate(this%MpiSol%lxch(ixp)%nexchange)
+        allocate(this%MpiSol%lxch(ixp)%exchange(nex))
+        allocate(this%MpiSol%lxch(ixp)%xprnk)
+        this%MpiSol%lxch(ixp)%nexchange = 0
+        this%MpiSol%lxch(ixp)%xprnk = ip-1
+      endif
+      ! -- Set mapping to exchange partner index
+      iwrk(ip) = ixp
+    enddo
+    !
+    ! -- loop over exchanges and initialize
+    do ic=1,this%exchangelist%Count()
+      cp => GetNumericalExchangeFromList(this%exchangelist, ic)
+      call cp%get_m1m2(m1, m2)
+      ! -- Add to interface
+      if (cp%m2_ishalo) then
+        ! -- Get my model subdomain number and check
+        read(m2%name,*) mname
+        i = ifind(MpiWorld%gmodelnames, mname)
+        isub2 = MpiWorld%gsubs(i)
+        isub2 = this%MpiSol%procmap(isub2)
+        ixp = iwrk(isub2)
+        nex = this%MpiSol%lxch(ixp)%nexchange
+        nex = nex + 1
+        ! -- set pointer to exchange
+        this%MpiSol%lxch(ixp)%exchange(nex)%name = cp%name
+        this%MpiSol%lxch(ixp)%exchange(nex)%m1_name = m1%name
+        this%MpiSol%lxch(ixp)%exchange(nex)%m2_name = m2%name
+        this%MpiSol%lxch(ixp)%nexchange = nex
+      end if
+    end do
+    !
+    this%MpiSol%linit = .true.
+    !
+    ! -- add variables
+    call this%MpiSol%mpi_add_vg('INIT')
+    call this%MpiSol%mpi_add_vmt('INIT','','TOP','DIS','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','BOT','DIS','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','AREA','DIS','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','ICELLTYPE','NPF','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','K11','NPF','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','SAT','NPF','GWF')
+    call this%MpiSol%mpi_add_vmt('INIT','','X','','SOL')
+    call this%MpiSol%mpi_init_vg('INIT')
+    
+    call this%MpiSol%mpi_add_vg('X_IACTIVE_SAT')
+    call this%MpiSol%mpi_add_vmt('X_IACTIVE_SAT','','X','','SOL')
+    call this%MpiSol%mpi_add_vmt('X_IACTIVE_SAT','','IACTIVE','','SOL')
+    call this%MpiSol%mpi_add_vmt('X_IACTIVE_SAT','','SAT','NPF','GWF')
+    call this%MpiSol%mpi_init_vg('X_IACTIVE_SAT')
+    !
+    call this%MpiSol%mpi_add_vg('X')
+    call this%MpiSol%mpi_add_vmt('X','','X','','SOL')
+    call this%MpiSol%mpi_init_vg('X')
+    !
+    ! -- Clean up
+    deallocate(iwrk)
+    !
+    if (.false.) then
+      do irnk = 0,this%MpiSol%nrproc-1
+        if (irnk == this%MpiSol%myrank) then
+          write(*,*) '==== myrank',irnk
+          write(*,*) 'nrxp =', this%MpiSol%nrxp
+          do ixp = 1, this%MpiSol%nrxp
+            write(*,*) '----',ixp
+            write(*,*) ' nex =', this%MpiSol%lxch(ixp)%nexchange
+            do i = 1, this%MpiSol%lxch(ixp)%nexchange
+             write(*,*) 'name=', this%MpiSol%lxch(ixp)%exchange(i)%name
+              write(*,*) 'm1=',trim(this%MpiSol%lxch(ixp)%exchange(i)%m1_name)
+              write(*,*) 'm2=',trim(this%MpiSol%lxch(ixp)%exchange(i)%m2_name)
+            enddo
+          enddo
+        end if
+        call this%MpiSol%mpi_barrier()
+      enddo
+      call ustop('@@@@debug')
+    endif
+    !
+    ! -- return
+    return
+  end subroutine slnmpiinit
+  
+ subroutine slnmpimvrinit(this, sname) !JV
+! ******************************************************************************
+! Initialize MPI for this solution
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ConstantsModule,      only: LENMODELNAME, LENPACKAGENAME, LENORIGIN
+    use ArrayHandlersModule, only: ifind
+    use MpiExchangeGenModule, only: serialrun
+    use BaseExchangeModule,   only: BaseExchangeType, GetBaseExchangeFromList
+!    use GwfGwfExchangeModule, only: GwfpExchangeType => GwfExchangeType 
+    use GwfpGwfpExchangeModule, only: GwfpExchangeType
+    use GwfMvrModule,         only: GwfMvrType
+    use SimModule, only: ustop, store_error
+    use MpiExchangeModule, only: MpiWorld, ivmtmvr, VarGroupType
+    use MpiExchangeGenModule, only: mpi_destroy_modelname_halo
+    use MpiMvrModule,         only: MpiMvrType !JV
+    !
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    character(len=*), intent(in) :: sname
+    ! -- local
+    class(BaseExchangeType), pointer :: cb
+    class(GwfpExchangeType), pointer :: cp
+    type(GwfMvrType), pointer :: mvr
+    type(MpiMvrType), pointer :: mvrmpi
+    type(VarGroupType), pointer :: vgvar
+    character(len=LINELENGTH) :: errmsg
+    character(len=LENMODELNAME) :: mname1, mname2
+    character(len=LENORIGIN) :: origin
+    integer(I4B) :: ic, imvr, mvrflag, i1, i2, i, isub, ip, nex, ixp, iact
+    integer(I4B) :: ivg, iv
+    integer(I4B), dimension(:), allocatable :: iwrk, iwrk2
+    logical :: laddvar1, laddvar2, laddex 
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    endif
+    !
+    ! -- Deallocate in case of a new stress period
+    if(this%MpiMvr%linit) then
+      call this%MpiMvr%mpi_da()
+    endif
+    !
+    this%MpiMvr%name = 'MPI'//trim(sname)
+    !
+    ! -- loop over my local models within this solution and
+    !   check if there are movers involved
+    mvrflag = 0
+    do ic=1,this%exchangelist%Count()
+      cb => GetBaseExchangeFromList(this%exchangelist, ic)
+      select type (cb)
+      class is (GwfpExchangeType)
+        cp => cb
+      end select
+      if (.not.associated(cp)) then
+        write(errmsg,'(a)') 'Program error 1 in slnmpimvrinit.'
+        call store_error(errmsg)
+        call ustop()
+      endif
+      if (cp%inmvr > 0) then
+        mvr => cp%mvr
+        do imvr = 1, mvr%nmvr
+          read(mvr%mvr(imvr)%pname1,*) mname1
+          read(mvr%mvr(imvr)%pname2,*) mname2
+          i1 = ifind(this%MpiSol%lmodelnames, mname1)
+          i2 = ifind(this%MpiSol%lmodelnames, mname2)
+          if (i1 > 0 .and. i2 <= 0) then
+            mvrflag = 1
+          endif
+          if (i1 <= 0 .and. i2 > 0) then
+            mvrflag = 1
+          endif
+        enddo
+      endif
+    enddo
+    call this%MpiSol%mpi_global_exchange_max(mvrflag)
+    if (mvrflag > 0) then
+      this%MpiMvr%lp2p = .true.
+    else
+      this%MpiMvr%lp2p = .false.
+    endif
+    !
+    ! -- nothing to do
+    if (.not.this%MpiMvr%lp2p) then
+      return
+    endif
+    !
+    ! -- Loop over global movers and construct communicator.
+    do ic=1,this%exchangelist%Count()
+      cb => GetBaseExchangeFromList(this%exchangelist, ic)
+      select type (cb)
+      class is (GwfpExchangeType)
+        cp => cb
+      end select
+      mvrmpi => cp%mvr%mvrmpi
+      ! -- loop over global movers
+      do imvr = 1, mvrmpi%ngmvr
+        ! -- get mover names
+        read(mvrmpi%gmvr(imvr)%pname1,*) mname1
+        read(mvrmpi%gmvr(imvr)%pname2,*) mname2
+        ! -- check existence
+        i1 = ifind(MpiWorld%gmodelnames, mname1)
+        i2 = ifind(MpiWorld%gmodelnames, mname2)
+        if (i1 <= 0 .or. i2 <= 0) then 
+          write(errmsg,'(a)') 'Program error 2 in slnmpimvrinit.'
+          call store_error(errmsg)
+          call ustop()
+        endif
+        if (allocated(this%MpiMvr%lmodelnames)) then
+          i = ifind(this%MpiMvr%lmodelnames, mname1)
+        else
+          i = 0
+        endif
+        if (i <= 0) then
+          call this%MpiMvr%mpi_addmodel(2,mname1)
+          isub = MpiWorld%gsubs(i1)
+          call this%MpiMvr%mpi_addsub(2, isub)
+          !write(*,*) '@@@@ Added 1:',MpiWorld%myrank, trim(mname1), isub
+        endif
+        if (allocated(this%MpiMvr%lmodelnames)) then
+          i = ifind(this%MpiMvr%lmodelnames, mname2)
+        else
+          i = 0
+        endif
+        if (i <= 0) then
+          call this%MpiMvr%mpi_addmodel(2,mname2)
+          isub = MpiWorld%gsubs(i2)
+          call this%MpiMvr%mpi_addsub(2, isub)
+          !write(*,*) '@@@@ Added 2:',MpiWorld%myrank, trim(mname2), isub
+        endif
+      enddo
+    enddo
+    do i = 1, this%MpiSol%gnmodel
+      call this%MpiMvr%mpi_addmodel(1, this%MpiSol%gmodelnames(i))
+    enddo
+    call this%MpiMvr%mpi_local_exchange_init()
+    !
+    allocate(iwrk(this%MpiMvr%nrproc))
+    iwrk = 0
+    !
+    ! -- loop over exchanges and count exchange partners within this solution
+    do ic=1,this%exchangelist%Count()
+      cb => GetBaseExchangeFromList(this%exchangelist, ic)
+      select type (cb)
+      class is (GwfpExchangeType)
+        cp => cb
+      end select
+      mvr => cp%mvr
+      ! -- loop over local movers
+      do imvr = 1, mvr%nmvr
+        read(mvr%mvr(imvr)%pname1,*) mname1
+        read(mvr%mvr(imvr)%pname2,*) mname2
+        i1 = ifind(this%MpiSol%lmodelnames, mname1)
+        i2 = ifind(this%MpiSol%lmodelnames, mname2)
+        laddvar1 = .false.
+        laddvar2 = .false.
+        ! mname1 belongs to my models; mname2 is halo
+        if (i1 > 0 .and. i2 <= 0) then
+          laddvar1 = .true.
+          i = ifind(MpiWorld%gmodelnames, mname2)
+        endif
+        ! mname1 is halo; mname2 belongs to my models
+        if (i1 <= 0 .and. i2 > 0) then
+          laddvar2 = .true.
+          i = ifind(MpiWorld%gmodelnames, mname1)
+        endif
+        if (laddvar1 .or. laddvar2) then
+          isub = MpiWorld%gsubs(i)
+          isub = this%MpiMvr%procmap(isub)
+          if(isub < 0) then
+            write(errmsg,'(a)') 'Program error 3 in slnmpimvrinit.'
+            call store_error(errmsg)
+            call ustop()
+          endif
+          iwrk(isub) = iwrk(isub) + 1
+        endif
+      enddo
+    enddo
+    this%MpiMvr%nrxp = 0
+    do ip = 1, this%MpiMvr%nrproc
+      if (iwrk(ip) > 0) then
+        this%MpiMvr%nrxp = this%MpiMvr%nrxp + 1
+      endif
+    enddo
+    !
+    ! -- Allocate local communication data structure
+    if (this%MpiMvr%nrxp > 0) then
+      allocate(this%MpiMvr%lxch(this%MpiMvr%nrxp))
+    endif
+    !
+    ixp = 0
+    do ip = 1, this%MpiMvr%nrproc
+      nex = iwrk(ip)
+      if (nex > 0) then
+        ixp = ixp + 1
+        allocate(this%MpiMvr%lxch(ixp)%nexchange)
+        allocate(this%MpiMvr%lxch(ixp)%exchange(nex))
+        allocate(this%MpiMvr%lxch(ixp)%xprnk)
+        this%MpiMvr%lxch(ixp)%nexchange = 0
+        this%MpiMvr%lxch(ixp)%xprnk = ip-1
+      endif
+      ! -- Set mapping to exchange partner index
+      iwrk(ip) = ixp
+    enddo
+    !
+    ! -- loop over exchanges and initialize
+    allocate(iwrk2(this%MpiMvr%nrproc))
+    iwrk2 = 0
+    do iact = 1, 2
+      do ic=1,this%exchangelist%Count()
+        cb => GetBaseExchangeFromList(this%exchangelist, ic)
+        select type (cb)
+        class is (GwfpExchangeType)
+          cp => cb
+        end select
+        mvr => cp%mvr
+        ! -- loop over local movers
+        do imvr = 1, mvr%nmvr
+          read(mvr%mvr(imvr)%pname1,*) mname1
+          read(mvr%mvr(imvr)%pname2,*) mname2
+          !write(*,*) '@@@@ mvr: "'//trim(mvr%mvr(imvr)%pname1)//'" "'//trim(mvr%mvr(imvr)%pname2)//'"'
+          i1 = ifind(this%MpiSol%lmodelnames, mname1)
+          i2 = ifind(this%MpiSol%lmodelnames, mname2)
+          laddvar1 = .false.
+          laddvar2 = .false.
+          ! -- mname1 belongs to my models; mname2 is halo
+          if (i1 > 0 .and. i2 <= 0) then
+            laddvar1 = .true.
+            i = ifind(MpiWorld%gmodelnames, mname2)
+          endif
+          ! -- mname1 is halo; mname2 belongs to my models
+          if (i1 <= 0 .and. i2 > 0) then
+            laddvar2 = .true.
+            i = ifind(MpiWorld%gmodelnames, mname1)
+          endif
+          ! -- check if interface already exists
+          laddex = .false.
+          if (laddvar1 .or. laddvar2) then
+            isub = MpiWorld%gsubs(i)
+            isub = this%MpiMvr%procmap(isub)
+            ixp = iwrk(isub)
+            nex = this%MpiMvr%lxch(ixp)%nexchange
+            if (iwrk2(isub) == 0) then
+              laddex = .true.
+              iwrk2(isub) = 1
+            endif
+          endif
+          if (laddex) then
+            nex = nex + 1
+            if (iact == 1) then
+              ! -- set pointer to exchange
+              !write(*,*) '@@@@@@ Adding:',trim(mname1), ' ', trim(mname2),nex
+              this%MpiMvr%lxch(ixp)%exchange(nex)%name = cp%name
+              this%MpiMvr%lxch(ixp)%exchange(nex)%m1_name = trim(mname1)
+              this%MpiMvr%lxch(ixp)%exchange(nex)%m2_name = trim(mname2)
+              this%MpiMvr%lxch(ixp)%nexchange = nex
+            endif
+          endif
+          !set the variables
+          if ((laddvar1 .or. laddvar2) .and. iact == 2) then
+            vgvar => this%MpiMvr%lxch(ixp)%exchange(nex)%vgvar(ivg)
+            if (.not.associated(vgvar)) then
+              write(*,*) '@@@@',ixp,nex,ivg
+              write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
+              call store_error(errmsg)
+              call ustop()
+            endif
+            iv = vgvar%nvar
+            iv = iv + 1
+            if (iv > size(vgvar%var)) then
+              write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
+              call store_error(errmsg)
+              call ustop()
+            endif
+            vgvar%nvar = iv
+            vgvar%var(iv)%origin = mvr%mvr(imvr)%pname1
+            vgvar%var(iv)%name   = 'QFORMVR'
+!            vgvar%var(iv)%origin = mvr%mvr(imvr)%origin_qformvr_ptr
+!            vgvar%var(iv)%name   = 'QFORMVR_PTR_HALO'
+            vgvar%var(iv)%nameext = ''
+            vgvar%var(iv)%vmttype = ivmtmvr
+            vgvar%var(iv)%id      = mvr%mvr(imvr)%irch1
+            if (laddvar1) then
+              vgvar%var(iv)%lrcv = .false.
+            endif
+            if (laddvar2) then
+              vgvar%var(iv)%lsnd = .false.
+            endif
+          endif
+        enddo
+      enddo
+      if (iact == 1) then
+        this%MpiMvr%linit = .true.
+        ! -- Create mover group
+        call this%MpiMvr%mpi_add_vg('MOVER')
+        ivg = ifind(this%MpiMvr%vg, 'MOVER') 
+      endif
+    end do
+    call this%MpiMvr%mpi_init_vg('MOVER')
+    !
+    ! -- Clean up
+    deallocate(iwrk,iwrk2)
+    !
+    ! -- return
+    return
+  end subroutine slnmpimvrinit
+  
   subroutine sln_connect(this)
 ! ******************************************************************************
 ! sln_connect -- Assign Connections
@@ -1768,13 +2394,17 @@ contains
     ! -- Add internal model connections to sparse
     do im=1,this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, im)
+      if (.not.mp%ishalo) then !JV
       call mp%model_ac(this%sparse)
+      endif !JV
     enddo
     !
     ! -- Add the cross terms to sparse
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
+      if (.not.cp%m2_ishalo) then !JV
       call cp%exg_ac(this%sparse)
+      endif !JV
     enddo
     !
     ! -- The number of non-zero array values are now known so
@@ -1791,13 +2421,17 @@ contains
     ! -- however, rows do not need to be sorted.
     do im=1,this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, im)
+      if (.not.mp%ishalo) then !JV
       call mp%model_mc(this%ia, this%ja)
+      endif !JV
     enddo
     !
     ! -- Create arrays for mapping exchange connections to global solution
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
+      if (.not.cp%m2_ishalo) then !JV
       call cp%exg_mc(this%ia, this%ja)
+      endif !JV
     enddo
     !
     ! -- return
@@ -1839,6 +2473,8 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
+    use MpiExchangeGenModule, only: parallelrun !JV
+    ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     integer(I4B), intent(in) :: kiter
     integer(I4B), intent(in) :: kstp
@@ -1921,6 +2557,9 @@ contains
                 bnorm = bnorm + this%rhs(n) * this%rhs(n)
               end if
             end do
+            if (parallelrun) then !JV
+              call this%MpiSol%mpi_global_exchange_sum(bnorm) !JV
+            endif !JV
             bnorm = sqrt(bnorm)
             this%ptcdel = bnorm / l2norm
           end if
@@ -1948,6 +2587,11 @@ contains
           this%rhs(n) = this%rhs(n) - ptcval * this%x(n)
         end if
       end do
+      !
+      if (parallelrun) then !JV
+         call this%MpiSol%mpi_global_exchange_sum(bnorm) !JV
+         call this%MpiSol%mpi_global_exchange_absmin(diagmin) !JV
+      endif !JV
       bnorm = sqrt(bnorm)
       if (this%iptcout > 0) then
         write(this%iptcout, '(i10,6(1x,e15.7),2(1x,f15.6))')                   &
@@ -2251,6 +2895,8 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeGenModule, only: parallelrun !JV
     ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     integer(I4B), intent(in) :: neq
@@ -2266,8 +2912,33 @@ contains
     integer(I4B) :: n
     integer(I4B) :: j, jcol
     real(DP) :: rowsum
+    real(DP), dimension(:), allocatable :: dwrk !JV
 ! ------------------------------------------------------------------------------
     !
+    if (parallelrun) then !JV
+      allocate(dwrk(neq)) !JV
+      dwrk = DZERO !JV
+      do n = 1, neq !JV
+        if (active(n) > 0) then !JV
+          dwrk(n) = DZERO !JV
+          do j = ia(n), ia(n+1)-1 !JV
+            jcol = ja(j) !JV
+            dwrk(n) = dwrk(n) + amat(j) * x(jcol) !JV
+          end do !JV
+        endif !JV
+      enddo !JV
+      call this%MpiSol%mpi_local_exchange(this%name, 'X', .false.) !JV
+      call this%MpiSol%mpi_mv_halo(this%name, 'X', dwrk) !JV
+      resid = DZERO !JV
+      do n = 1, neq !JV
+        if (active(n) > 0) then !JV
+          ! compute mean square residual from q of each node
+          resid = resid +  (dwrk(n) - rhs(n))**2 !JV
+        endif !JV
+      enddo !JV
+      deallocate(dwrk) !JV
+      call this%MpiSol%mpi_global_exchange_sum(resid) !JV
+    else !JV
     resid = DZERO
     do n = 1, neq
       if (active(n) > 0) then
@@ -2280,6 +2951,8 @@ contains
         resid = resid +  (rowsum - rhs(n))**2
       end if
     end do
+    endif !JV
+    !
     ! -- l2norm is the square root of the sum of the square of the residuals
     resid = sqrt(resid)
     !
@@ -2535,12 +3208,14 @@ contains
     noder = 0
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
+      if (.not.mp%ishalo) then !JV
       call mp%get_mrange(istart, iend)
       if (nodesln >= istart .and. nodesln <= iend) then
         noder = nodesln - istart + 1
         call mp%get_mcellid(noder, str)
         exit
       end if
+      end if !JV
     end do
     !
     ! -- return

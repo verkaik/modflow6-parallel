@@ -1,0 +1,186 @@
+module MpiExchangeGenModule
+  use KindModule, only: DP, I4B  
+  use ConstantsModule, only: LENMODELNAME, LINELENGTH
+  use ArrayHandlersModule, only: ifind
+  use MpiWrapper, only: mpiwrpinit, mpiwrpfinalize
+  
+  implicit none
+  
+  private
+  
+  ! -- Public functions
+  public :: mpi_initialize
+  public :: mpi_finalize
+  public :: mpi_append_fname
+  public :: mpi_is_halo
+  public :: mpi_create_modelname_halo
+  public :: mpi_destroy_modelname_halo
+  ! -- Public variables
+  public :: nhalo
+  public :: modelname_halo
+
+  ! -- Global variables based of the world communicator
+  logical, public ::  parallelrun = .false., serialrun = .true., writestd = .true.
+  character(len=50), public :: partstr
+  
+  integer(I4B) :: nhalo = 0
+  character(len=LENMODELNAME), allocatable, dimension(:) :: modelname_halo !JV
+  character(len=LINELENGTH) :: errmsg
+  
+  save
+  
+  contains
+  
+  subroutine mpi_initialize()
+! ******************************************************************************
+! MPI initialization to be called at the start of the program.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    call mpiwrpinit()
+    !
+    ! -- return
+    return
+  end subroutine mpi_initialize
+
+  subroutine mpi_finalize()
+! ******************************************************************************
+! MPI finalization to be called at the end of the program.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    call mpiwrpfinalize()
+    !
+    ! -- return
+    return
+  end subroutine mpi_finalize
+
+  subroutine mpi_append_fname(f)
+! ******************************************************************************
+! Append the file name with the process rank ID.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    character(len=*), intent(inout) :: f
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    ! -- Return in case of serial run
+    if (serialrun) return
+    !
+    write(f,'(3a)') trim(f),'.',trim(partstr)
+    !
+    ! -- return
+    return
+  end subroutine mpi_append_fname
+
+  subroutine mpi_create_modelname_halo(im, modelname)
+! ******************************************************************************
+! Create halo model name.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- return
+    ! -- dummy
+    character(len=*), intent(inout) :: modelname
+    integer(I4B), intent(in) :: im
+    ! -- local
+    character(len=LINELENGTH) :: s
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return 
+    endif
+    !
+    write(s,*) im
+    modelname = trim(modelname)//' HALO'//trim(adjustl(s))
+    !
+    ! -- return
+    return
+  end subroutine mpi_create_modelname_halo
+  
+  subroutine mpi_destroy_modelname_halo(modelname)
+! ******************************************************************************
+! Destroy halo model name.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- return
+    ! -- dummy
+    character(len=*), intent(inout) :: modelname
+    ! -- local
+    integer(I4B) :: i, j, n
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    endif
+    !
+    n = len_trim(modelname)
+    i = index(modelname(1:n),' ',back=.true.)
+    j = index(modelname(1:n),'HALO')
+    if (i > 0 .and. j > 0) then
+      modelname = modelname(1:j-2)//modelname(i:n)
+    endif
+    !
+    ! -- return
+    return
+  end subroutine mpi_destroy_modelname_halo
+  
+  function mpi_is_halo(modelname) result(flag_halo)
+! ******************************************************************************
+! Check if a model name is of type halo
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- return
+    logical :: flag_halo
+    ! -- dummy
+    character(len=*), intent(in) :: modelname
+    ! -- local
+    integer(I4B) :: m
+! ------------------------------------------------------------------------------
+    !
+    flag_halo = .false.
+    if (serialrun) then
+      !return !@@@@@ DEBUG 
+    endif
+    !
+    ! -- check
+    if (.not.allocated(modelname_halo)) then
+      !write(errmsg,'(a)') 'Program error in mpi_is_halo.'
+      !call store_error(errmsg)
+      !call ustop()
+    endif
+    !
+    m = ifind(modelname_halo, modelname) 
+    if (m > 0) then
+      flag_halo = .true.
+    endif
+    !
+    ! -- return
+    return
+  end function mpi_is_halo
+  
+end module MpiExchangeGenModule

@@ -99,7 +99,7 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- dummy
     class(TimeArraySeriesType), intent(inout) :: this
-    character(len=*), intent(in) :: fname
+    character(len=*), intent(inout) :: fname !JV
     class(DisBaseType), pointer, intent(inout) :: dis
     integer(I4B), intent(in) :: iout
     character(len=*), intent(inout) :: tasname
