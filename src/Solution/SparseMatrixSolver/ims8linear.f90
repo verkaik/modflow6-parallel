@@ -2016,10 +2016,10 @@
             LORTH = mod(iiter+1,NORTH) == 0
             IF (LORTH) THEN
               CALL IMSLINEARSUB_MV(NJA, NEQ, A0,X , D, IA0, JA0)
-              CALL IMSLINEARSUB_AXPY(NEQ, B, -DONE, D, D)
               ! -- MPI parallel: point-to-point comm. of X and update of D
               call MpiSol%mpi_local_exchange(origin, 'IMS-X', .false.) !JV
               call MpiSol%mpi_mv_halo(origin, 'IMS-X', d) !JV
+              CALL IMSLINEARSUB_AXPY(NEQ, B, -DONE, D, D)
               !DO n = 1, NEQ
               !  tv   = D(n)
               !  D(n) = B(n) - tv
