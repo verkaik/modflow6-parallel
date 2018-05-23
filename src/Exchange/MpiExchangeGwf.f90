@@ -365,7 +365,7 @@ module MpiExchangeGwfModule
             do ipo=1,nmp%bndlist%Count()
               packobj => GetBndFromList(nmp%bndlist, ipo)
               do ip = 1, mxpack
-                if (lpack(ip) .and. packobj%filtyp == packftype(1,ip)) then
+                if (lpack(ip) .and. packobj%filtyp == packftype(1,ip) .and. packobj%ibcnum == ibcnum) then
                   lcreate(ip) = .false.
                 endif
               enddo
