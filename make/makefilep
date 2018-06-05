@@ -46,7 +46,7 @@ FC = mpiifort
 FFLAGS = -O2 -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid -fpp -DMPI_PARALLEL
 
 # Define the C compile flags
-CC = gcc
+CC = mpiicc
 CFLAGS = -O3 -D_UF
 
 # Define the libraries
@@ -195,6 +195,7 @@ $(OBJDIR)/%.o : %.cpp
 clean :
 	-rm -rf $(OBJDIR)
 	-rm -rf $(PROGRAM)
+	-rm -rf *.mod
 
 # Clean the object and module files
 .PHONY : cleanobj
