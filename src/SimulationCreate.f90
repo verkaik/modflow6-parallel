@@ -593,6 +593,10 @@ module SimulationCreateModule
     character(len=LINELENGTH) :: hmname !JV
     logical :: add !JV
     integer(I4B) :: ih !JV
+    type(BlockParserType) :: filein_parser !JV
+    logical :: filein, first !JV
+    logical :: filein_endOfBlock !JV
+    integer(I4B) :: iu !JV
     ! -- formats
     character(len=*), parameter :: fmterrmxiter = &
       "('ERROR. MXITER IS SET TO ', i0, ' BUT THERE IS ONLY ONE SOLUTION',     &
@@ -658,11 +662,36 @@ module SimulationCreateModule
             !
             ! -- Add all of the models that are listed on this line to
             !    the current solution (sp)
+            filein = .false. !JV
+            first = .true. !JV
             do
               !
               ! -- Set istart and istop to encompass model name. Exit this
               !    loop if there are no more models.
-              call parser%GetStringCaps(mname)
+              if (.not.filein) then !JV
+                call parser%GetStringCaps(mname)
+              else !JV
+                 call filein_parser%GetNextLine(filein_endOfBlock) !JV
+                 call filein_parser%GetStringCaps(mname) !JV
+              end if !JV
+              if ((trim(adjustl(mname)) == 'FILEIN') .and. first) then !JV
+                call parser%GetString(fname) !JV
+                if (fname == '') then !JV
+                  write(errmsg, '(a)') 'ERROR. NO FILE FOUND ' & !JV
+                    //'AFTER "FILEIN" FOR SPECIFYING MODELS.'!JV
+                  call store_error(errmsg) ! JV
+                  call parser%StoreErrorUnit() !JV
+                  call ustop() !JV
+                end if
+                call openfile(iu, iout, fname, 'MODEL NAMES') !JV
+                call filein_parser%Initialize(iu, iout) !JV
+                call filein_parser%GetBlock('MODELS', isfound, ierr) !JV
+                call filein_parser%GetNextLine(filein_endOfBlock) !JV
+                call filein_parser%GetStringCaps(mname) !JV
+                first = .false. !JV
+                filein = .true. !JV
+              end if !JV
+              !
               if (mname == '') exit
               !
               ! -- Find the model id, and then get model
@@ -716,6 +745,11 @@ module SimulationCreateModule
         end select
       end do
       !
+      ! -- Clean up
+      if (filein) then !JV
+        call filein_parser%clear() !JV
+      end if !JV
+    
       ! -- Make sure there is a solution in this solution group
       if(isgpsoln == 0) then
         write(errmsg, '(4x,a,i0)') &
