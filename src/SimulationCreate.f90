@@ -513,7 +513,7 @@ module SimulationCreateModule
             call parser%GetStringCaps(name2)
             !
             ! -- get nexg
-            ! -- JV-TODO: read nexg earlier?
+            ! -- PAR-TODO: read nexg earlier?
             nexg = parser%GetInteger()
             !
             ! -- Determine wether to create halo or not
@@ -531,7 +531,7 @@ module SimulationCreateModule
             m1 = ifind(modelname, name1)
             m2 = ifind(modelname, name2)
             !
-            ! -- JV-TODO: add check for model existence
+            ! -- PAR-TODO: add check for model existence
             !
             ! -- Create the exchange object.
             write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWFP6-GWFP6 exchange ', id,    &
