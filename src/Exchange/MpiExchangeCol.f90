@@ -22,7 +22,7 @@ contains
 
   subroutine mpi_get_distype(modelname, ldis, ldisu, ldisv)
 ! ******************************************************************************
-! This subroutine set the discretization type.
+! This subroutine sets the discretization type.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -46,7 +46,7 @@ contains
     ldisv = .false.
     !
     if (serialrun .or. ciopt /= 1) then
-      ldis = .true. !@@@@@@@ DEBUG
+      ldis = .true.
       return
     end if
     !

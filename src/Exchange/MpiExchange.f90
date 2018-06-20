@@ -616,7 +616,6 @@ module MpiExchangeModule
     end if
     !
     if (.not.this%lp2p) then
-      !write(*,*) '@@@@ returning!'
       return
     end if
     !
@@ -854,7 +853,6 @@ module MpiExchangeModule
         end if
         call mpiwrpbarrier(this%comm)
       end do
-      !call ustop('@@@@')
     end if
     !
     ! -- Set the received data for the halo (m2) models
@@ -906,10 +904,6 @@ module MpiExchangeModule
         end do
       end do   
     end if
-    !
-    !if (trim(vgname) == 'MOVER') then
-    !  call ustop('@@@@mpi_local_exchange')
-    !end if
     !
     ! -- return
     return
@@ -1274,7 +1268,6 @@ module MpiExchangeModule
       case(idblsclr)
         allocate(mto%dblsclr)
         mto%dblsclr = mti%dblsclr
-        write(*,*) '@@@@ packing: ', mti%dblsclr
       case default
         call store_error(errmsg)
         call ustop()
@@ -1363,7 +1356,7 @@ module MpiExchangeModule
     integer(I4B) :: n
 ! ------------------------------------------------------------------------------
     if (serialrun) then
-       return !@@@ DEBUG
+       return
     end if
     !
     select case(iopt)

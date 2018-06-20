@@ -1703,7 +1703,7 @@
 !-----------SAVE CURRENT INNER ITERATES                                 
           rho0 = rho 
         END DO INNER 
-        if (.true.) then !@@@@ debug
+        if (.true.) then
           if (writestd) then 
             write(sa(1),*) real(deltax)
             write(sa(2),*) real(rmax)
@@ -2032,7 +2032,7 @@
           omega0 = omega
         END DO INNER
         
-        if (.true.) then !@@@@ debug
+        if (.true.) then
           if (writestd) then 
             write(sa(1),*) real(deltax)
             write(sa(2),*) real(rmax)

@@ -75,7 +75,7 @@ module MpiExchangeGwfModule
     integer :: rank
 ! ------------------------------------------------------------------------------
     if (serialrun) then
-      !return !@@@@@ DEBUG 
+      return
     end if
     !
     ! -- initialize package filetype
@@ -293,7 +293,7 @@ module MpiExchangeGwfModule
     ! -- Set the list of halo model names
     !call mpi_set_modelname_halo()
     !
-    if (serialrun) then
+    if (serialrun.and..false.) then
       !call mem_setval(1, 'NLAY', 'GWF_MODEL_2 HALO1 DIS') !@@@DEBUG
       !call mem_setval(3, 'NROW', 'GWF_MODEL_2 HALO1 DIS')
       !call mem_setval(3, 'NCOL', 'GWF_MODEL_2 HALO1 DIS')
@@ -421,7 +421,6 @@ module MpiExchangeGwfModule
     ! -- cleanup
     deallocate(cmt_recv)
     !
-    !call ustop('@@@@@@@@@')
     ! -- return
     return
   end subroutine mpi_set_halo_world

@@ -2330,7 +2330,7 @@ contains
           if ((laddvar1 .or. laddvar2) .and. iact == 2) then
             vgvar => this%MpiMvr%lxch(ixp)%exchange(nex)%vgvar(ivg)
             if (.not.associated(vgvar)) then
-              write(*,*) '@@@@',ixp,nex,ivg
+              !write(*,*) '@@@@',ixp,nex,ivg
               write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
               call store_error(errmsg)
               call ustop()

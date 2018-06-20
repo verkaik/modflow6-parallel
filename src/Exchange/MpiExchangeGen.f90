@@ -164,7 +164,7 @@ module MpiExchangeGenModule
     !
     flag_halo = .false.
     if (serialrun) then
-      !return !@@@@@ DEBUG 
+      return 
     end if
     !
     ! -- check
