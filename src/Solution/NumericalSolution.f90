@@ -513,6 +513,8 @@ contains
             this%iprims = 1
           else if (keyword.eq.'ALL') then
             this%iprims = 2
+          else if (keyword.eq.'ALLITER') then !PAR
+            this%iprims = 3 !PAR
           else
             write(errmsg,'(4x,a,a)') 'IMS sln_ar: UNKNOWN IMS PRINT OPTION: ', &
               trim(keyword)
@@ -843,7 +845,7 @@ contains
     this%lrch = 0
 
     ! allocate space for saving solver convergence history
-    if (this%iprims == 2) then
+    if (this%iprims >= 2) then !PAR
       this%nitermax = this%nitermax * this%mxiter
     else
       this%nitermax = 1
@@ -1118,7 +1120,7 @@ contains
           'total_iterations', 'totim', 'kper', 'kstp', 'ksub', 'nouter',       &
           'ninner', 'solution_dvmax', 'solution_dvmax_model',                  &
           'solution_dvmax_node'
-        if (this%iprims == 2) then
+        if (this%iprims >= 2) then !PAR
           write(this%icsvout, '(*(G0,:,","))', advance='NO')                   &
             '', 'solution_drmax', 'solution_drmax_model',                      &
             'solution_drmax_node', 'solution_alpha'
@@ -1432,7 +1434,7 @@ contains
             ' STRESS PERIOD ',I0,/1X,I0,' TOTAL ITERATIONS')
       !
       ! -- write inner iteration convergence summary
-      if (this%iprims == 2) then
+      if (this%iprims >= 2) then !PAR
         !
         ! -- write summary for each model
         do im=1,this%modellist%Count()

@@ -913,7 +913,7 @@
                              NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,       &
                              CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,             &
                              DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,                &
-                             THIS%ORIGIN, THIS%MPISOL) !PAR
+                             THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS) !PAR
 !-------SOLUTION BY THE BICONJUGATE GRADIENT STABILIZED METHOD
       ELSE IF (THIS%ILINMETH.EQ.2) THEN
         CALL IMSLINEARSUB_BCGS(ICNVG, itmax, innerit,                           &
@@ -929,7 +929,7 @@
                                NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,     &
                                CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,           &
                                DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,              &
-                               THIS%ORIGIN, THIS%MPISOL) !PAR
+                               THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS) !PAR
       END IF
 !
 !-------BACK PERMUTE AMAT, SOLUTION, AND RHS
@@ -1495,7 +1495,7 @@
                                  NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,   &
                                  CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,         &
                                  DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,            &
-                                 ORIGIN, MPISOL) !PAR
+                                 ORIGIN, MPISOL, IPRIMS) !PAR
         use MpiExchangeGenModule, only: writestd !PAR
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
@@ -1545,6 +1545,7 @@
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
         character(len=*) :: origin !PAR
+        integer(I4B), INTENT(IN) :: IPRIMS !PAR
         type(MpiExchangeType), intent(inout) :: MpiSol !PAR
 !       + + + LOCAL DEFINITIONS + + + 
         LOGICAL :: LORTH
@@ -1703,15 +1704,15 @@
 !-----------SAVE CURRENT INNER ITERATES                                 
           rho0 = rho 
         END DO INNER 
-        if (.true.) then
-          if (writestd) then 
-            write(sa(1),*) real(deltax)
-            write(sa(2),*) real(rmax)
-            write(*,'(1x,a,1x,i5.5,a,1x,i3.3,a,1x,2a,1x,a)')                  &
-            'cg: oit, iit, bih, bir =',                                       &
-            niterc,',',innerit,',',trim(adjustl(sa(1))),                      &
-            ',',trim(adjustl(sa(2)))
-           endif
+!
+        if (iprims == 3 .and. writestd) then
+          write(sa(1),*) real(deltax)
+          write(sa(2),*) real(rmax)
+          write(*,'(1x,a,1x,i5.5,a,1x,i5.5,a,1x,2a,1x,a)')                  &
+          'cg: oit, iit, bih, bir =',                                       &
+          niterc,',',innerit,',',trim(adjustl(sa(1))),                      &
+          ',',trim(adjustl(sa(2)))
+!
         endif
 !---------RESET ICNVG        
         IF (ICNVG.LT.0) ICNVG = 0
@@ -1730,9 +1731,9 @@
                                    NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR, &
                                    CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,       &
                                    DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,          &
-                                   ORIGIN, MPISOL) !PAR
+                                   ORIGIN, MPISOL, IPRIMS) !PAR
         use MpiExchangeGenModule, only: writestd !PAR
-        use SimModule, only: ustop !@@@@ DEBUG
+
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(INOUT) :: ICNVG 
@@ -1787,6 +1788,7 @@
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
         character(len=*) :: origin !PAR
+        integer(I4B), INTENT(IN) :: IPRIMS !PAR
         type(MpiExchangeType), intent(inout) :: MpiSol !PAR
 !       + + + LOCAL DEFINITIONS + + +  
         LOGICAL :: LORTH
@@ -2031,18 +2033,16 @@
           alpha0 = alpha
           omega0 = omega
         END DO INNER
-        
-        if (.true.) then
-          if (writestd) then 
-            write(sa(1),*) real(deltax)
-            write(sa(2),*) real(rmax)
-            write(*,'(1x,a,1x,i4.4,a,1x,i3.3,a,1x,2a,1x,a)')                  &
-            'bicgstab: oit, iit, bih, bir =',                                 &
-            niterc,',',innerit,',',trim(adjustl(sa(1))),                      &
-            ',',trim(adjustl(sa(2)))
-           endif
-        endif
-        
+!
+        if (iprims == 3 .and. writestd) then !PAR
+          write(sa(1),*) real(deltax) !PAR
+          write(sa(2),*) real(rmax) !PAR
+          write(*,'(1x,a,1x,i4.4,a,1x,i5.5,a,1x,2a,1x,a)')                  & !PAR
+          'bicgstab: oit, iit, bih, bir =',                                 & !PAR
+          niterc,',',innerit,',',trim(adjustl(sa(1))),                      & !PAR
+          ',',trim(adjustl(sa(2))) !PAR
+        endif !PAR
+!
 !---------RESET ICNVG        
         IF (ICNVG.LT.0) ICNVG = 0
 !---------RETURN                                                        
