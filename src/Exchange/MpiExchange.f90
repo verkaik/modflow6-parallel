@@ -30,6 +30,7 @@ module MpiExchangeModule
   public :: ivmtmvr
   ! -- Public functions
   public :: mpi_initialize_world
+  public :: mpi_world_da
   public :: mpi_add_halo_model
   public :: mpi_to_colmem
   
@@ -82,13 +83,13 @@ module MpiExchangeModule
   type :: MpiExchangeType
     logical                                                :: linit = .false.
     character(len=LENPACKAGENAME)                          :: name          ! name (origin)
-    integer                                                :: gnmodel = 0   ! number of global models
+    integer(I4B)                                           :: gnmodel = 0   ! number of global models
     character(len=LENMODELNAME), dimension(:), allocatable :: gmodelnames   ! global model names
-    integer                                                :: gnsub = 0     ! number of global subdomains
+    integer(I4B)                                           :: gnsub = 0     ! number of global subdomains
     integer(I4B), dimension(:), allocatable                :: gsubs         ! global subdomains
-    integer                                                :: lnmodel = 0   ! number of local models
+    integer(I4B)                                           :: lnmodel = 0   ! number of local models
     character(len=LENMODELNAME), dimension(:), allocatable :: lmodelnames   ! local model names
-    integer                                                :: lnsub = 0     ! number of local subdomains
+    integer(I4B)                                           :: lnsub = 0     ! number of local subdomains
     integer(I4B), dimension(:), allocatable                :: lsubs         ! model local subdomains
     integer(I4B), pointer                                  :: comm      => null() ! MPI communicator
     integer(I4B), pointer                                  :: nrproc    => null() ! number of MPI process for this communicator
@@ -198,6 +199,30 @@ module MpiExchangeModule
     ! -- return
     return
   end subroutine mpi_initialize_world
+  
+  subroutine mpi_world_da()
+! ******************************************************************************
+! Deallocate for the world communicator.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    endif
+    !
+    call MpiWorld%mpi_barrier()
+    call MpiWorld%mpi_da()
+    deallocate(MpiWorld)
+    !
+    ! -- return
+    return
+  end subroutine mpi_world_da
   
   subroutine mpi_barrier(this)
 ! ******************************************************************************
@@ -1578,6 +1603,10 @@ module MpiExchangeModule
     integer(I4B) :: ivg, ixp, iex
 ! ------------------------------------------------------------------------------
     !
+    if (serialrun) then
+      return
+    endif
+    
     ! -- communicator
     call mem_deallocate(this%comm)
     call mem_deallocate(this%nrproc)
@@ -1603,35 +1632,40 @@ module MpiExchangeModule
     endif
     !
     ! -- point-to-point
-    do ixp = 1, this%nrxp
-      do ivg = 1, this%nvg
-        vgbuf => this%lxch(ixp)%vgbuf(ivg)
-        if(associated(vgbuf%sndmt)) then
-          deallocate(vgbuf%sndmt)
-        endif
-        if(associated(vgbuf%rcvmt)) then
-          deallocate(vgbuf%rcvmt)
-        endif
-        if(associated(vgbuf%sndmmt)) then
-          deallocate(vgbuf%sndmmt)
-        endif
-        if(associated(vgbuf%rcvmmt)) then
-          deallocate(vgbuf%rcvmmt)
-        endif
-        do iex = 1, this%lxch(ixp)%nexchange
-          ex => this%lxch(ixp)%exchange(iex)
-          vgvar => ex%vgvar(ivg)
-          deallocate(vgvar)
+    if (associated(this%nrxp)) then
+      do ixp = 1, this%nrxp
+        do ivg = 1, this%nvg
+          vgbuf => this%lxch(ixp)%vgbuf(ivg)
+          if(associated(vgbuf%sndmt)) then
+            deallocate(vgbuf%sndmt)
+          endif
+          if(associated(vgbuf%rcvmt)) then
+            deallocate(vgbuf%rcvmt)
+          endif
+          if(associated(vgbuf%sndmmt)) then
+            deallocate(vgbuf%sndmmt)
+          endif
+          if(associated(vgbuf%rcvmmt)) then
+            deallocate(vgbuf%rcvmmt)
+          endif
+          do iex = 1, this%lxch(ixp)%nexchange
+            ex => this%lxch(ixp)%exchange(iex)
+            vgvar => ex%vgvar(ivg)
+            deallocate(vgvar)
+          enddo
         enddo
+        deallocate(this%lxch(ixp)%xprnk)
+        deallocate(this%lxch(ixp)%exchange)
+        deallocate(this%lxch(ixp)%nexchange)
+        deallocate(this%lxch(ixp)%vgbuf)
       enddo
-      deallocate(this%lxch(ixp)%xprnk)
-      deallocate(this%lxch(ixp)%exchange)
-      deallocate(this%lxch(ixp)%nexchange)
-      deallocate(this%lxch(ixp)%vgbuf)
-    enddo
-    deallocate(this%lxch)
-    
-    call mem_deallocate(this%nrxp)
+    endif
+    if (associated(this%lxch)) then
+      deallocate(this%lxch)
+    endif
+    if (associated(this%nrxp)) then
+      call mem_deallocate(this%nrxp)
+    endif
     if(associated(this%nrprocstr)) then
       deallocate(this%nrprocstr)
     endif

@@ -29,7 +29,8 @@ program mf6
   use TdisModule,             only: tdis_tu, tdis_da,                          &
                                     endofsimulation
   use MpiExchangeGenModule,   only: mpi_initialize, serialrun, writestd !JV
-  use MpiExchangeModule,      only: mpi_initialize_world, MpiWorld !JV
+  use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !JV
+                                    MpiWorld !JV
   use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !JV
   use NumericalSolutionModule, only: NumericalSolutionType !JV
   implicit none
@@ -261,6 +262,9 @@ program mf6
   enddo
   call simulation_da()
   call lists_da()
+  !
+  ! -- Deallocate MPI world
+  call mpi_world_da() !JV
   !
   ! -- Calculate memory usage, elapsed time and terminate
   call mem_usage(iout)

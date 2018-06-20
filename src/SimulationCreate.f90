@@ -167,6 +167,7 @@ module SimulationCreateModule
     ! -- Open simulation name file
     inunit = getunit()
     call openfile(inunit, iout, simfile, 'NAM')
+    call MpiWorld%mpi_barrier() !JV
     if (writestd) write(*,'(A,A)') ' Using Simulation name file: ', simfile !JV
     !
     ! -- Initialize block parser

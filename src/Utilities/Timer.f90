@@ -46,7 +46,6 @@ module TimerModule
 ! ------------------------------------------------------------------------------
     ! -- modules 
     use MpiExchangeGenModule, only: writestd !JV
-    use MpiExchangeModule, only: MpiWorld !JV
     ! -- dummy
     integer(i4b), intent(in) :: iout
     integer(I4B), intent(in) :: iprtim
@@ -62,7 +61,6 @@ module TimerModule
 ! ------------------------------------------------------------------------------
 !
 !     Get current date and time, assign to IEDT, and write.
-      call MpiWorld%mpi_barrier() !JV
       CALL DATE_AND_TIME(VALUES=IEDT)
       if (.not.writestd) then !JV
         return !JV
