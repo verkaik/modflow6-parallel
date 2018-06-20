@@ -104,7 +104,7 @@ program mf6
     mp => GetBaseModelFromList(basemodellist, im)
     call mp%model_ar()
   enddo
-  ! -- Allocate and read each model
+  ! -- Allocate and read each halo model
   do im = 1, halomodellist%Count() !JV
     mp => GetBaseModelFromList(halomodellist, im) !JV
     call mp%model_ar() !JV

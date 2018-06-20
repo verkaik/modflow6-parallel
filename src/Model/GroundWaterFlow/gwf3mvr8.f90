@@ -686,6 +686,12 @@ module GwfMvrModule
     ! -- deallocate scalars in NumericalPackageType
     call this%NumericalPackageType%da()
     !
+    ! -- Deallocate MPI mover
+    if (associated(this%MvrMpi)) then !JV
+      call this%MvrMpi%mpi_mvr_da() !JV
+      deallocate(this%MvrMpi) !JV
+    end if !JV
+    !
     ! -- Return
     return
   end subroutine mvr_da

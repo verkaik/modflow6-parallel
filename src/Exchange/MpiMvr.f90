@@ -14,6 +14,7 @@ module MpiMvrModule
     procedure :: mpi_init_ngmvr
     procedure :: mpi_set_maxmvr
     procedure :: mpi_set_mover
+    procedure :: mpi_mvr_da
   end type MpiMvrType
   
   save
@@ -106,5 +107,28 @@ module MpiMvrModule
     return
   end subroutine mpi_set_mover
   
+  subroutine mpi_mvr_da(this)
+! ******************************************************************************
+! Deallocate mover data.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiMvrType) :: this
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    endif
+    
+    deallocate(this%maxmvr)
+    deallocate(this%gmvr)
+    deallocate(this%ngmvr)
+    
+    ! -- return
+    return
+  end subroutine mpi_mvr_da
   
 end module MpiMvrModule
