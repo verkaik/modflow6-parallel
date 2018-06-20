@@ -100,7 +100,7 @@ module GwfMvrModule
   use BudgetModule,           only: BudgetType, budget_cr
   use NumericalPackageModule, only: NumericalPackageType
   use BlockParserModule,      only: BlockParserType
-  use MpiMvrModule,           only: MpiMvrType !JV
+  use MpiMvrModule,           only: MpiMvrType !PAR
 
   implicit none
   private
@@ -121,7 +121,7 @@ module GwfMvrModule
     character(len=LENPACKAGENAME),                                             &
       dimension(:), pointer                       :: paknames                   !array of package names
     type(MvrType), pointer, dimension(:)          :: mvr => null()              !array of movers
-    type(MpiMvrType), pointer                     :: MvrMpi => null()           ! MPI water mover object !JV
+    type(MpiMvrType), pointer                     :: MvrMpi => null()           ! MPI water mover object !PAR
     type(BudgetType), pointer                     :: budget => null()           !mover budget object
   contains
     procedure :: mvr_ar
@@ -238,7 +238,7 @@ module GwfMvrModule
     use TdisModule, only: kper, nper
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
     use ArrayHandlersModule, only: ifind
-    use MpiExchangeGenModule, only: mpi_destroy_modelname_halo !JV
+    use MpiExchangeGenModule, only: mpi_destroy_modelname_halo !PAR
     ! -- dummy
     class(GwfMvrType),intent(inout) :: this
     ! -- local
@@ -247,9 +247,9 @@ module GwfMvrModule
     logical :: isfound, endOfBlock
     character(len=LINELENGTH) :: line, errmsg
     character(len=LENMODELNAME) :: mname
-    logical :: lskip !JV
-    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname1 !JV
-    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname2 !JV
+    logical :: lskip !PAR
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname1 !PAR
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: pname2 !PAR
     ! -- formats
     character(len=*),parameter :: fmtblkerr = &
       "('Error.  Looking for BEGIN PERIOD iper.  Found ', a, ' instead.')"
@@ -295,7 +295,7 @@ module GwfMvrModule
       write(this%iout, '(/,2x,a,i0)') 'READING WATER MOVERS FOR PERIOD ', kper
       nlist = -1
       i = 1
-      j = 1 !JV
+      j = 1 !PAR
       !
       ! -- set mname to '' if this is an exchange mover, or to the model name
       if(this%iexgmvr == 0) then
@@ -305,14 +305,14 @@ module GwfMvrModule
       endif
       !
       ! -- MPI parallel: initialize global mover counter
-      call this%MvrMpi%mpi_init_ngmvr() !JV
+      call this%MvrMpi%mpi_init_ngmvr() !PAR
       !
       do
         call this%parser%GetNextLine(endOfBlock)
         if (endOfBlock) exit
         !
         ! -- Set mover ID
-        this%mvr(i)%id = j !JV
+        this%mvr(i)%id = j !PAR
         !
         call this%parser%GetCurrentLine(line)
         !
@@ -326,7 +326,7 @@ module GwfMvrModule
         endif
         !
         ! -- Process the water mover line (mname = '' if this is an exchange)
-        call this%mvr(i)%set(line, this%parser%iuactive, this%iout, mname, lskip) !JV
+        call this%mvr(i)%set(line, this%parser%iuactive, this%iout, mname, lskip) !PAR
         !
         ! -- MPI parallel: set global mover data
         call this%MvrMpi%mpi_set_mover(this%mvr(i)%pname1_read, this%mvr(i)%pname2_read)
@@ -335,10 +335,10 @@ module GwfMvrModule
         if(this%iprpak == 1) call this%mvr(i)%echo(this%iout)
         !
         ! -- increment counter
-        if (.not.lskip) then !JV
+        if (.not.lskip) then !PAR
           i = i + 1
-        endif !JV
-        j = j + 1 !JV
+        endif !PAR
+        j = j + 1 !PAR
       end do
       write(this%iout,'(/,1x,a,1x,i6,/)') 'END OF DATA FOR PERIOD', kper
       nlist = i - 1
@@ -350,20 +350,20 @@ module GwfMvrModule
       !
       ! -- Check to make sure all providers and receivers are in pakorigins
       do i = 1, this%nmvr
-        pname1 = this%mvr(i)%pname1 !JV
-        call mpi_destroy_modelname_halo(pname1) !JV
-        ipos = ifind(this%pakorigins, pname1) !JV
+        pname1 = this%mvr(i)%pname1 !PAR
+        call mpi_destroy_modelname_halo(pname1) !PAR
+        ipos = ifind(this%pakorigins, pname1) !PAR
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. PROVIDER ',                       &
-            trim(pname1), ' NOT LISTED IN PACKAGES BLOCK.' !JV
+            trim(pname1), ' NOT LISTED IN PACKAGES BLOCK.' !PAR
           call store_error(errmsg)
         endif
-        pname2 = this%mvr(i)%pname2 !JV
-        call mpi_destroy_modelname_halo(pname2) !JV
-        ipos = ifind(this%pakorigins, pname2) !JV
+        pname2 = this%mvr(i)%pname2 !PAR
+        call mpi_destroy_modelname_halo(pname2) !PAR
+        ipos = ifind(this%pakorigins, pname2) !PAR
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. RECEIVER ',                       &
-            trim(pname2), ' NOT LISTED IN PACKAGES BLOCK.' !JV
+            trim(pname2), ' NOT LISTED IN PACKAGES BLOCK.' !PAR
           call store_error(errmsg)
         endif
       enddo
@@ -379,12 +379,12 @@ module GwfMvrModule
       !
       ! --
       do i = 1, this%nmvr
-        pname1 = this%mvr(i)%pname1 !JV
-        pname2 = this%mvr(i)%pname2 !JV
-        call mpi_destroy_modelname_halo(pname1) !JV
-        call mpi_destroy_modelname_halo(pname2) !JV
-        ii = ifind(this%pakorigins, pname1) !JV
-        jj = ifind(this%pakorigins, pname2) !JV
+        pname1 = this%mvr(i)%pname1 !PAR
+        pname2 = this%mvr(i)%pname2 !PAR
+        call mpi_destroy_modelname_halo(pname1) !PAR
+        call mpi_destroy_modelname_halo(pname2) !PAR
+        ii = ifind(this%pakorigins, pname1) !PAR
+        jj = ifind(this%pakorigins, pname2) !PAR
         ipos = (ii - 1) * this%maxpackages + jj
         this%ientries(ipos) = this%ientries(ipos) + 1
         ! -- opposite direction
@@ -687,10 +687,10 @@ module GwfMvrModule
     call this%NumericalPackageType%da()
     !
     ! -- Deallocate MPI mover
-    if (associated(this%MvrMpi)) then !JV
-      call this%MvrMpi%mpi_mvr_da() !JV
-      deallocate(this%MvrMpi) !JV
-    end if !JV
+    if (associated(this%MvrMpi)) then !PAR
+      call this%MvrMpi%mpi_mvr_da() !PAR
+      deallocate(this%MvrMpi) !PAR
+    end if !PAR
     !
     ! -- Return
     return
@@ -1035,8 +1035,8 @@ module GwfMvrModule
     !
     ! -- Allocate
     allocate(this%mvr(this%maxmvr))
-    allocate(this%MvrMpi) !JV
-    call this%MvrMpi%mpi_set_maxmvr(this%maxmvr) !JV
+    allocate(this%MvrMpi) !PAR
+    call this%MvrMpi%mpi_set_maxmvr(this%maxmvr) !PAR
     allocate(this%pakorigins(this%maxpackages))
     allocate(this%paknames(this%maxpackages))
     !

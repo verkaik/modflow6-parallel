@@ -22,17 +22,17 @@ module NumericalSolutionModule
   use SimVariablesModule,      only: iout
   use BlockParserModule,       only: BlockParserType
   use IMSLinearModule
-  use MpiExchangeModule,      only: MpiExchangeType !JV
+  use MpiExchangeModule,      only: MpiExchangeType !PAR
 
   implicit none
   private
   public :: solution_create
-  public :: NumericalSolutionType !JV
+  public :: NumericalSolutionType !PAR
 
   type, extends(BaseSolutionType) :: NumericalSolutionType
     character(len=LINELENGTH)                            :: fname
-    type(ListType), pointer                              :: modellist !JV
-    type(ListType), pointer                              :: exchangelist !JV
+    type(ListType), pointer                              :: modellist !PAR
+    type(ListType), pointer                              :: exchangelist !PAR
     integer(I4B), pointer                                :: id
     integer(I4B), pointer                                :: iu
     real(DP), pointer                                    :: ttform
@@ -112,8 +112,8 @@ module NumericalSolutionModule
     ! sparse object
     type(sparsematrix)                                   :: sparse
     !
-    type(MpiExchangeType), pointer                       :: MpiSol => NULL() !JV
-    type(MpiExchangeType), pointer                       :: MpiMvr => NULL() !JV
+    type(MpiExchangeType), pointer                       :: MpiSol => NULL() !PAR
+    type(MpiExchangeType), pointer                       :: MpiMvr => NULL() !PAR
 
   contains
     procedure :: sln_df
@@ -123,14 +123,14 @@ module NumericalSolutionModule
     procedure :: sln_ca
     procedure :: sln_fp
     procedure :: sln_da
-    procedure :: allocatemodellist !JV
+    procedure :: allocatemodellist !PAR
     procedure :: addmodel
-    procedure :: allocateexchangelist !JV
+    procedure :: allocateexchangelist !PAR
     procedure :: addexchange
     procedure :: slnassignexchanges
-    procedure :: slnmpiaddgmodel !JV
-    procedure :: slnmpiinit !JV
-    procedure :: slnmpimvrinit !JV
+    procedure :: slnmpiaddgmodel !PAR
+    procedure :: slnmpiinit !PAR
+    procedure :: slnmpimvrinit !PAR
     procedure :: save
 
     procedure, private :: sln_connect
@@ -170,7 +170,7 @@ contains
     use SimVariablesModule, only: iout
     use InputOutputModule,  only: getunit, openfile
     ! -- dummy
-    character(len=*),intent(inout) :: filename !JV
+    character(len=*),intent(inout) :: filename !PAR
     integer(I4B),intent(in) :: id
     ! -- local
     integer(I4B) :: inunit
@@ -370,9 +370,9 @@ contains
     this%convmodstart(1) = ieq
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      if (.not.mp%ishalo) then !JV
+      if (.not.mp%ishalo) then !PAR
       ieq = ieq + mp%neq
-      endif !JV
+      endif !PAR
       this%convmodstart(i+1) = ieq
     end do
     !
@@ -406,11 +406,11 @@ contains
     ! -- calculate and set offsets
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      if (.not. mp%ishalo) then !JV
+      if (.not. mp%ishalo) then !PAR
       call mp%set_idsoln(this%id)
       call mp%set_moffset(this%neq)
       this%neq = this%neq + mp%neq
-      endif !JV
+      endif !PAR
     enddo
     !
     ! -- Allocate and initialize solution arrays
@@ -419,16 +419,16 @@ contains
     ! -- Go through each model and point x, ibound, and rhs to solution
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      if (.not.mp%ishalo) then !JV
+      if (.not.mp%ishalo) then !PAR
       call mp%set_xptr(this%x)
       call mp%set_rhsptr(this%rhs)
       call mp%set_iboundptr(this%active)
-      else !JV
+      else !PAR
         ! -- Initialize the dummy halo arrays and return
-        call mp%set_xptr_halo() !JV
-        call mp%set_rhsptr_halo() !JV
-        call mp%set_iboundptr_halo() !JV
-      endif !JV
+        call mp%set_xptr_halo() !PAR
+        call mp%set_rhsptr_halo() !PAR
+        call mp%set_iboundptr_halo() !PAR
+      endif !PAR
     enddo
     !
     ! -- Create the sparsematrix instance
@@ -458,7 +458,7 @@ contains
     use SimVariablesModule, only: iout
     use SimModule, only: ustop, store_error, count_errors
     use InputOutputModule, only: getunit, openfile
-    use MpiExchangeGenModule, only: serialrun !JV
+    use MpiExchangeGenModule, only: serialrun !PAR
     ! -- dummy
     class(NumericalSolutionType) :: this
     ! -- local
@@ -772,10 +772,10 @@ contains
       allocate(this%imslinear)
       WRITE(IOUT,*) '***IMS LINEAR SOLVER WILL BE USED***'
       ! -- Set pointer to MpiSol
-      allocate(this%imslinear%MpiSol) !JV
-      if (.not.serialrun) then !JV
-        this%imslinear%MpiSol => this%MpiSol !JV
-      endif !JV
+      allocate(this%imslinear%MpiSol) !PAR
+      if (.not.serialrun) then !PAR
+        this%imslinear%MpiSol => this%MpiSol !PAR
+      endif !PAR
       call this%imslinear%imslinear_allocate(this%name, this%iu, IOUT,         &
                                              this%iprims, this%mxiter,         &
                                              ifdparam, imslinear,              &
@@ -1040,12 +1040,12 @@ contains
     call mem_deallocate(this%ptcthresh)
     call mem_deallocate(this%ptcrat)
     !
-    if (associated(this%MpiSol)) then !JV
-      call this%MpiSol%mpi_da() !JV
-    end if !JV
-    if (associated(this%MpiMvr)) then !JV
-      call this%MpiMvr%mpi_da() !JV
-    end if !JV
+    if (associated(this%MpiSol)) then !PAR
+      call this%MpiSol%mpi_da() !PAR
+    end if !PAR
+    if (associated(this%MpiMvr)) then !PAR
+      call this%MpiMvr%mpi_da() !PAR
+    end if !PAR
     !
     ! -- return
     return
@@ -1062,7 +1062,7 @@ contains
     ! -- modules
     use SimVariablesModule, only:iout
     use TdisModule, only: subtiming_begin, subtiming_end, perlen, totimsav
-    use MpiExchangeGenModule, only: parallelrun !JV
+    use MpiExchangeGenModule, only: parallelrun !PAR
     ! -- dummy
     class(NumericalSolutionType) :: this
     integer(I4B), intent(in) :: kstp
@@ -1092,7 +1092,7 @@ contains
     real(DP) :: ttform
     real(DP) :: ttsoln
     real(DP) :: dxmax
-    real(DP) :: hncg !JV
+    real(DP) :: hncg !PAR
     ! -- formats
     character(len=*), parameter :: fmtnocnvg =                                 &
       "(1X,'Solution ', i0, ' did not converge for stress period ', i0,        &
@@ -1234,10 +1234,10 @@ contains
         enddo
         !
         ! MPI parallel: point-to-point of X, IACTIVE, and SAT (rewetting)
-        if (parallelrun) then !JV
+        if (parallelrun) then !PAR
           call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE_SAT',      &
-                                              .true.) !JV
-        endif !JV
+                                              .true.) !PAR
+        endif !PAR
         !
         ! -- Add exchange coefficients to the solution
         do ic=1,this%exchangelist%Count()
@@ -1248,15 +1248,15 @@ contains
         ! -- Add model coefficients to the solution
         do im=1,this%modellist%Count()
           mp => GetNumericalModelFromList(this%modellist, im)
-          if (.not.mp%ishalo) then !JV
+          if (.not.mp%ishalo) then !PAR
           call mp%model_fc(kiter, this%amat, this%nja, 1)
-          endif !JV
+          endif !PAR
         enddo
         !
         ! -- MPI parallel: point-to-point of mover data
-        if (parallelrun) then !JV
-          call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !JV
-        endif !JV
+        if (parallelrun) then !PAR
+          call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !PAR
+        endif !PAR
         !
         ! -- Add exchange Newton-Raphson terms to solution
         do ic=1,this%exchangelist%Count()
@@ -1276,9 +1276,9 @@ contains
         end do
         !
         ! -- MPI parallel: ptcf
-        if (parallelrun) then !JV
-          call this%MpiSol%mpi_global_exchange_absmax(ptcf) !JV
-        endif !JV
+        if (parallelrun) then !PAR
+          call this%MpiSol%mpi_global_exchange_absmax(ptcf) !PAR
+        endif !PAR
         !
         ! -- Add model Newton-Raphson terms to solution
         do im=1,this%modellist%Count()
@@ -1307,16 +1307,16 @@ contains
         call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter))
         !
         ! -- MPI parallel: head criterion
-        if (parallelrun) then !JV
-          hncg = this%hncg(kiter) !JV
-          call this%MpiSol%mpi_global_exchange_absmax(hncg) !JV
-        else !JV
-          hncg = abs(this%hncg(kiter)) !JV
-        endif !JV
+        if (parallelrun) then !PAR
+          hncg = this%hncg(kiter) !PAR
+          call this%MpiSol%mpi_global_exchange_absmax(hncg) !PAR
+        else !PAR
+          hncg = abs(this%hncg(kiter)) !PAR
+        endif !PAR
         !
         if (this%icnvg /= 0) then
           this%icnvg = 0
-          if (abs(hncg) <= this%hclose) this%icnvg = 1 !JV
+          if (abs(hncg) <= this%hclose) this%icnvg = 1 !PAR
         end if
         !
         ! -- Additional convergence check for pseudo-transient continuation
@@ -1437,9 +1437,9 @@ contains
         ! -- write summary for each model
         do im=1,this%modellist%Count()
           mp => GetNumericalModelFromList(this%modellist, im)
-          if (.not.mp%ishalo) then !JV
+          if (.not.mp%ishalo) then !PAR
           call this%convergence_summary(mp%iout, im, itertot)
-          endif !JV
+          endif !PAR
         end do
         !
         ! -- write summary for entire solution
@@ -1472,7 +1472,7 @@ contains
       ! -- Calculate flow for each model
       do im=1,this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
-        if (.not.mp%ishalo) then !JV
+        if (.not.mp%ishalo) then !PAR
         call mp%model_cq(this%icnvg, isuppress_output)
         endif
       enddo
@@ -1486,9 +1486,9 @@ contains
       ! -- Budget terms for each model
       do im=1,this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
-        if (.not.mp%ishalo) then !JV
+        if (.not.mp%ishalo) then !PAR
         call mp%model_bd(this%icnvg, isuppress_output)
-        endif !JV
+        endif !PAR
       enddo
       !
       ! -- Budget terms for each exchange
@@ -1723,7 +1723,7 @@ contains
     return
   end subroutine save
 
-  subroutine allocatemodellist(this) !JV
+  subroutine allocatemodellist(this) !PAR
 ! ******************************************************************************
 ! allocatemodellist -- Allocate modellist
 ! Subroutine: allocate this%modellist
@@ -1781,9 +1781,9 @@ contains
     class(NumericalSolutionType) :: this
 ! ------------------------------------------------------------------------------
     !
-    if (.not.associated(this%exchangelist)) then !JV
-      allocate(this%exchangelist) !JV
-    endif !JV
+    if (.not.associated(this%exchangelist)) then !PAR
+      allocate(this%exchangelist) !PAR
+    endif !PAR
     !
     return
   end subroutine allocateexchangelist
@@ -1829,7 +1829,7 @@ contains
     ! -- Go through the list of exchange objects and if either model1 or model2
     !    are part of this solution, then include the exchange object as part of
     !    this solution.
-    call this%allocateexchangelist() !JV
+    call this%allocateexchangelist() !PAR
     c => null()
     do ic=1,baseexchangelist%Count()
       cb => GetBaseExchangeFromList(baseexchangelist, ic)
@@ -1852,7 +1852,7 @@ contains
     return
   end subroutine slnassignexchanges
 
-  subroutine slnmpiaddgmodel(this, mname, idsoln) !JV
+  subroutine slnmpiaddgmodel(this, mname, idsoln) !PAR
 ! ******************************************************************************
 ! Add global modelname to this solution
 ! ******************************************************************************
@@ -1881,7 +1881,7 @@ contains
     return
   end subroutine slnmpiaddgmodel
   
-  subroutine slnmpiinit(this, sname) !JV
+  subroutine slnmpiinit(this, sname) !PAR
 ! ******************************************************************************
 ! Initialize MPI for this solution
 ! ******************************************************************************
@@ -1906,7 +1906,7 @@ contains
     character(len=LINELENGTH) :: errmsg
     integer(I4B) :: im, i, isub1, isub2, ixp, nex, ip, ic
     integer(I4B), dimension(:), allocatable :: iwrk
-    integer(I4B) :: irnk !JV
+    integer(I4B) :: irnk !PAR
 ! ------------------------------------------------------------------------------
     !
     if (serialrun) then
@@ -2064,7 +2064,7 @@ contains
     return
   end subroutine slnmpiinit
   
- subroutine slnmpimvrinit(this, sname) !JV
+ subroutine slnmpimvrinit(this, sname) !PAR
 ! ******************************************************************************
 ! Initialize MPI for this solution
 ! ******************************************************************************
@@ -2082,7 +2082,7 @@ contains
     use SimModule, only: ustop, store_error
     use MpiExchangeModule, only: MpiWorld, ivmtmvr, VarGroupType
     use MpiExchangeGenModule, only: mpi_destroy_modelname_halo
-    use MpiMvrModule,         only: MpiMvrType !JV
+    use MpiMvrModule,         only: MpiMvrType !PAR
     !
     ! -- dummy
     class(NumericalSolutionType) :: this
@@ -2401,17 +2401,17 @@ contains
     ! -- Add internal model connections to sparse
     do im=1,this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, im)
-      if (.not.mp%ishalo) then !JV
+      if (.not.mp%ishalo) then !PAR
       call mp%model_ac(this%sparse)
-      endif !JV
+      endif !PAR
     enddo
     !
     ! -- Add the cross terms to sparse
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      if (.not.cp%m2_ishalo) then !JV
+      if (.not.cp%m2_ishalo) then !PAR
       call cp%exg_ac(this%sparse)
-      endif !JV
+      endif !PAR
     enddo
     !
     ! -- The number of non-zero array values are now known so
@@ -2428,17 +2428,17 @@ contains
     ! -- however, rows do not need to be sorted.
     do im=1,this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, im)
-      if (.not.mp%ishalo) then !JV
+      if (.not.mp%ishalo) then !PAR
       call mp%model_mc(this%ia, this%ja)
-      endif !JV
+      endif !PAR
     enddo
     !
     ! -- Create arrays for mapping exchange connections to global solution
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      if (.not.cp%m2_ishalo) then !JV
+      if (.not.cp%m2_ishalo) then !PAR
       call cp%exg_mc(this%ia, this%ja)
-      endif !JV
+      endif !PAR
     enddo
     !
     ! -- return
@@ -2480,7 +2480,7 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeGenModule, only: parallelrun !JV
+    use MpiExchangeGenModule, only: parallelrun !PAR
     ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     integer(I4B), intent(in) :: kiter
@@ -2564,9 +2564,9 @@ contains
                 bnorm = bnorm + this%rhs(n) * this%rhs(n)
               end if
             end do
-            if (parallelrun) then !JV
-              call this%MpiSol%mpi_global_exchange_sum(bnorm) !JV
-            endif !JV
+            if (parallelrun) then !PAR
+              call this%MpiSol%mpi_global_exchange_sum(bnorm) !PAR
+            endif !PAR
             bnorm = sqrt(bnorm)
             this%ptcdel = bnorm / l2norm
           end if
@@ -2595,10 +2595,10 @@ contains
         end if
       end do
       !
-      if (parallelrun) then !JV
-         call this%MpiSol%mpi_global_exchange_sum(bnorm) !JV
-         call this%MpiSol%mpi_global_exchange_absmin(diagmin) !JV
-      endif !JV
+      if (parallelrun) then !PAR
+         call this%MpiSol%mpi_global_exchange_sum(bnorm) !PAR
+         call this%MpiSol%mpi_global_exchange_absmin(diagmin) !PAR
+      endif !PAR
       bnorm = sqrt(bnorm)
       if (this%iptcout > 0) then
         write(this%iptcout, '(i10,6(1x,e15.7),2(1x,f15.6))')                   &
@@ -2903,7 +2903,7 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeGenModule, only: parallelrun !JV
+    use MpiExchangeGenModule, only: parallelrun !PAR
     ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     integer(I4B), intent(in) :: neq
@@ -2919,33 +2919,33 @@ contains
     integer(I4B) :: n
     integer(I4B) :: j, jcol
     real(DP) :: rowsum
-    real(DP), dimension(:), allocatable :: dwrk !JV
+    real(DP), dimension(:), allocatable :: dwrk !PAR
 ! ------------------------------------------------------------------------------
     !
-    if (parallelrun) then !JV
-      allocate(dwrk(neq)) !JV
-      dwrk = DZERO !JV
-      do n = 1, neq !JV
-        if (active(n) > 0) then !JV
-          dwrk(n) = DZERO !JV
-          do j = ia(n), ia(n+1)-1 !JV
-            jcol = ja(j) !JV
-            dwrk(n) = dwrk(n) + amat(j) * x(jcol) !JV
-          end do !JV
-        endif !JV
-      enddo !JV
-      call this%MpiSol%mpi_local_exchange(this%name, 'X', .false.) !JV
-      call this%MpiSol%mpi_mv_halo(this%name, 'X', dwrk) !JV
-      resid = DZERO !JV
-      do n = 1, neq !JV
-        if (active(n) > 0) then !JV
+    if (parallelrun) then !PAR
+      allocate(dwrk(neq)) !PAR
+      dwrk = DZERO !PAR
+      do n = 1, neq !PAR
+        if (active(n) > 0) then !PAR
+          dwrk(n) = DZERO !PAR
+          do j = ia(n), ia(n+1)-1 !PAR
+            jcol = ja(j) !PAR
+            dwrk(n) = dwrk(n) + amat(j) * x(jcol) !PAR
+          end do !PAR
+        endif !PAR
+      enddo !PAR
+      call this%MpiSol%mpi_local_exchange(this%name, 'X', .false.) !PAR
+      call this%MpiSol%mpi_mv_halo(this%name, 'X', dwrk) !PAR
+      resid = DZERO !PAR
+      do n = 1, neq !PAR
+        if (active(n) > 0) then !PAR
           ! compute mean square residual from q of each node
-          resid = resid +  (dwrk(n) - rhs(n))**2 !JV
-        endif !JV
-      enddo !JV
-      deallocate(dwrk) !JV
-      call this%MpiSol%mpi_global_exchange_sum(resid) !JV
-    else !JV
+          resid = resid +  (dwrk(n) - rhs(n))**2 !PAR
+        endif !PAR
+      enddo !PAR
+      deallocate(dwrk) !PAR
+      call this%MpiSol%mpi_global_exchange_sum(resid) !PAR
+    else !PAR
     resid = DZERO
     do n = 1, neq
       if (active(n) > 0) then
@@ -2958,7 +2958,7 @@ contains
         resid = resid +  (rowsum - rhs(n))**2
       end if
     end do
-    endif !JV
+    endif !PAR
     !
     ! -- l2norm is the square root of the sum of the square of the residuals
     resid = sqrt(resid)
@@ -3215,14 +3215,14 @@ contains
     noder = 0
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      if (.not.mp%ishalo) then !JV
+      if (.not.mp%ishalo) then !PAR
       call mp%get_mrange(istart, iend)
       if (nodesln >= istart .and. nodesln <= iend) then
         noder = nodesln - istart + 1
         call mp%get_mcellid(noder, str)
         exit
       end if
-      end if !JV
+      end if !PAR
     end do
     !
     ! -- return

@@ -24,7 +24,7 @@ module MpiExchangeGenModule
   character(len=50), public :: partstr
   
   integer(I4B) :: nhalo = 0
-  character(len=LENMODELNAME), allocatable, dimension(:) :: modelname_halo !JV
+  character(len=LENMODELNAME), allocatable, dimension(:) :: modelname_halo !PAR
   character(len=LINELENGTH) :: errmsg
   
   save
@@ -107,7 +107,7 @@ module MpiExchangeGenModule
     !
     if (serialrun) then
       return 
-    endif
+    end if
     !
     write(s,*) im
     modelname = trim(modelname)//' HALO'//trim(adjustl(s))
@@ -133,14 +133,14 @@ module MpiExchangeGenModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     n = len_trim(modelname)
     i = index(modelname(1:n),' ',back=.true.)
     j = index(modelname(1:n),'HALO')
     if (i > 0 .and. j > 0) then
       modelname = modelname(1:j-2)//modelname(i:n)
-    endif
+    end if
     !
     ! -- return
     return
@@ -165,19 +165,19 @@ module MpiExchangeGenModule
     flag_halo = .false.
     if (serialrun) then
       !return !@@@@@ DEBUG 
-    endif
+    end if
     !
     ! -- check
     if (.not.allocated(modelname_halo)) then
       !write(errmsg,'(a)') 'Program error in mpi_is_halo.'
       !call store_error(errmsg)
       !call ustop()
-    endif
+    end if
     !
     m = ifind(modelname_halo, modelname) 
     if (m > 0) then
       flag_halo = .true.
-    endif
+    end if
     !
     ! -- return
     return

@@ -276,7 +276,7 @@ module OutputControlData
     use OpenSpecModule, only: access, form
     use InputOutputModule, only: urword, getunit, openfile
     use SimModule, only: store_error, store_error_unit, count_errors, ustop
-    use ConstantsModule, only: LINELENGTH !JV
+    use ConstantsModule, only: LINELENGTH !PAR
     ! -- dummy
     class(OutputControlDataType) :: this
     character(len=*), intent(in) :: linein
@@ -286,7 +286,7 @@ module OutputControlData
     character(len=len(linein)) :: line
     integer(I4B) :: lloc, istart, istop, ival
     real(DP) :: rval
-    character(len=LINELENGTH) :: fname !JV
+    character(len=LINELENGTH) :: fname !PAR
     ! -- format
     character(len=*),parameter :: fmtocsave = &
       "(4X,A,' INFORMATION WILL BE WRITTEN TO:',              &
@@ -302,8 +302,8 @@ module OutputControlData
       this%idataun = getunit()
       write(iout, fmtocsave) trim(adjustl(this%cname)), this%idataun,          &
                              line(istart:istop)
-      fname = line(istart:istop) !JV
-      call openfile(this%idataun, iout, fname, 'DATA(BINARY)',                 & !JV
+      fname = line(istart:istop) !PAR
+      call openfile(this%idataun, iout, fname, 'DATA(BINARY)',                 & !PAR
                     form, access, 'REPLACE')
     case('PRINT_FORMAT')
       call urword(line, lloc, istart, istop, 1, ival, rval, 0, 0)

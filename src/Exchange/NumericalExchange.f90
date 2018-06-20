@@ -16,7 +16,7 @@ module NumericalExchangeModule
 
   type, extends(BaseExchangeType) :: NumericalExchangeType
     character(len=LINELENGTH), pointer           :: filename                    !name of the input file
-    character(len=9), pointer                    :: typename                    !name of the type (e.g., 'NM-NM') !JV
+    character(len=9), pointer                    :: typename                    !name of the type (e.g., 'NM-NM') !PAR
     logical, pointer                             :: implicit                    !logical flag to indicate implicit or explict exchange
     integer(I4B), pointer                        :: iprpak                      !print input flag
     integer(I4B), pointer                        :: iprflow                     !print flag for cell by cell flows
@@ -24,7 +24,7 @@ module NumericalExchangeModule
     integer(I4B), pointer                        :: nexg                        !number of exchanges
     integer(I4B), dimension(:), pointer          :: nodem1                      !node numbers in model 1
     integer(I4B), dimension(:), pointer          :: nodem2                      !node numbers in model 2
-    integer(I4B), dimension(:), pointer          :: nodeum2                     !user node numbers in model 2 !JV
+    integer(I4B), dimension(:), pointer          :: nodeum2                     !user node numbers in model 2 !PAR
     real(DP), pointer, dimension(:)              :: cond                        !conductance
     integer(I4B), dimension(:), pointer          :: idxglo                      !pointer to solution amat for each connection
     integer(I4B), dimension(:), pointer          :: idxsymglo                   !pointer to symmetric amat position for each connection
@@ -34,9 +34,9 @@ module NumericalExchangeModule
     character(len=16), allocatable, dimension(:) :: auxname                     !array of auxiliary variable names
     real(DP), pointer, dimension(:, :)           :: auxvar                      !array of auxiliary variable values
     type(BlockParserType)                        :: parser                      !block parser
-    logical, pointer                             :: m2_ishalo                   ! flag indicating that model 2 is of type halo !JV 
-    integer(I4B), pointer                        :: m2_prov                     ! flag indicating the origin of model 2 !JV
-    logical, pointer                             :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !JV
+    logical, pointer                             :: m2_ishalo                   ! flag indicating that model 2 is of type halo !PAR 
+    integer(I4B), pointer                        :: m2_prov                     ! flag indicating the origin of model 2 !PAR
+    logical, pointer                             :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
   contains
     procedure :: exg_df
     procedure :: exg_ac
@@ -58,7 +58,7 @@ module NumericalExchangeModule
     procedure :: read_options
     procedure :: read_dimensions
     procedure :: get_iasym
-    procedure :: get_m1m2 !JV
+    procedure :: get_m1m2 !PAR
   end type NumericalExchangeType
 
 contains
@@ -99,9 +99,9 @@ contains
     integer(I4B) :: n, iglo, jglo
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%m2_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     if(this%implicit) then
       do n = 1, this%nexg
@@ -133,9 +133,9 @@ contains
     integer(I4B) :: n, iglo, jglo, ipos
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%m2_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     if(this%implicit) then
       do n = 1, this%nexg
@@ -235,13 +235,13 @@ contains
     !
     if(this%implicit) then
       ! -- correct the diagonal
-      if (this%m2_ishalo) then !JV
-        do i = 1, this%nexg !JV
-          nodem1sln = this%nodem1(i) + this%m1%moffset !JV
-          idiagsln = iasln(nodem1sln) !JV
-          amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i) !JV
-        enddo !JV
-      else !JV
+      if (this%m2_ishalo) then !PAR
+        do i = 1, this%nexg !PAR
+          nodem1sln = this%nodem1(i) + this%m1%moffset !PAR
+          idiagsln = iasln(nodem1sln) !PAR
+          amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i) !PAR
+        enddo !PAR
+      else !PAR
         do i = 1, this%nexg
           amatsln(this%idxglo(i)) = this%cond(i)
           amatsln(this%idxsymglo(i)) = this%cond(i)
@@ -252,7 +252,7 @@ contains
           idiagsln = iasln(nodem2sln)
           amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
         enddo
-      endif !JV
+      endif !PAR
     else
       ! -- nothing to do here
     endif
@@ -427,9 +427,9 @@ contains
     call mem_allocate(this%ipakcb, 'IPAKCB', this%name)
     call mem_allocate(this%nexg, 'NEXG', this%name)
     call mem_allocate(this%naux, 'NAUX', this%name)
-    call mem_allocate(this%m2_ishalo,'M2_ISHALO', this%name) !JV
-    call mem_allocate(this%m2_prov, 'M2_PROV', this%name) !JV
-    call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%name) !JV
+    call mem_allocate(this%m2_ishalo,'M2_ISHALO', this%name) !PAR
+    call mem_allocate(this%m2_prov, 'M2_PROV', this%name) !PAR
+    call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%name) !PAR
     allocate(this%auxname(0))
     this%filename = ''
     this%typename = ''
@@ -439,9 +439,9 @@ contains
     this%ipakcb = 0
     this%nexg = 0
     this%naux = 0
-    this%m2_ishalo = .false. !JV
-    this%m2_prov = -1 !JV
-    this%m1m2_swap = .false. !JV
+    this%m2_ishalo = .false. !PAR
+    this%m2_prov = -1 !PAR
+    this%m1m2_swap = .false. !PAR
     !
     ! -- return
     return
@@ -468,7 +468,7 @@ contains
     !
     call mem_allocate(this%nodem1, this%nexg, 'NODEM1', origin)
     call mem_allocate(this%nodem2, this%nexg, 'NODEM2', origin)
-    call mem_allocate(this%nodeum2, this%nexg, 'NODEUM2', origin) !JV
+    call mem_allocate(this%nodeum2, this%nexg, 'NODEUM2', origin) !PAR
     call mem_allocate(this%cond, this%nexg, 'COND', origin)
     call mem_allocate(this%idxglo, this%nexg, 'IDXGLO', origin)
     call mem_allocate(this%idxsymglo, this%nexg, 'IDXSYMGLO', origin)
@@ -507,7 +507,7 @@ contains
     ! -- arrays
     call mem_deallocate(this%nodem1)
     call mem_deallocate(this%nodem2)
-    call mem_deallocate(this%nodeum2) !JV
+    call mem_deallocate(this%nodeum2) !PAR
     call mem_deallocate(this%cond)
     call mem_deallocate(this%idxglo)
     call mem_deallocate(this%idxsymglo)
@@ -682,12 +682,12 @@ contains
     return
   end function GetNumericalExchangeFromList
 
-  subroutine get_m1m2(this, m1, m2) !JV
+  subroutine get_m1m2(this, m1, m2) !PAR
     use GwfModule, only: GwfModelType
-    class(NumericalExchangeType) :: this !JV
-    type(GwfModelType), pointer, intent(out) :: m1, m2 !JV
+    class(NumericalExchangeType) :: this !PAR
+    type(GwfModelType), pointer, intent(out) :: m1, m2 !PAR
     !
-    return !JV
-  end subroutine get_m1m2 !JV
+    return !PAR
+  end subroutine get_m1m2 !PAR
   
 end module NumericalExchangeModule

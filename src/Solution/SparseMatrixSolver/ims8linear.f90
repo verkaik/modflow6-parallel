@@ -7,7 +7,7 @@
                              DONE, DTWO
   use IMSReorderingModule, only: ims_genrcm, ims_odrv, ims_dperm, ims_vperm
   use BlockParserModule, only: BlockParserType
-  use MpiExchangeModule,  only: MpiExchangeType !JV
+  use MpiExchangeModule,  only: MpiExchangeType !PAR
 
   IMPLICIT NONE
   private
@@ -80,7 +80,7 @@
     integer(I4B),POINTER,DIMENSION(:),CONTIGUOUS::JLU => NULL()
     integer(I4B),POINTER,DIMENSION(:),CONTIGUOUS::JW => NULL()
     real(DP),POINTER,DIMENSION(:),CONTIGUOUS::WLU => NULL()
-    type(MpiExchangeType), pointer:: MpiSol => NULL() !JV
+    type(MpiExchangeType), pointer:: MpiSol => NULL() !PAR
 
     ! PROCEDURES (METHODS)
     CONTAINS
@@ -107,7 +107,7 @@
 !     ------------------------------------------------------------------
       use MemoryManagerModule, only: mem_allocate
       use SimModule, only: ustop, store_error, count_errors
-      use MpiExchangeGenModule, only: serialrun !JV
+      use MpiExchangeGenModule, only: serialrun !PAR
       IMPLICIT NONE
 !     + + + DUMMY VARIABLES + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
@@ -516,21 +516,21 @@
       CALL mem_allocate(THIS%QHAT, THIS%NIABCGS, 'QHAT', TRIM(THIS%ORIGIN))
       ! -- add variables for MPI point-to-point
       if (.not.serialrun) then
-        call this%MpiSol%mpi_add_vg('IMS-X') !JV
-        call this%MpiSol%mpi_add_vmt('IMS-X','','X','','SOL') !JV
-        call this%MpiSol%mpi_init_vg('IMS-X') !JV
-        IF (THIS%ILINMETH.EQ.1) THEN !JV
-          call this%MpiSol%mpi_add_vg('IMS-P') !JV
-          call this%MpiSol%mpi_add_vmt('IMS-P','','P','IMSLINEAR','SOL') !JV
-          call this%MpiSol%mpi_init_vg('IMS-P') !JV
-        ELSEIF (THIS%ILINMETH.EQ.2) THEN !JV
-          call this%MpiSol%mpi_add_vg('IMS-PHAT') !JV
-          call this%MpiSol%mpi_add_vmt('IMS-PHAT','','PHAT','IMSLINEAR','SOL') !JV
-          call this%MpiSol%mpi_init_vg('IMS-PHAT') !JV
-          call this%MpiSol%mpi_add_vg('IMS-QHAT') !JV
-          call this%MpiSol%mpi_add_vmt('IMS-QHAT','','QHAT','IMSLINEAR','SOL') !JV
-          call this%MpiSol%mpi_init_vg('IMS-QHAT') !JV
-        END IF !JV
+        call this%MpiSol%mpi_add_vg('IMS-X') !PAR
+        call this%MpiSol%mpi_add_vmt('IMS-X','','X','','SOL') !PAR
+        call this%MpiSol%mpi_init_vg('IMS-X') !PAR
+        IF (THIS%ILINMETH.EQ.1) THEN !PAR
+          call this%MpiSol%mpi_add_vg('IMS-P') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-P','','P','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_init_vg('IMS-P') !PAR
+        ELSEIF (THIS%ILINMETH.EQ.2) THEN !PAR
+          call this%MpiSol%mpi_add_vg('IMS-PHAT') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-PHAT','','PHAT','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_init_vg('IMS-PHAT') !PAR
+          call this%MpiSol%mpi_add_vg('IMS-QHAT') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-QHAT','','QHAT','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_init_vg('IMS-QHAT') !PAR
+        END IF !PAR
       endif
 !-------INITIALIZE IMSLINEAR VECTORS
       DO n = 1, iscllen
@@ -788,7 +788,7 @@
 !        SPECIFICATIONS:
 !     ------------------------------------------------------------------
       USE SimModule
-      use MpiExchangeGenModule, only: parallelrun !JV
+      use MpiExchangeGenModule, only: parallelrun !PAR
       IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
@@ -879,8 +879,8 @@
       CALL IMSLINEARSUB_MV(THIS%NJA,THIS%NEQ,THIS%A0,THIS%X,THIS%D,             &
                            THIS%IA0,THIS%JA0)
       ! -- MPI parallel: point-to-point comm. of THIS%X and update of THIS%D
-      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .false.) !JV
-      call this%MpiSol%mpi_mv_halo(this%origin, 'IMS-X', this%d) !JV
+      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .false.) !PAR
+      call this%MpiSol%mpi_mv_halo(this%origin, 'IMS-X', this%d) !PAR
       rmax = DZERO
       THIS%L2NORM0 = DZERO
       DO n = 1, THIS%NEQ
@@ -890,9 +890,9 @@
         THIS%L2NORM0 = THIS%L2NORM0 + THIS%D(n) * THIS%D(n)
       END DO
       ! -- MPI parallel: collective sum of THIS%L2NORM0
-      call this%MpiSol%mpi_global_exchange_sum(THIS%L2NORM0) !JV
+      call this%MpiSol%mpi_global_exchange_sum(THIS%L2NORM0) !PAR
       ! -- MPI parallel: collective sum of rmax
-      call this%MpiSol%mpi_global_exchange_absmax(rmax) !JV
+      call this%MpiSol%mpi_global_exchange_absmax(rmax) !PAR
       THIS%L2NORM0 = SQRT(THIS%L2NORM0)
 !-------CHECK FOR EXACT SOLUTION
       itmax = THIS%ITER1
@@ -913,7 +913,7 @@
                              NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,       &
                              CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,             &
                              DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,                &
-                             THIS%ORIGIN, THIS%MPISOL) !JV
+                             THIS%ORIGIN, THIS%MPISOL) !PAR
 !-------SOLUTION BY THE BICONJUGATE GRADIENT STABILIZED METHOD
       ELSE IF (THIS%ILINMETH.EQ.2) THEN
         CALL IMSLINEARSUB_BCGS(ICNVG, itmax, innerit,                           &
@@ -929,7 +929,7 @@
                                NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,     &
                                CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,           &
                                DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,              &
-                               THIS%ORIGIN, THIS%MPISOL) !JV
+                               THIS%ORIGIN, THIS%MPISOL) !PAR
       END IF
 !
 !-------BACK PERMUTE AMAT, SOLUTION, AND RHS
@@ -953,7 +953,7 @@
       IN_ITER = innerit
 !
 !     -- MPI parallel: update the solution for the halo models
-      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .true.) !JV
+      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .true.) !PAR
 !
 !-------RETURN
       RETURN
@@ -1495,8 +1495,8 @@
                                  NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,   &
                                  CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,         &
                                  DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,            &
-                                 ORIGIN, MPISOL) !JV
-        use MpiExchangeGenModule, only: writestd !JV
+                                 ORIGIN, MPISOL) !PAR
+        use MpiExchangeGenModule, only: writestd !PAR
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(INOUT) :: ICNVG 
@@ -1544,8 +1544,8 @@
         real(DP), DIMENSION(CONVNMOD), INTENT(INOUT) :: DRMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
-        character(len=*) :: origin !JV
-        type(MpiExchangeType), intent(inout) :: MpiSol !JV
+        character(len=*) :: origin !PAR
+        type(MpiExchangeType), intent(inout) :: MpiSol !PAR
 !       + + + LOCAL DEFINITIONS + + + 
         LOGICAL :: LORTH
         character(len=31) :: cval
@@ -1562,7 +1562,7 @@
         real(DP) :: denom
         real(DP) :: alpha, beta 
         real(DP) :: rho, rho0
-        CHARACTER(LEN=100), DIMENSION(4) :: SA !JV
+        CHARACTER(LEN=100), DIMENSION(4) :: SA !PAR
 !       + + + PARAMETERS + + +                                            
 !       + + + FUNCTIONS + + +                                         
 !                                                                       
@@ -1586,7 +1586,7 @@
           END SELECT 
           rho = IMSLINEARSUB_DP(NEQ, D, Z) 
           ! -- MPI parallel: collective comm. of rho (sum)
-          call MpiSol%mpi_global_exchange_sum(rho) !JV
+          call MpiSol%mpi_global_exchange_sum(rho) !PAR
 !-----------COMPUTE DIRECTIONAL VECTORS                                 
           IF (IITER.EQ.1) THEN 
             DO n = 1, NEQ 
@@ -1604,11 +1604,11 @@
 !           UPDATE Q                                                   
           CALL IMSLINEARSUB_MV(NJA, NEQ, A0, P, Q, IA0, JA0)
           ! -- MPI parallel: point-to-point comm. of THIS%X and update of THIS%D
-          call MpiSol%mpi_local_exchange(origin, 'IMS-P', .false.) !JV
-          call MpiSol%mpi_mv_halo(origin, 'IMS-P', q) !JV
+          call MpiSol%mpi_local_exchange(origin, 'IMS-P', .false.) !PAR
+          call MpiSol%mpi_mv_halo(origin, 'IMS-P', q) !PAR
           denom =  IMSLINEARSUB_DP(NEQ, P, Q)
           ! -- MPI parallel: collective comm. of denom (sum)
-          call MpiSol%mpi_global_exchange_sum(denom) !JV
+          call MpiSol%mpi_global_exchange_sum(denom) !PAR
           denom = denom + SIGN(DPREC, denom) 
           alpha = rho / denom
 !-----------UPDATE X AND RESIDUAL                                       
@@ -1654,9 +1654,9 @@
             l2norm = l2norm + tv * tv 
           END DO
           ! -- MPI parallel: collective comm. of deltax and rmax (max)
-          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !JV
+          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !PAR
           ! -- MPI parallel: collective comm. of l2norm (sum)
-          call MpiSol%mpi_global_exchange_sum(l2norm) !JV
+          call MpiSol%mpi_global_exchange_sum(l2norm) !PAR
           l2norm = SQRT(l2norm) 
 !-----------SAVE SOLVER CONVERGENCE INFORMATION
           IF (NCONV > 1) THEN
@@ -1695,8 +1695,8 @@
             IF (LORTH) THEN
               CALL IMSLINEARSUB_MV(NJA, NEQ, A0, X, D, IA0, JA0)
               ! -- MPI parallel: point-to-point comm. of X and update of D
-              call MpiSol%mpi_local_exchange(origin, 'IMS-X', .false.) !JV
-              call MpiSol%mpi_mv_halo(origin, 'IMS-X', d) !JV
+              call MpiSol%mpi_local_exchange(origin, 'IMS-X', .false.) !PAR
+              call MpiSol%mpi_mv_halo(origin, 'IMS-X', d) !PAR
               CALL IMSLINEARSUB_AXPY(NEQ, B, -DONE, D, D)
             END IF
           END IF
@@ -1730,8 +1730,8 @@
                                    NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR, &
                                    CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,       &
                                    DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,          &
-                                   ORIGIN, MPISOL) !JV
-        use MpiExchangeGenModule, only: writestd !JV
+                                   ORIGIN, MPISOL) !PAR
+        use MpiExchangeGenModule, only: writestd !PAR
         use SimModule, only: ustop !@@@@ DEBUG
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
@@ -1786,8 +1786,8 @@
         real(DP), DIMENSION(CONVNMOD), INTENT(INOUT) :: DRMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
-        character(len=*) :: origin !JV
-        type(MpiExchangeType), intent(inout) :: MpiSol !JV
+        character(len=*) :: origin !PAR
+        type(MpiExchangeType), intent(inout) :: MpiSol !PAR
 !       + + + LOCAL DEFINITIONS + + +  
         LOGICAL :: LORTH
         character(len=15) :: cval1, cval2
@@ -1806,7 +1806,7 @@
         real(DP) :: rho, rho0 
         real(DP) :: omega, omega0 
         real(DP) :: numer, denom
-        CHARACTER(LEN=100), DIMENSION(4) :: SA !JV
+        CHARACTER(LEN=100), DIMENSION(4) :: SA !PAR
         
 !       + + + PARAMETERS + + +                                            
 !       + + + FUNCTIONS + + +                                         
@@ -1821,8 +1821,8 @@
         rho0   = DZERO
         omega  = DZERO
         omega0 = DZERO
-        deltax = DZERO !JV
-        rmax   = DZERO !JV
+        deltax = DZERO !PAR
+        rmax   = DZERO !PAR
 !                                                                       
 !-------SAVE INITIAL RESIDUAL                                           
         DO n = 1, NEQ 
@@ -1836,15 +1836,15 @@
 !----------CALCULATE rho                                                
           rho = IMSLINEARSUB_DP(NEQ, DHAT, D)
           ! -- MPI parallel: collective comm. of rho (sum)
-          call MpiSol%mpi_global_exchange_sum(rho) !JV
+          call MpiSol%mpi_global_exchange_sum(rho) !PAR
 !-----------COMPUTE DIRECTIONAL VECTORS                                 
           IF (IITER.EQ.1) THEN 
             DO n = 1, NEQ 
               P(n) = D(n) 
             END DO 
           ELSE
-            rho0   = rho0 + SIGN(DPREC, rho0) !JV
-            omega0 = omega0 + SIGN(DPREC, omega0) !JV
+            rho0   = rho0 + SIGN(DPREC, rho0) !PAR
+            omega0 = omega0 + SIGN(DPREC, omega0) !PAR
             beta = ( rho / rho0 ) * ( alpha0 / omega0 )
             DO n = 1, NEQ 
               P(n) = D(n) + beta * ( P(n) - omega0 * V(n) ) 
@@ -1863,12 +1863,12 @@
 !           UPDATE V WITH A AND PHAT                                    
           CALL IMSLINEARSUB_MV(NJA, NEQ, A0, PHAT, V, IA0, JA0)
           ! -- MPI parallel: point-to-point comm. of PHAT and update of V
-          call MpiSol%mpi_local_exchange(origin, 'IMS-PHAT', .false.) !JV
-          call MpiSol%mpi_mv_halo(origin, 'IMS-PHAT', v) !JV
+          call MpiSol%mpi_local_exchange(origin, 'IMS-PHAT', .false.) !PAR
+          call MpiSol%mpi_mv_halo(origin, 'IMS-PHAT', v) !PAR
 !           UPDATE alpha WITH DHAT AND V                                
           denom = IMSLINEARSUB_DP(NEQ, DHAT, V) 
           ! -- MPI parallel: collective comm. of denom (sum)
-          call MpiSol%mpi_global_exchange_sum(denom) !JV
+          call MpiSol%mpi_global_exchange_sum(denom) !PAR
           denom = denom + SIGN(DPREC, denom)
           alpha = rho / denom 
 !-----------UPDATE Q                                                    
@@ -1910,13 +1910,13 @@
 !           UPDATE T WITH A AND QHAT                                    
           CALL IMSLINEARSUB_MV(NJA, NEQ, A0, QHAT, T, IA0, JA0)
           ! -- MPI parallel: point-to-point comm. of QHAT and update of T
-          call MpiSol%mpi_local_exchange(origin, 'IMS-QHAT', .false.) !JV
-          call MpiSol%mpi_mv_halo(origin, 'IMS-QHAT', t) !JV
+          call MpiSol%mpi_local_exchange(origin, 'IMS-QHAT', .false.) !PAR
+          call MpiSol%mpi_mv_halo(origin, 'IMS-QHAT', t) !PAR
 !-----------UPDATE omega                                                
           numer = IMSLINEARSUB_DP(NEQ, T, Q) 
           denom = IMSLINEARSUB_DP(NEQ, T, T)
           ! -- MPI parallel: collective comm. of numer and denom (sum)
-          call MpiSol%mpi_global_exchange_sum(numer, denom) !JV
+          call MpiSol%mpi_global_exchange_sum(numer, denom) !PAR
           denom = denom + SIGN(DPREC,denom) 
           omega = numer / denom 
 !-----------UPDATE X AND RESIDUAL                                       
@@ -1968,8 +1968,8 @@
             l2norm = l2norm + tv * tv 
           END DO
           ! -- MPI parallel: collective comm. of l2norm (sum) and rmax (max)
-          call MpiSol%mpi_global_exchange_sum(l2norm) !JV
-          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !JV
+          call MpiSol%mpi_global_exchange_sum(l2norm) !PAR
+          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !PAR
           l2norm = sqrt(l2norm)
 !-----------SAVE SOLVER CONVERGENCE INFORMATION
           IF (NCONV > 1) THEN
@@ -2017,8 +2017,8 @@
             IF (LORTH) THEN
               CALL IMSLINEARSUB_MV(NJA, NEQ, A0,X , D, IA0, JA0)
               ! -- MPI parallel: point-to-point comm. of X and update of D
-              call MpiSol%mpi_local_exchange(origin, 'IMS-X', .false.) !JV
-              call MpiSol%mpi_mv_halo(origin, 'IMS-X', d) !JV
+              call MpiSol%mpi_local_exchange(origin, 'IMS-X', .false.) !PAR
+              call MpiSol%mpi_mv_halo(origin, 'IMS-X', d) !PAR
               CALL IMSLINEARSUB_AXPY(NEQ, B, -DONE, D, D)
               !DO n = 1, NEQ
               !  tv   = D(n)

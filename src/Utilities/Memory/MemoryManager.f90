@@ -4,10 +4,10 @@ module MemoryManagerModule
   use ConstantsModule,        only: DZERO, LENORIGIN, LENVARNAME
   use SimModule,              only: store_error, ustop
   use MemoryTypeModule,       only: MemoryTSType, MemoryType
-  use MemoryTypeModule,       only: ilogicalsclr, iintsclr, idblsclr,          & !JV
-                                    iaint1d, iaint2d,                          & !JV
-                                    iadbl1d, iadbl2d,                          & !JV
-                                    iats1d                                       !JV
+  use MemoryTypeModule,       only: ilogicalsclr, iintsclr, idblsclr,          & !PAR
+                                    iaint1d, iaint2d,                          & !PAR
+                                    iadbl1d, iadbl2d,                          & !PAR
+                                    iats1d                                       !PAR
   use MemoryListModule,       only: MemoryListType
   
   implicit none
@@ -20,10 +20,10 @@ module MemoryManagerModule
   public :: mem_usage
   public :: mem_da
   public :: mem_set_print_option
-  public :: mem_get_ptr !JV
-  public :: mem_setval !JV
-  public :: mem_setval_id !JV
-  public :: mem_check_by_name !JV
+  public :: mem_get_ptr !PAR
+  public :: mem_setval !PAR
+  public :: mem_setval_id !PAR
+  public :: mem_check_by_name !PAR
     
   type(MemoryListType) :: memorylist
   integer(I8B) :: nvalues_alogical = 0
@@ -63,14 +63,14 @@ module MemoryManagerModule
                      deallocate_ts1d
   end interface mem_deallocate
 
-  interface mem_setval !JV
-    module procedure setval_logical, setval_int, setval_dbl,                    & !JV
-                      setval_int1d, setval_mt !JV
-  end interface mem_setval !JV
+  interface mem_setval !PAR
+    module procedure setval_logical, setval_int, setval_dbl,                    & !PAR
+                      setval_int1d, setval_mt !PAR
+  end interface mem_setval !PAR
   
-  interface mem_setval_id !JV
-    module procedure setval_mt_id !JV
-  end interface mem_setval_id !JV
+  interface mem_setval_id !PAR
+    module procedure setval_mt_id !PAR
+  end interface mem_setval_id !PAR
   
 contains
   
@@ -109,7 +109,7 @@ contains
     mt%isize = 1
     mt%name = name
     mt%origin = origin
-    mt%memitype = ilogicalsclr !JV
+    mt%memitype = ilogicalsclr !PAR
     write(mt%memtype, "(a)") 'LOGICAL'
     call memorylist%add(mt)
   end subroutine allocate_logical
@@ -136,7 +136,7 @@ contains
     mt%isize = 1
     mt%name = name
     mt%origin = origin
-    mt%memitype = iintsclr !JV
+    mt%memitype = iintsclr !PAR
     write(mt%memtype, "(a)") 'INTEGER'
     call memorylist%add(mt)
   end subroutine allocate_int
@@ -164,7 +164,7 @@ contains
     mt%isize = isize
     mt%name = name
     mt%origin = origin
-    mt%memitype = iaint1d !JV
+    mt%memitype = iaint1d !PAR
     write(mt%memtype, "(a,' (',i0,')')") 'INTEGER', isize
     call memorylist%add(mt)
   end subroutine allocate_int1d
@@ -195,7 +195,7 @@ contains
     mt%isize = isize
     mt%name = name
     mt%origin = origin
-    mt%memitype = iaint2d !JV
+    mt%memitype = iaint2d !PAR
     write(mt%memtype, "(a,' (',i0,',',i0,')')") 'INTEGER', ncol, nrow
     call memorylist%add(mt)
   end subroutine allocate_int2d
@@ -222,7 +222,7 @@ contains
     mt%isize = 1
     mt%name = name
     mt%origin = origin
-    mt%memitype = idblsclr !JV
+    mt%memitype = idblsclr !PAR
     write(mt%memtype, "(a)") 'DOUBLE'
     call memorylist%add(mt)
   end subroutine allocate_dbl
@@ -250,7 +250,7 @@ contains
     mt%isize = isize
     mt%name = name
     mt%origin = origin
-    mt%memitype = iadbl1d !JV
+    mt%memitype = iadbl1d !PAR
     write(mt%memtype, "(a,' (',i0,')')") 'DOUBLE', isize
     call memorylist%add(mt)
   end subroutine allocate_dbl1d
@@ -281,7 +281,7 @@ contains
     mt%isize = isize
     mt%name = name
     mt%origin = origin
-    mt%memitype = iadbl2d !JV
+    mt%memitype = iadbl2d !PAR
     write(mt%memtype, "(a,' (',i0,',',i0,')')") 'DOUBLE', ncol, nrow
     call memorylist%add(mt)
   end subroutine allocate_dbl2d
@@ -318,7 +318,7 @@ contains
     mt%isize = isize
     mt%name = name
     mt%origin = origin
-    mt%memitype = iats1d !JV
+    mt%memitype = iats1d !PAR
     write(mt%memtype, "(a,' (',i0,')')") 'TIMESERIES', isize
     call memorylist%add(mt)
   end subroutine allocate_ts1d
@@ -1013,7 +1013,7 @@ contains
     ! -- Calculate and write total memory allocation
     bytesmb = (nvalues_aint * I4B + &
                nvalues_adbl * DP + &
-               nvalues_ats * DP) / 1048576.d0 !JV 1024*1024
+               nvalues_ats * DP) / 1048576.d0 !PAR 1024*1024
     write(iout, *)
     write(iout, fmt) 'Number of allocated integer variables:   ', nvalues_aint
     write(iout, fmt) 'Number of allocated real variables:    ', nvalues_adbl + nvalues_ats
@@ -1054,7 +1054,7 @@ contains
   end subroutine mem_unique_origins
   
 
- subroutine mem_get_ptr(name, origin, mt) !JV
+ subroutine mem_get_ptr(name, origin, mt) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
@@ -1088,7 +1088,7 @@ contains
     return
  end subroutine mem_get_ptr
  
-subroutine setval_logical(logicalsclr, name, origin) !JV
+subroutine setval_logical(logicalsclr, name, origin) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
@@ -1124,7 +1124,7 @@ subroutine setval_logical(logicalsclr, name, origin) !JV
     return
 end subroutine setval_logical
 
- subroutine setval_int(intsclr, name, origin) !JV
+ subroutine setval_int(intsclr, name, origin) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
@@ -1160,7 +1160,7 @@ end subroutine setval_logical
     return
  end subroutine setval_int
  
- subroutine setval_dbl(dblsclr, name, origin) !JV
+ subroutine setval_dbl(dblsclr, name, origin) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
@@ -1196,7 +1196,7 @@ end subroutine setval_logical
     return
  end subroutine setval_dbl
  
- subroutine setval_int1d(aint, name, origin) !JV
+ subroutine setval_int1d(aint, name, origin) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
@@ -1235,7 +1235,7 @@ end subroutine setval_logical
     return
  end subroutine setval_int1d
 
- subroutine setval_mt(mti) !JV
+ subroutine setval_mt(mti) !PAR
 ! ******************************************************************************
 ! Set the variabels base don the memory type
 ! ******************************************************************************
@@ -1314,7 +1314,7 @@ end subroutine setval_logical
     return
  end subroutine setval_mt
  
-subroutine setval_mt_id(mti,id,nid) !JV
+subroutine setval_mt_id(mti,id,nid) !PAR
 ! ******************************************************************************
 ! Set the variabeles based on the memory type
 ! ******************************************************************************
@@ -1371,7 +1371,7 @@ subroutine setval_mt_id(mti,id,nid) !JV
     return
  end subroutine setval_mt_id
 
- subroutine mem_check_by_name(name,mes,n) !JV
+ subroutine mem_check_by_name(name,mes,n) !PAR
 ! ******************************************************************************
 ! Check if a variable exists.
 ! ******************************************************************************

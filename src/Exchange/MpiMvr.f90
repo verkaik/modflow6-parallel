@@ -41,7 +41,7 @@ module MpiMvrModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     this%ngmvr = 0
     !
@@ -65,7 +65,7 @@ module MpiMvrModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     ! -- allocate
     allocate(this%maxmvr)
@@ -96,7 +96,7 @@ module MpiMvrModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     this%ngmvr = this%ngmvr + 1
     i = this%ngmvr
@@ -121,7 +121,7 @@ module MpiMvrModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     
     deallocate(this%maxmvr)
     deallocate(this%gmvr)

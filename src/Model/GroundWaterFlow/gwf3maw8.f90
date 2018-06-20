@@ -76,7 +76,7 @@ module mawmodule
   !
   private
   public :: maw_create
-  public :: ftype !JV
+  public :: ftype !PAR
   !
   type, extends(BndType) :: MawType
     ! -- scalars
@@ -449,7 +449,7 @@ contains
         rval = this%parser%GetDouble()
         if (rval <= DZERO) then
           write(errmsg,'(4x,a,1x,i6,1x,a)') &
-            '****ERROR. RADIUS FOR WELL', n, 'MUST BE GREATER THAN ZERO.' !JV
+            '****ERROR. RADIUS FOR WELL', n, 'MUST BE GREATER THAN ZERO.' !PAR
           call store_error(errmsg)
           cycle
         end if
@@ -1574,7 +1574,7 @@ contains
     if (this%imover /= 0) then
       allocate(this%pakmvrobj)
       call this%pakmvrobj%ar(this%nmawwells, this%nmawwells, this%origin,         &
-                             this%p_ishalo) !JV
+                             this%p_ishalo) !PAR
     endif
     !
     ! -- set omega value used for saturation calculations
@@ -1583,9 +1583,9 @@ contains
     end if
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     call this%obs%obs_ar()
     !
@@ -1912,9 +1912,9 @@ contains
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     ! -- Calculate maw conductance and update package RHS and HCOF
     call this%maw_cfupdate()

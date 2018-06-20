@@ -36,7 +36,7 @@ contains
     implicit none
     ! -- dummy
     class(TimeSeriesFileListType), intent(inout) :: this
-    character(len=*), intent(inout) :: filename !JV
+    character(len=*), intent(inout) :: filename !PAR
     integer(I4B), intent(in) :: iout
     class(TimeSeriesFileType), pointer, intent(inout) :: tsfile
     ! -- local

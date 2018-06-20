@@ -48,7 +48,7 @@ contains
     if (serialrun .or. ciopt /= 1) then
       ldis = .true. !@@@@@@@ DEBUG
       return
-    endif
+    end if
     !
     read(modelname,*) mh
     !
@@ -66,14 +66,14 @@ contains
         end select    
         lfound = .true.
         exit
-      endif   
-    enddo
+      end if   
+    end do
     ! -- check
     if (.not.ldis .and. .not.ldisu .and. .not.ldisv) then
       write(errmsg,'(a)') 'Program error in mpi_get_distype.'
       call store_error(errmsg)
       call ustop()
-    endif
+    end if
     !
     ! -- return
     return

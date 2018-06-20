@@ -238,7 +238,7 @@ module BndModule
     ! -- format
 ! ------------------------------------------------------------------------------
     !
-    if (.not.this%p_ishalo) then !JV
+    if (.not.this%p_ishalo) then !PAR
       !
       call this%obs%obs_ar()
       !
@@ -248,12 +248,12 @@ module BndModule
       ! -- read optional initial package parameters
       call this%read_initial_attr()
       !
-    endif !JV
+    endif !PAR
     !
     ! -- setup pakmvrobj for standard stress packages
     if (this%imover == 1) then
       allocate(this%pakmvrobj)
-      call this%pakmvrobj%ar(this%maxbound, 0, this%origin, this%p_ishalo) !JV
+      call this%pakmvrobj%ar(this%maxbound, 0, this%origin, this%p_ishalo) !PAR
     endif
     !
     ! -- return

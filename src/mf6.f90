@@ -22,22 +22,22 @@ program mf6
   use ListsModule,            only: basesolutionlist, solutiongrouplist,       &
                                     basemodellist, baseexchangelist,           &
                                     lists_da,                                  &
-                                    halomodellist !JV
-  use SimVariablesModule,     only: iout, isimdd !JV
+                                    halomodellist !PAR
+  use SimVariablesModule,     only: iout, isimdd !PAR
   use SimModule,              only: converge_reset, converge_check,            &
                                     final_message
   use TdisModule,             only: tdis_tu, tdis_da,                          &
                                     endofsimulation
-  use MpiExchangeGenModule,   only: mpi_initialize, serialrun, writestd !JV
-  use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !JV
-                                    MpiWorld !JV
-  use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !JV
-  use NumericalSolutionModule, only: NumericalSolutionType !JV
+  use MpiExchangeGenModule,   only: mpi_initialize, serialrun, writestd !PAR
+  use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !PAR
+                                    MpiWorld !PAR
+  use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !PAR
+  use NumericalSolutionModule, only: NumericalSolutionType !PAR
   implicit none
   ! -- local
   class(SolutionGroupType), pointer :: sgp
   class(BaseSolutionType),  pointer :: sp
-  class(NumericalSolutionType), pointer :: nsp !JV
+  class(NumericalSolutionType), pointer :: nsp !PAR
   class(BaseModelType),     pointer :: mp
   class(BaseExchangeType),  pointer :: ep
   integer(I4B) :: im, ic, is, isg
@@ -47,15 +47,15 @@ program mf6
 ! ------------------------------------------------------------------------------
   !
   ! -- Initialize MPI if required
-  call mpi_initialize() !JV
-  call mpi_initialize_world() !JV
+  call mpi_initialize() !PAR
+  call mpi_initialize_world() !PAR
   !
   ! -- Write banner to screen (unit 6) and start timer
   call write_centered('MODFLOW'//MFVNAM, ISTDOUT, 80)
   call write_centered(MFTITLE, ISTDOUT, 80)
   call write_centered('VERSION '//VERSION, ISTDOUT, 80)
-  if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '& !JV
-    //TRIM(MpiWorld%nrprocstr)//' MPI PROCESSES***',ISTDOUT, 80) !JV
+  if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '& !PAR
+    //TRIM(MpiWorld%nrprocstr)//' MPI PROCESSES***',ISTDOUT, 80) !PAR
   !
   ! -- Write if develop mode
   if (IDEVELOPMODE == 1) call write_centered('***DEVELOP MODE***', ISTDOUT, 80)
@@ -66,7 +66,7 @@ program mf6
   call write_centered(trim(adjustl(compiler)), ISTDOUT, 80)
   !
   ! -- Write disclaimer
-  if (writestd) write(ISTDOUT, FMTDISCLAIMER) !JV
+  if (writestd) write(ISTDOUT, FMTDISCLAIMER) !PAR
   ! -- get start time
   call start_time()
   !
@@ -83,8 +83,8 @@ program mf6
   enddo
   !
   ! -- Collective MPI communication scalars DIS
-  call mpi_halo_world(2) !JV
-  call mpi_set_halo_world() !JV
+  call mpi_halo_world(2) !PAR
+  call mpi_set_halo_world() !PAR
   !
   ! -- Define each exchange
   do ic = 1, baseexchangelist%Count()
@@ -106,22 +106,22 @@ program mf6
     call mp%model_ar()
   enddo
   ! -- Allocate and read each halo model
-  do im = 1, halomodellist%Count() !JV
-    mp => GetBaseModelFromList(halomodellist, im) !JV
-    call mp%model_ar() !JV
-  enddo !JV
+  do im = 1, halomodellist%Count() !PAR
+    mp => GetBaseModelFromList(halomodellist, im) !PAR
+    call mp%model_ar() !PAR
+  enddo !PAR
   ! 
   ! -- Local exchange
-  if (isimdd == 1) then !JV
-    do is=1,basesolutionlist%Count() !JV
-      sp => GetBaseSolutionFromList(basesolutionlist, is) !JV
-      select type (sp) !JV
-      class is (NumericalSolutionType) !JV
-        nsp => sp !JV
-      end select !JV
-      call nsp%MpiSol%mpi_local_exchange(nsp%name, 'INIT', .true.) !JV
-    enddo !JV
-  endif !JV
+  if (isimdd == 1) then !PAR
+    do is=1,basesolutionlist%Count() !PAR
+      sp => GetBaseSolutionFromList(basesolutionlist, is) !PAR
+      select type (sp) !PAR
+      class is (NumericalSolutionType) !PAR
+        nsp => sp !PAR
+      end select !PAR
+      call nsp%MpiSol%mpi_local_exchange(nsp%name, 'INIT', .true.) !PAR
+    enddo !PAR
+  endif !PAR
   !
   ! -- Allocate and read each exchange
   do ic = 1, baseexchangelist%Count()
@@ -157,15 +157,15 @@ program mf6
     enddo
     !
     ! -- MPI parallel: initialize point-to-point mover
-    if (isimdd == 1) then !JV
-      do is=1,basesolutionlist%Count() !JV
-        sp => GetBaseSolutionFromList(basesolutionlist, is) !JV
-        select type (sp) !JV
-        class is (NumericalSolutionType) !JV
-          nsp => sp !JV
-        end select !JV
-        call nsp%slnmpimvrinit(nsp%name) !JV
-      enddo !JV
+    if (isimdd == 1) then !PAR
+      do is=1,basesolutionlist%Count() !PAR
+        sp => GetBaseSolutionFromList(basesolutionlist, is) !PAR
+        select type (sp) !PAR
+        class is (NumericalSolutionType) !PAR
+          nsp => sp !PAR
+        end select !PAR
+        call nsp%slnmpimvrinit(nsp%name) !PAR
+      enddo !PAR
     endif
     !
     ! -- Read and prepare each solution
@@ -264,7 +264,7 @@ program mf6
   call lists_da()
   !
   ! -- Deallocate MPI world
-  call mpi_world_da() !JV
+  call mpi_world_da() !PAR
   !
   ! -- Calculate memory usage, elapsed time and terminate
   call mem_usage(iout)

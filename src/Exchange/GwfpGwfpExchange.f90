@@ -19,7 +19,7 @@ module gwfpgwfpExchangeModule
 
   implicit none
 
-  integer, parameter :: in_mem = 1, out_mem = 2 ! JV
+  integer, parameter :: in_mem = 1, out_mem = 2 !PAR
   
   private
   public :: gwfpexchange_create
@@ -92,8 +92,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     use BaseModelModule, only: BaseModelType
     use ListsModule, only: baseexchangelist, halomodellist
     use ObsModule, only: obs_cr
-    use MpiExchangeModule, only: mpi_add_halo_model !JV
-    use InputOutputModule, only: getunit, openfile ! JV
+    use MpiExchangeModule, only: mpi_add_halo_model !PAR
+    use InputOutputModule, only: getunit, openfile !PAR
     ! -- dummy
     character(len=*),intent(in) :: filename
     integer(I4B), intent(in) :: id
@@ -107,15 +107,15 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     class(BaseModelType), pointer :: mb
     class(BaseExchangeType), pointer :: baseexchange
     character(len=20) :: cint
-    integer(I4B) :: m1, m2, m, s1, s2, inunit, ierr !JV
+    integer(I4B) :: m1, m2, m, s1, s2, inunit, ierr !PAR
     character(len=LINELENGTH) :: mname2
-    logical :: isfound !JV
+    logical :: isfound !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- Return in case this exchange does not have connected models
-    if (m1i < 0 .and. m2i < 0) then !JV
-      return !JV
-    endif !JV
+    if (m1i < 0 .and. m2i < 0) then !PAR
+      return !PAR
+    endif !PAR
     !
     ! -- Create a new exchange and add it to the baseexchangelist container
     allocate(exchange)
@@ -170,11 +170,11 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       mb => GetBaseModelFromList(basemodellist, m2)
     else  
       im = im + 1
-      exchange%m2_ishalo = .true. !JV
-      call mpi_add_halo_model(im, mname2) !JV
-      call gwf_cr_halo(im, mname2, nexg) !JV
+      exchange%m2_ishalo = .true. !PAR
+      call mpi_add_halo_model(im, mname2) !PAR
+      call gwf_cr_halo(im, mname2, nexg) !PAR
       mb => GetBaseModelFromList(halomodellist, im)
-      mb%ishalo = .true. !JV
+      mb%ishalo = .true. !PAR
     endif
     ! -- set exchange%m2
     select type (mb)
@@ -202,7 +202,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     use SimVariablesModule, only: iout
     use InputOutputModule, only: getunit, openfile
     use GhostNodeModule, only: gnc_cr
-    use MpiExchangeModule, only: MpiWorld !JV
+    use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     class(gwfpExchangeType) :: this
     ! -- local
@@ -217,7 +217,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call this%parser%Initialize(inunit, iout)
     !
     ! -- Set data for model 2
-    !JV-TODO: idsoln
+    !PAR-TODO: idsoln
     !
     ! -- Ensure models are in same solution
     !if(this%gwfpmodel1%idsoln /= this%gwfpmodel2%idsoln) then
@@ -243,7 +243,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !
     ! -- Create and read ghost node information
     if(this%ingnc > 0) then
-      call MpiWorld%mpi_not_supported('Ghost Node Correction') !JV
+      call MpiWorld%mpi_not_supported('Ghost Node Correction') !PAR
       call gnc_cr(this%gnc, this%name, this%ingnc, iout)
       call this%read_gnc(iout)
     endif
@@ -810,11 +810,11 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       !
       ! -- If saving cell-by-cell flows in list, write flow
       n1u = this%gwfpmodel1%dis%get_nodeuser(n1)
-      if (this%m2_ishalo) then !JV
-        n2u = this%nodeum2(i) !JV
+      if (this%m2_ishalo) then !PAR
+        n2u = this%nodeum2(i) !PAR
       else
         n2u = this%gwfpmodel2%dis%get_nodeuser(n2)
-      endif !JV
+      endif !PAR
       if(ibinun1 /= 0)                                                         &
         call this%gwfpmodel1%dis%record_mf6_list_entry(                         &
           ibinun1, n1u, n2u, rrate, this%naux, this%auxvar(:, i),              &
@@ -829,7 +829,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !
     ! -- Print and write budget terms for model 2
     !
-    if (.not.this%m2_ishalo) then !JV
+    if (.not.this%m2_ishalo) then !PAR
       ! -- Set binary unit numbers for saving flows
       if(this%ipakcb /= 0) then
         ibinun2 = this%gwfpmodel2%oc%oc_save_unit('BUDGET')
@@ -917,7 +917,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       budterm(2, 1) = ratin
       call this%m2%model_bdentry(budterm, budtxt, this%name)
     !
-    endif !JV
+    endif !PAR
     !
     ! -- Set icbcfl, ibudfl to zero so that flows will be printed and
     !    saved, if the options were set in the MVR package
@@ -950,7 +950,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     class(gwfpExchangeType) :: this
     ! -- local
     integer(I4B) :: iexg, n1, n2
-    integer(I4B) :: nu2 !JV
+    integer(I4B) :: nu2 !PAR
     real(DP) :: flow, deltaqgnc
     character(len=LINELENGTH) :: node1str, node2str
     ! -- format
@@ -982,12 +982,12 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         n2 = this%nodem2(iexg)
         flow = this%cond(iexg) * (this%m2%x(n2) - this%m1%x(n1))
         call this%m1%dis%noder_to_string(n1, node1str)
-        if (.not.this%m2_ishalo) then !JV
-          call this%m2%dis%noder_to_string(n2, node2str) !JV
-        else !JV
-          nu2 = this%nodeum2(iexg) !JV
-          call this%m2%dis%nodeu_to_string(nu2, node2str) !JV
-        endif !JV
+        if (.not.this%m2_ishalo) then !PAR
+          call this%m2%dis%noder_to_string(n2, node2str) !PAR
+        else !PAR
+          nu2 = this%nodeum2(iexg) !PAR
+          call this%m2%dis%nodeu_to_string(nu2, node2str) !PAR
+        endif !PAR
         if(this%ingnc > 0) then
           deltaqgnc = this%gnc%deltaqgnc(iexg)
           write(iout, fmtdata) trim(adjustl(node1str)),                        &
@@ -1186,8 +1186,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     use ConstantsModule, only: LINELENGTH
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
     use BaseModelModule, only: BaseModelType
-    use MpiExchangeGenModule, only: mpi_is_halo !JV
-    use MpiExchangeModule, only: MpiWorld !JV DEBUG
+    use MpiExchangeGenModule, only: mpi_is_halo !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR DEBUG
     ! -- dummy
     class(gwfpExchangeType) :: this
     integer(I4B), intent(in) :: iout
@@ -1233,7 +1233,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         call this%parser%GetNextLine(endOfBlock)
         lloc = 1
         !
-        if (.not.this%m1m2_swap) then !JV
+        if (.not.this%m1m2_swap) then !PAR
           ! -- Read and check node 1
           call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.)
           nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
@@ -1288,11 +1288,11 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         if(this%iprpak /= 0) then
           nodeum1 = this%m1%dis%get_nodeuser(nodem1)
           call this%m1%dis%nodeu_to_string(nodeum1, node1str)
-          if (.not. mpi_is_halo(this%m2%name)) then !JV
+          if (.not. mpi_is_halo(this%m2%name)) then !PAR
             nodeum2 = this%m2%dis%get_nodeuser(nodem2)
-          else !JV
-            nodeum2 = nodem2 !JV
-          endif !JV 
+          else !PAR
+            nodeum2 = nodem2 !PAR
+          endif !PAR 
           call this%m2%dis%nodeu_to_string(nodeum2, node2str)
           if (this%inamedbound == 0) then
             write(iout, fmtexgdata) trim(node1str), trim(node2str),            &
@@ -1622,9 +1622,9 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_allocate(this%inobs, 'INOBS', origin)
     call mem_allocate(this%inamedbound, 'INAMEDBOUND', origin)
     call mem_allocate(this%satomega, 'SATOMEGA', origin)
-    call mem_allocate(this%m2_ishalo, 'M2_ISHALO', origin) !JV
-    call mem_allocate(this%m2_prov, 'M2_PROV', origin) !JV
-    call mem_allocate(this%m1m2_swap, 'M1M2_SWAP', origin) !JV
+    call mem_allocate(this%m2_ishalo, 'M2_ISHALO', origin) !PAR
+    call mem_allocate(this%m2_prov, 'M2_PROV', origin) !PAR
+    call mem_allocate(this%m1m2_swap, 'M1M2_SWAP', origin) !PAR
     this%icellavg = 0
     this%ivarcv = 0
     this%idewatcv = 0
@@ -1635,9 +1635,9 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     this%inobs = 0
     this%inamedbound = 0
     this%satomega = DZERO
-    this%m2_ishalo = .false. !JV
-    this%m2_prov = -1 !JV
-    this%m1m2_swap = .false. !JV
+    this%m2_ishalo = .false. !PAR
+    this%m2_prov = -1 !PAR
+    this%m1m2_swap = .false. !PAR
     !
     ! -- return
     return
@@ -1683,8 +1683,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_deallocate(this%inobs)
     call mem_deallocate(this%inamedbound)
     call mem_deallocate(this%satomega)
-    call mem_deallocate(this%m2_prov) !JV
-    call mem_deallocate(this%m1m2_swap) !JV
+    call mem_deallocate(this%m2_prov) !PAR
+    call mem_deallocate(this%m1m2_swap) !PAR
     !
     ! -- arrays
     call mem_deallocate(this%ihc)

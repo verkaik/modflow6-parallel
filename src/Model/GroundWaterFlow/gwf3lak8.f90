@@ -35,7 +35,7 @@ module LakModule
   !
   character(len=LENFTYPE)       :: ftype = 'LAK'
   character(len=LENPACKAGENAME) :: text  = '             LAK'
-  public :: ftype !JV
+  public :: ftype !PAR
   !
   type LakTabType
     real(DP), pointer, dimension(:)  :: tabstage => null()
@@ -1084,7 +1084,7 @@ contains
     ! -- dummy
     class(LakType), intent(inout) :: this
     integer(I4B), intent(in) :: ilak
-    character (len=*), intent(inout) :: filename !JV
+    character (len=*), intent(inout) :: filename !PAR
 
     ! -- local
     character(len=LINELENGTH) :: errmsg
@@ -3376,13 +3376,13 @@ contains
     if (this%imover /= 0) then
       allocate(this%pakmvrobj)
       call this%pakmvrobj%ar(this%noutlets, this%nlakes, this%origin,             &
-                             this%p_ishalo) !JV
+                             this%p_ishalo) !PAR
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     call this%obs%obs_ar()
     !
@@ -3609,9 +3609,9 @@ contains
     end if
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     !!
     !! -- Calculate lak conductance and update package RHS and HCOF

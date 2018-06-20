@@ -73,7 +73,7 @@ module GwfDisModule
 ! ------------------------------------------------------------------------------
     allocate(disnew)
     dis => disnew
-    call disnew%allocate_scalars(name_model, 'DIS') !JV
+    call disnew%allocate_scalars(name_model, 'DIS') !PAR
     dis%inunit = inunit
     dis%iout = iout
     !
@@ -586,8 +586,8 @@ module GwfDisModule
     fname = trim(fname) // '.grb'
     iunit = getunit()
     write(this%iout, fmtgrdsave) iunit, trim(adjustl(fname))
-    fname = adjustl(fname) ! JV
-    call openfile(iunit, this%iout, fname, 'DATA(BINARY)',                     & !JV
+    fname = adjustl(fname) !PAR
+    call openfile(iunit, this%iout, fname, 'DATA(BINARY)',                     & !PAR
                   form, access, 'REPLACE')
     !
     ! -- write header information
@@ -834,7 +834,7 @@ module GwfDisModule
     return
   end function get_nodeuser
 
-  subroutine allocate_scalars(this, name_model, dis_type) !JV
+  subroutine allocate_scalars(this, name_model, dis_type) !PAR
 ! ******************************************************************************
 ! allocate_scalars -- Allocate and initialize scalars
 ! ******************************************************************************
@@ -845,17 +845,17 @@ module GwfDisModule
     ! -- dummy
     class(GwfDisType) :: this
     character(len=*), intent(in) :: name_model
-    character(len=*), intent(in) :: dis_type !JV
+    character(len=*), intent(in) :: dis_type !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate parent scalars
-    call this%DisBaseType%allocate_scalars(name_model, dis_type) !JV
+    call this%DisBaseType%allocate_scalars(name_model, dis_type) !PAR
     !
     ! -- Allocate
     call mem_allocate(this%nlay, 'NLAY', this%origin)
     call mem_allocate(this%nrow, 'NROW', this%origin)
     call mem_allocate(this%ncol, 'NCOL', this%origin)
-    call mem_allocate(this%ndim, 'DNDIM', this%origin) !JV
+    call mem_allocate(this%ndim, 'DNDIM', this%origin) !PAR
     !
     ! -- Initialize
     this%nlay = 0

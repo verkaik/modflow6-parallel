@@ -1194,7 +1194,7 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- dummy
     class(TimeSeriesFileType), target, intent(inout) :: this
-    character(len=*),           intent(inout)    :: filename !JV
+    character(len=*),           intent(inout)    :: filename !PAR
     integer(I4B),                    intent(in)    :: iout
     logical, optional,          intent(in)    :: autoDeallocate
     ! -- local

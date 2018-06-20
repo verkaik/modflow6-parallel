@@ -35,7 +35,7 @@ module NumericalPackageModule
     type(BlockParserType)                              :: parser                !parser object for reading blocks of information
     class(DisBaseType), pointer                        :: dis => null()
     !
-    logical, pointer                                   :: p_ishalo => null() !flag for labeling this package as halo !JV
+    logical, pointer                                   :: p_ishalo => null() !flag for labeling this package as halo !PAR
   contains
     procedure :: set_names
     procedure :: allocate_scalars
@@ -122,7 +122,7 @@ module NumericalPackageModule
     call mem_allocate(this%ionper, 'IONPER', this%origin)
     call mem_allocate(this%lastonper, 'LASTONPER', this%origin)
     !
-    call mem_allocate(this%p_ishalo, 'P_ISHALO', this%origin) !JV
+    call mem_allocate(this%p_ishalo, 'P_ISHALO', this%origin) !PAR
     !
     ! -- initialize
     this%id = 0
@@ -135,7 +135,7 @@ module NumericalPackageModule
     this%ipakcb = imodelpakcb
     this%ionper = 0
     this%lastonper = 0
-    this%p_ishalo = .false. !JV
+    this%p_ishalo = .false. !PAR
     !
     ! -- nullify unneeded pointers
     imodelnewton => NULL()

@@ -76,7 +76,7 @@ module MpiExchangeGwfModule
 ! ------------------------------------------------------------------------------
     if (serialrun) then
       !return !@@@@@ DEBUG 
-    endif
+    end if
     !
     ! -- initialize package filetype
     packftype(1,imaw) = trim(mawftype)
@@ -92,8 +92,8 @@ module MpiExchangeGwfModule
         if (ft(1:n) == cft(1:n)) then
           packftype(2,ip) = trim(cunit(i))
         end if
-      enddo
-    enddo
+      end do
+    end do
     !
     allocate(cmt_send(1))
     do iact = 1, 2
@@ -129,7 +129,7 @@ module MpiExchangeGwfModule
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('NODESUSER', mp%dis%origin, mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
           case ('DISV')
             if (iopt == 1) then
               call mem_get_ptr('DNDIM',  mp%dis%origin, mt)
@@ -145,7 +145,7 @@ module MpiExchangeGwfModule
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('NODESUSER', mp%dis%origin, mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
           case ('DISU')
             if (iopt == 1) then
               call mem_get_ptr('DNDIM', mp%dis%origin, mt)
@@ -157,7 +157,7 @@ module MpiExchangeGwfModule
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('NODESUSER', mp%dis%origin, mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
         end select
         if (iopt == 2) then
           ! -- Mover package data
@@ -168,13 +168,13 @@ module MpiExchangeGwfModule
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('IMOVER', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
             if (packobj%filtyp == packftype(1,isfr)) then
               call mem_get_ptr('MAXBOUND', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('IMOVER', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
             if (packobj%filtyp == packftype(1,ilak)) then
               call mem_get_ptr('NOUTLETS', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
@@ -182,28 +182,28 @@ module MpiExchangeGwfModule
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('IMOVER', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
+            end if
             if (packobj%filtyp == packftype(1,iuzf)) then
               call mem_get_ptr('MAXBOUND', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
               call mem_get_ptr('IMOVER', trim(packobj%origin), mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
-            endif
-          enddo
+            end if
+          end do
           call mem_get_ptr('INNPF', mp%name, mt)
           call mpi_to_colmem(mt, is, cmt_send, iact)
           call mem_get_ptr('INIC', mp%name, mt)
           call mpi_to_colmem(mt, is, cmt_send, iact)
-        endif
-      enddo
+        end if
+      end do
       if (iact == 1) then
         n_send = is
         if (allocated(cmt_send)) then
           deallocate(cmt_send)
-        endif
-        allocate(cmt_send(max(n_send,1))) !JV
-      endif
-    enddo
+        end if
+        allocate(cmt_send(max(n_send,1))) !PAR
+      end if
+    end do
     !
     ! -- gather sizes
     allocate(recvcounts(MpiWorld%nrproc), displs(MpiWorld%nrproc))
@@ -212,7 +212,7 @@ module MpiExchangeGwfModule
     n_recv = sum(recvcounts)
     if (allocated(cmt_recv)) then
       deallocate(cmt_recv)
-    endif
+    end if
     allocate(cmt_recv(n_recv))
     displs(1) = 0
     do i = 2, MpiWorld%nrproc
@@ -235,11 +235,11 @@ module MpiExchangeGwfModule
           do i = 1, n_recv
             write(*,'(a,1x,a,1x,i)') trim(cmt_recv(i)%name), trim(cmt_recv(i)%origin), cmt_recv(i)%intsclr 
           end do
-        endif
+        end if
         call MpiWorld%mpi_barrier()
-      enddo
+      end do
       call ustop('@@@@')
-    endif
+    end if
     !
     ! -- clean up
     call mpiwrptypefree(newtype)
@@ -305,7 +305,7 @@ module MpiExchangeGwfModule
       !call mem_setval(1, 'INNPF', 'GWF_MODEL_2 HALO1')
       !call mem_setval(1, 'INIC', 'GWF_MODEL_2 HALO1')
       return
-    endif
+    end if
     !
     do i = 1, n_recv
       name   = cmt_recv(i)%name
@@ -314,7 +314,7 @@ module MpiExchangeGwfModule
       if (istat /= 0) then
         read(origin,*,iostat=istat) mname
         id = ''
-      endif
+      end if
       lenid = len_trim(id)
       ! -- check if the data is related to packages
       lpack = .false.
@@ -325,8 +325,8 @@ module MpiExchangeGwfModule
           if (lenid >= lenft) then
             if (id(1:lenft) == ft(1:lenft)) then
               lpack(ip) = .true.
-            endif
-        endif
+            end if
+        end if
         end do
         if (any(lpack)) then
           pakname = ''
@@ -335,9 +335,9 @@ module MpiExchangeGwfModule
           if (istat /= 0) then
             ibcnum = 0
             pakname = trim(id)
-          endif
-        endif
-      endif
+          end if
+        end if
+      end if
       if (any(lpack)) then
         do j = 1, nhalo
           mname_halo = mname
@@ -360,16 +360,16 @@ module MpiExchangeGwfModule
             do ip = 1, mxpack
               if (lpack(ip)) then
                 lcreate(ip) = .true.
-              endif
-            enddo
+              end if
+            end do
             do ipo=1,nmp%bndlist%Count()
               packobj => GetBndFromList(nmp%bndlist, ipo)
               do ip = 1, mxpack
                 if (lpack(ip) .and. packobj%filtyp == packftype(1,ip) .and. packobj%ibcnum == ibcnum) then
                   lcreate(ip) = .false.
-                endif
-              enddo
-            enddo
+                end if
+              end do
+            end do
             ! -- create package
             do ip = 1, mxpack
               if (lcreate(ip)) then
@@ -378,12 +378,12 @@ module MpiExchangeGwfModule
                                        pakname, 0, 0)
                 packobj => GetBndFromList(nmp%bndlist, nmp%bndlist%Count())
                 call mem_setval(.true., 'P_ISHALO', packobj%origin)
-              endif
+              end if
             end do
-          endif
-        enddo
-      endif
-    enddo
+          end if
+        end do
+      end if
+    end do
     !
     ! -- Set other variables
     do i = 1, n_recv
@@ -393,7 +393,7 @@ module MpiExchangeGwfModule
       if (istat /= 0) then
         read(origin,*,iostat=istat) mname
         id = ''
-      endif
+      end if
       do j = 1, nhalo
         mname_halo = mname
         call mpi_create_modelname_halo(j, mname_halo)
@@ -405,17 +405,17 @@ module MpiExchangeGwfModule
               if (MpiWorld%myrank == 1) then
                 !write(*,*) MpiWorld%myrank
                 !write(*,*) 'Setting integer: '//trim(name)//', "'//trim(origin_halo)//'"', cmt_recv(i)%intsclr
-              endif
+              end if
               call mem_setval(cmt_recv(i)%intsclr, name, origin_halo)
             case(iaint1d)
               if (MpiWorld%myrank == 1) then
                 !write(*,*) MpiWorld%myrank
                 !write(*,*) 'Setting array for model '//trim(mname_halo)//': '//trim(name)//', '//trim(origin_halo)
-              endif
+              end if
               call mem_setval(cmt_recv(i)%aint1d, name, origin_halo)
           end select
-        endif
-      enddo
+        end if
+      end do
     end do
     !
     ! -- cleanup

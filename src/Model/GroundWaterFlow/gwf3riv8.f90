@@ -194,9 +194,9 @@ subroutine riv_cf(this)
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     ! -- Calculate hcof and rhs for each riv entry
     do i=1,this%nbound

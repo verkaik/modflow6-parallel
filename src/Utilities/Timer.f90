@@ -18,8 +18,8 @@ module TimerModule
 !
 !        SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
-    use MpiExchangeGenModule, only: writestd !JV
-    use MpiExchangeModule, only: MpiWorld !JV
+    use MpiExchangeGenModule, only: writestd !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR
     integer(I4B) :: i
     character(len=*), parameter :: fmtdt =                                     &
       "(1X,'Run start date and time (yyyy/mm/dd hh:mm:ss): ',                  &
@@ -27,11 +27,11 @@ module TimerModule
 ! ------------------------------------------------------------------------------
     !    
     ! -- Get current date and time, assign to IBDT, and write to screen
-    call MpiWorld%mpi_barrier() !JV 
+    call MpiWorld%mpi_barrier() !PAR 
     call date_and_time(values=ibdt)
-    if (writestd) then !JV
+    if (writestd) then !PAR
       write(*, fmtdt) (ibdt(i), i = 1, 3), (ibdt(i), i = 5, 7)
-    endif !JV
+    endif !PAR
     !
     ! -- return
     return
@@ -45,7 +45,7 @@ module TimerModule
 !        SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules 
-    use MpiExchangeGenModule, only: writestd !JV
+    use MpiExchangeGenModule, only: writestd !PAR
     ! -- dummy
     integer(i4b), intent(in) :: iout
     integer(I4B), intent(in) :: iprtim
@@ -62,9 +62,9 @@ module TimerModule
 !
 !     Get current date and time, assign to IEDT, and write.
       CALL DATE_AND_TIME(VALUES=IEDT)
-      if (.not.writestd) then !JV
-        return !JV
-      endif !JV
+      if (.not.writestd) then !PAR
+        return !PAR
+      endif !PAR
       WRITE(*,1000) (IEDT(I),I=1,3),(IEDT(I),I=5,7)
  1000 FORMAT(1X,'Run end date and time (yyyy/mm/dd hh:mm:ss): ',               &
              I4,'/',I2.2,'/',I2.2,1X,I2,':',I2.2,':',I2.2)

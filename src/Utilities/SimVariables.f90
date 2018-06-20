@@ -6,6 +6,6 @@ module SimVariablesModule
   integer(I4B) :: isimcontinue = 0  ! -- 1 to continue if isimcnvg = 0, 0 to terminate
   integer(I4B) :: isimcheck = 1     ! -- 1 to check input, 0 to ignore checks
   integer(I4B) :: numnoconverge = 0 ! -- number of times there were convergence problems
-  integer(I4B) :: isimdd = 0        ! -- use domain decomposition !JV
-  integer(I4B) :: nddsub = 0        ! -- number of subdomains !JV
+  integer(I4B) :: isimdd = 0        ! -- use domain decomposition !PAR
+  integer(I4B) :: nddsub = 0        ! -- number of subdomains !PAR
 end module SimVariablesModule

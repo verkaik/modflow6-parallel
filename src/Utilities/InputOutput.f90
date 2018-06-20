@@ -58,7 +58,7 @@ module InputOutputModule
   end function dclosetest
 
   subroutine openfile(iu, iout, fname, ftype, fmtarg_opt, accarg_opt,          &
-                      filstat_opt, master_write) !JV
+                      filstat_opt, master_write) !PAR
 ! ******************************************************************************
 ! openfile -- Open a file using the specified arguments.
 !
@@ -76,17 +76,17 @@ module InputOutputModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use OpenSpecModule, only: action
-    use MpiExchangeGenModule, only: mpi_append_fname !JV
+    use MpiExchangeGenModule, only: mpi_append_fname !PAR
     implicit none
     ! -- dummy
     integer(I4B), intent(inout)       :: iu
     integer(I4B), intent(in)          :: iout
-    character(len=*), intent(inout) :: fname !JV
+    character(len=*), intent(inout) :: fname !PAR
     character(len=*), intent(in) :: ftype
     character(len=*), intent(in), optional :: fmtarg_opt
     character(len=*), intent(in), optional :: accarg_opt
     character(len=*), intent(in), optional :: filstat_opt
-    logical, intent(in), optional :: master_write !JV
+    logical, intent(in), optional :: master_write !PAR
     ! -- local
     character(len=20) :: fmtarg
     character(len=20) :: accarg
@@ -96,7 +96,7 @@ module InputOutputModule
     integer(I4B) :: ivar
     integer(I4B) :: iuop
     character(len=LINELENGTH) :: errmsg
-    logical :: mw ! JV
+    logical :: mw !PAR
     ! -- formats
 50  FORMAT(1X,/1X,'OPENED ',A,/                                                &
                  1X,'FILE TYPE:',A,'   UNIT ',I4,3X,'STATUS:',A,/              &
@@ -136,13 +136,13 @@ module InputOutputModule
       filact = action(2)
     endif
     !
-    mw = .false. !JV
-    if (present(master_write)) then !JV
-      mw = master_write !JV
-    end if !JV
-    if (mw) then !JV
-      call mpi_append_fname(fname) !JV
-    end if !JV
+    mw = .false. !PAR
+    if (present(master_write)) then !PAR
+      mw = master_write !PAR
+    end if !PAR
+    if (mw) then !PAR
+      call mpi_append_fname(fname) !PAR
+    end if !PAR
     !
     ! -- size of fname
     iflen = len_trim(fname)
@@ -159,7 +159,7 @@ module InputOutputModule
     else
       open(unit=iu, file=fname(1:iflen), form=fmtarg, access=accarg,           &
          status=filstat, action=filact, iostat=ivar,                           &
-         share='denynone') !JV
+         share='denynone') !PAR
     endif
     !
     ! -- Check for an error
@@ -1628,27 +1628,27 @@ module InputOutputModule
     return
   end subroutine ulaprufw
 
-  subroutine write_centered(text, iout, linelen, force_write) !JV
+  subroutine write_centered(text, iout, linelen, force_write) !PAR
     ! Write text to unit iout centered in width defined by linelen
     ! Left-pad with blanks as needed.
     use ConstantsModule, only: LINELENGTH
-    use MpiExchangeGenModule, only: writestd !JV
+    use MpiExchangeGenModule, only: writestd !PAR
     implicit none
     ! -- dummy
     character(len=*), intent(in) :: text
     integer(I4B), intent(in) :: iout
     integer(I4B), intent(in) :: linelen
-    logical, intent(in), optional :: force_write !JV
+    logical, intent(in), optional :: force_write !PAR
     ! -- local
     integer(I4B) :: loc1, loc2, lentext, nspaces
     character(len=LINELENGTH) :: newline, textleft
-    logical :: fw ! JV
+    logical :: fw !PAR
     !
-    fw = .false. !JV
-    if (present(force_write)) then !JV
-      fw = force_write !JV
-    end if !JV
-    if (.not.writestd .and. .not.fw) return !JV
+    fw = .false. !PAR
+    if (present(force_write)) then !PAR
+      fw = force_write !PAR
+    end if !PAR
+    if (.not.writestd .and. .not.fw) return !PAR
     if (iout<=0) return
     textleft = adjustl(text)
     lentext = len_trim(textleft)

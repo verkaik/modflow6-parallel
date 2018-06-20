@@ -449,29 +449,29 @@ subroutine ustop(stopmess,ioutlocal,writestd)
   !    SPECIFICATIONS:
   ! --------------------------------------------------------------------------
   ! -- modules
-  use MpiExchangeGenModule, only: mpi_finalize !JV
+  use MpiExchangeGenModule, only: mpi_finalize !PAR
   ! -- dummy
   implicit none
   character, optional, intent(in) :: stopmess*(*)
   integer(I4B),   optional, intent(in) :: ioutlocal
-  logical, optional, intent(in) :: writestd !JV
+  logical, optional, intent(in) :: writestd !PAR
   ! -- local
   character(len=*), parameter :: fmt = '(1x,a)'
   character(len=*), parameter :: msg = 'Stopping due to error(s)'
   logical :: errorfound
-  logical :: lwstd !JV
+  logical :: lwstd !PAR
   !---------------------------------------------------------------------------
-  if (present(writestd)) then !JV
-    lwstd = writestd !JV
-  else !JV
-    lwstd = .true. !JV
-  end if !JV
+  if (present(writestd)) then !PAR
+    lwstd = writestd !PAR
+  else !PAR
+    lwstd = .true. !PAR
+  end if !PAR
   call print_notes()
   call print_warnings()
   errorfound = print_errors()
   if (present(stopmess)) then
     if (stopmess.ne.' ') then
-      if (lwstd) write(*,fmt) stopmess !JV
+      if (lwstd) write(*,fmt) stopmess !PAR
       write(iout,fmt) stopmess
       if (present(ioutlocal)) then
         if (ioutlocal > 0 .and. ioutlocal .ne. iout) then
@@ -492,7 +492,7 @@ subroutine ustop(stopmess,ioutlocal,writestd)
   !
   close(iout)
   ! -- Finalize MPI if required
-  call mpi_finalize() !JV
+  call mpi_finalize() !PAR
   stop
 end subroutine ustop
 
@@ -561,7 +561,7 @@ end subroutine ustop
 ! ------------------------------------------------------------------------------
     ! -- modules
     use SimVariablesModule, only: isimcnvg, numnoconverge
-    use MpiExchangeGenModule, only: writestd !JV
+    use MpiExchangeGenModule, only: writestd !PAR
     ! -- formats
     character(len=*), parameter :: fmtnocnvg =                                 &
       "(1x, 'Simulation convergence failure occurred ', i0, ' time(s).')"

@@ -21,7 +21,7 @@ module GwfGwfExchangeModule
 
   private
   public :: gwfexchange_create
-  public :: GwfExchangeType !JV
+  public :: GwfExchangeType !PAR
   
   type, extends(NumericalExchangeType) :: GwfExchangeType
     type(GwfModelType), pointer                      :: gwfmodel1 => null()     ! pointer to GWF Model 1

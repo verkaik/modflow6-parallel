@@ -87,7 +87,7 @@ module SfrModule
   !
   private
   public :: sfr_create
-  public :: ftype !JV
+  public :: ftype !PAR
   !
   type, extends(BndType) :: SfrType
     ! -- scalars
@@ -551,14 +551,14 @@ contains
     if (this%imover /= 0) then
       allocate(this%pakmvrobj)
       call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin,           &
-                             this%p_ishalo) !JV
+                             this%p_ishalo) !PAR
     endif
     !
     ! -- set nbound and return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      this%nbound = this%maxbound !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      this%nbound = this%maxbound !PAR
+      return !PAR
+    endif !PAR
     
     call this%obs%obs_ar()
     !
@@ -1237,9 +1237,9 @@ contains
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     ! -- find highest active cell
     do n = 1, this%nbound

@@ -103,7 +103,7 @@ module TimeSeriesManagerModule
     use ArrayHandlersModule, only: ExpandArray
     ! -- dummy
     class(TimeSeriesManagerType) :: this
-    character(len=*), intent(inout) :: fname !JV
+    character(len=*), intent(inout) :: fname !PAR
     integer(I4B), intent(in) :: inunit
     ! -- local
     integer(I4B) :: isize

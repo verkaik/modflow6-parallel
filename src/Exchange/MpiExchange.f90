@@ -180,7 +180,7 @@ module MpiExchangeModule
       serialrun = .true.
     else
       serialrun = .false.
-    endif
+    end if
     parallelrun = .not.serialrun
     ! @@@@@@ DEBUG
     !serialrun = .false.
@@ -190,7 +190,7 @@ module MpiExchangeModule
       writestd = .true.
     else
       writestd = .false.
-    endif
+    end if
     !
     ! -- output strings
     call MpiWorld%mpi_create_output_str()
@@ -214,7 +214,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     call MpiWorld%mpi_barrier()
     call MpiWorld%mpi_da()
@@ -239,7 +239,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     call mpiwrpbarrier(this%comm)
     !
@@ -295,7 +295,7 @@ module MpiExchangeModule
 ! ------------------------------------------------------------------------------
     if (serialrun) then
       return
-    endif
+    end if
     !
     write(f,'(3a)') trim(f),'.',trim(this%partstr)
     !
@@ -345,7 +345,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     ! -- Allocate scalars
     origin = this%name
@@ -368,8 +368,8 @@ module MpiExchangeModule
       else
         call store_error('Program error: mpi_local_exchange.')
         call ustop()
-      endif
-    enddo
+      end if
+    end do
     this%nrproc = sum(this%procmap)
     allocate(ranks(max(this%nrproc,1)))
     j = 0
@@ -378,8 +378,8 @@ module MpiExchangeModule
         j = j + 1
         ranks(j) = i-1
         this%procmap(i) = j
-      endif
-    enddo
+      end if
+    end do
     !
     call mpiwrpcommgroup(MpiWorld%comm, world_group)
     call mpiwrpgroupincl(world_group, this%nrproc, ranks, new_group)
@@ -416,12 +416,12 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     if (.not.this%linit) then
       call store_error('Program error: mpi_add_vmt')
       call ustop()
-    endif
+    end if
     !
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
@@ -432,21 +432,21 @@ module MpiExchangeModule
       write(errmsg,'(a)') 'Program error mpi_add_vg'
       call store_error(errmsg)
       call ustop()
-    endif
+    end if
     !
     ! -- Allocate arrays
     do ixp = 1, this%nrxp
       if (.not.associated(this%lxch(ixp)%vgbuf)) then
         !write(*,*) '@@@@@ allocating vgbuf for '//trim(vgname),ixp
         allocate(this%lxch(ixp)%vgbuf(MAXNVG))
-      endif
+      end if
       do iex = 1, this%lxch(ixp)%nexchange
         if (.not.associated(this%lxch(ixp)%exchange(iex)%vgvar)) then
           !write(*,*) '@@@@@ allocating vgvar for '//trim(vgname),iex
           allocate(this%lxch(ixp)%exchange(iex)%vgvar(MAXNVG))
-        endif
-      enddo
-    enddo
+        end if
+      end do
+    end do
     !
     ! -- return
     return
@@ -473,19 +473,19 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     if (.not.this%linit) then
       call store_error('Program error: mpi_add_vmt')
       call ustop()
-    endif
+    end if
     !
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
       write(errmsg,'(a)') 'Program error: mpi_add_vmt'
       call store_error(errmsg)
       call ustop()
-    endif
+    end if
     !
     do ixp = 1, this%nrxp
       do iex = 1, this%lxch(ixp)%nexchange
@@ -495,7 +495,7 @@ module MpiExchangeModule
         if (iv > MAXNVAR) then
           call store_error('Program error: mpi_add_vmt')
           call ustop()
-        endif
+        end if
         vgvar%nvar = iv
         vgvar%var(iv)%origin  = trim(origin)
         vgvar%var(iv)%name    = trim(name)
@@ -511,8 +511,8 @@ module MpiExchangeModule
             call store_error('Program error: mpi_add_vmt')
             call ustop()
         end select
-      enddo
-    enddo
+      end do
+    end do
     !
     ! -- return
     return
@@ -536,14 +536,14 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
       write(errmsg,'(a)') 'Program error mpi_init_vg'
       call store_error(errmsg)
       call ustop()
-    endif
+    end if
     !
     do ixp = 1, this%nrxp
       nsnd = 0
@@ -552,14 +552,14 @@ module MpiExchangeModule
         do iv = 1, vgvar%nvar
           if (vgvar%var(iv)%lsnd) then
             nsnd = nsnd + 1
-          endif
-        enddo  
-      enddo
+          end if
+        end do  
+      end do
       buf => this%lxch(ixp)%vgbuf(ivg)
       buf%nsnd = nsnd 
       allocate(buf%sndmt(max(nsnd,1)))
       allocate(buf%sndmmt(max(nsnd,1)))
-    enddo
+    end do
     !
     ! -- return
     return
@@ -613,12 +613,12 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     if (.not.this%lp2p) then
       !write(*,*) '@@@@ returning!'
       return
-    endif
+    end if
     !
     lpack = .true.
     lpackmeta = .true.
@@ -628,7 +628,7 @@ module MpiExchangeModule
     if (ivg < 0) then
       call store_error('Program error: mpi_local_exchange for '//trim(vgname))
       call ustop()
-    endif
+    end if
     !
     ! --- 
     if (lpack) then
@@ -651,7 +651,7 @@ module MpiExchangeModule
                 !write(*,*) '@@@ packing '//trim(vgname)//' '//trim(var%name),is
                 call store_error('Program error: mpi_local_exchange')
                 call ustop()
-              endif
+              end if
               ! -- Set the origin and offset
               write(mod_origin,'(a,1x,a)') trim(m1_name), trim(var%nameext)
               select case(var%vmttype)
@@ -680,7 +680,7 @@ module MpiExchangeModule
                   if (.not.associated(tmp).or..not.associated(nodem1)) then
                     call store_error('Program error: mpi_local_exchange')
                     call ustop()
-                  endif
+                  end if
                   nexg = tmp
                 case(ivmtmvr)
                   nexg = 1
@@ -688,11 +688,11 @@ module MpiExchangeModule
                 end select
                 call mpi_pack_mt_nodem1(tgt_origin, nodem1, nexg, moffset, mt,  &
                                        vgbuf%sndmt(is))
-            endif
-          enddo
-        enddo
-      enddo
-    endif
+            end if
+          end do
+        end do
+      end do
+    end if
     !
     !-- Pack the meta data
     if (lpackmeta) then
@@ -702,9 +702,9 @@ module MpiExchangeModule
         ! -- Loop over all send variables
         do is = 1, vgbuf%nsnd
           call mpi_pack_mmt(vgbuf%sndmt(is), vgbuf%sndmmt(is))
-        enddo
-      enddo
-    endif
+        end do
+      end do
+    end if
     !
     ! -- First point-to-point communication to exchange memory type meta-data
     !
@@ -718,7 +718,7 @@ module MpiExchangeModule
         call mpiwrpisend(this%lxch(ixp)%vgbuf(ivg)%sndmmt,                      &
                          this%lxch(ixp)%vgbuf(ivg)%nsnd,                        &
                          newtype, this%lxch(ixp)%xprnk, 0, this%comm, sreq(ixp))
-      enddo
+      end do
       ! -- Probe for the data sizes and allocate
       do ixp = 1, this%nrxp
         vgbuf => this%lxch(ixp)%vgbuf(ivg)
@@ -728,17 +728,17 @@ module MpiExchangeModule
         ! -- Allocate receive buffers
         if (.not.associated(vgbuf%rcvmmt)) then
           allocate(vgbuf%rcvmmt(max(1,nrcv)))
-        endif
+        end if
         if (.not.associated(vgbuf%rcvmt)) then
           allocate(vgbuf%rcvmt(max(1,nrcv)))
-        endif
-      enddo
+        end if
+      end do
       ! -- Non-blocking receive
       do ixp = 1, this%nrxp
         vgbuf => this%lxch(ixp)%vgbuf(ivg)
         call mpiwrpirecv(vgbuf%rcvmmt, vgbuf%nrcv,                              &
                          newtype, this%lxch(ixp)%xprnk, 0, this%comm, rreq(ixp))
-      enddo
+      end do
       call mpiwrpwaitall(this%nrxp, sreq, mpiwrpstats)
       call mpiwrpwaitall(this%nrxp, rreq, mpiwrpstats)
       ! -- Clean up MPI datatype
@@ -758,15 +758,15 @@ module MpiExchangeModule
                 write(*,*) 'isize:    ', rcvmmt%isize
                 write(*,*) 'ncol:     ', rcvmmt%ncol
                 write(*,*) 'nrow:     ', rcvmmt%nrow
-              enddo
-            enddo
-          endif
+              end do
+            end do
+          end if
           call mpiwrpbarrier(this%comm)
-        enddo
-      endif
+        end do
+      end if
       !
       this%lxchmeta(ivg) = .false.
-    endif
+    end if
     !
     ! -- Second point-to-point communication to exchange actual data
     
@@ -778,27 +778,27 @@ module MpiExchangeModule
                           vgbuf%nsnd, snd_newtype(ixp))
       call mpiwrpmtstruct(vgbuf%rcvmt, vgbuf%rcvmmt,                            &
                           vgbuf%nrcv, rcv_newtype(ixp))
-    enddo
+    end do
     !
     ! -- Non-blocking send
     do ixp = 1, this%nrxp
       vgbuf => this%lxch(ixp)%vgbuf(ivg)
       call mpiwrpisend(vgbuf%sndmt, 1, snd_newtype(ixp),                        &
                        this%lxch(ixp)%xprnk, 0, this%comm, sreq(ixp))
-    enddo
+    end do
     ! -- Non-blocking receive
     do ixp = 1, this%nrxp
       vgbuf => this%lxch(ixp)%vgbuf(ivg)
       call mpiwrpirecv(vgbuf%rcvmt, 1, rcv_newtype(ixp),                        &
                        this%lxch(ixp)%xprnk, 0, this%comm, rreq(ixp))
-    enddo
+    end do
     call mpiwrpwaitall(this%nrxp, sreq, mpiwrpstats)
     call mpiwrpwaitall(this%nrxp, rreq, mpiwrpstats)
     ! -- Clean up MPI datatypes
     do ixp = 1, this%nrxp
       call mpiwrptypefree(snd_newtype(ixp))
       call mpiwrptypefree(rcv_newtype(ixp))
-    enddo
+    end do
     deallocate(snd_newtype, rcv_newtype)
     deallocate(sreq, rreq)
     !
@@ -821,14 +821,14 @@ module MpiExchangeModule
 !                  do j = 1, vgbuf%sndmt(i)%isize
                   do j = 1, 1
                     write(*,*) 'dval:      ', vgbuf%sndmt(i)%adbl1d(j)
-                  enddo
+                  end do
                 case(iaint1d)
 !                  do j = 1, vgbuf%sndmt(i)%isize
                   do j = 1, 1
                     write(*,*) 'ival:      ', vgbuf%sndmt(i)%aint1d(j)
-                  enddo
+                  end do
               end select
-            enddo
+            end do
             write(*,*) '---received from',this%lxch(ixp)%xprnk
             do i = 1,vgbuf%nrcv
               write(*,*) 'name:      ', trim(vgbuf%rcvmt(i)%name)
@@ -842,20 +842,20 @@ module MpiExchangeModule
 !                  do j = 1, vgbuf%sndmt(i)%isize
                   do j = 1, 1
                     write(*,*) 'dval:      ', vgbuf%rcvmt(i)%adbl1d(j)
-                  enddo
+                  end do
                 case(iaint1d)
 !                  do j = 1, vgbuf%rcvmt(i)%isize
                   do j = 1, 1
                     write(*,*) 'ival:      ', vgbuf%rcvmt(i)%aint1d(j)
-                  enddo
+                  end do
                end select
-            enddo
-          enddo
-        endif
+            end do
+          end do
+        end if
         call mpiwrpbarrier(this%comm)
-      enddo
+      end do
       !call ustop('@@@@')
-    endif
+    end if
     !
     ! -- Set the received data for the halo (m2) models
     if (lunpack) then
@@ -876,7 +876,7 @@ module MpiExchangeModule
               if (vgbuf%rcvmt(is)%name /= var%name) then
                 call store_error('Program error: mpi_local_exchange')
                 call ustop()
-              endif
+              end if
               select case(var%vmttype)
                 case(ivmtgwf,ivmtsol)
                   src_origin = vgbuf%rcvmt(is)%origin
@@ -884,10 +884,10 @@ module MpiExchangeModule
                   if (istat /= 0) then
                     read(src_origin,*,iostat=istat) mname
                     id = ''
-                  endif
+                  end if
                   if (index(id,'HALO') > 0) then
                     id = ''
-                  endif
+                  end if
                   write(tgt_origin, '(a,1x,a)') trim(m2_name), trim(id)
                   vgbuf%rcvmt(is)%origin = tgt_origin
                   !write(*,*) '@@@ setting '//'"'//trim(vgbuf%rcvmt(is)%origin),'" "',trim(vgbuf%rcvmt(is)%name)
@@ -897,19 +897,19 @@ module MpiExchangeModule
                   !if (this%myrank == 0) then
                   !  write(*,*) '@@@ setting MPI '//'"'//trim(tgt_origin), &
                   !    '" "',trim(vgbuf%rcvmt(is)%name),'": ',var%id, vgbuf%rcvmt(is)%adbl1d(1)
-                  !endif
+                  !end if
                   vgbuf%rcvmt(is)%origin = tgt_origin
                   call mem_setval_id(vgbuf%rcvmt(is), var%id, 1)
               end select
-            endif
-          enddo
-        enddo
-      enddo   
-    endif
+            end if
+          end do
+        end do
+      end do   
+    end if
     !
     !if (trim(vgname) == 'MOVER') then
     !  call ustop('@@@@mpi_local_exchange')
-    !endif
+    !end if
     !
     ! -- return
     return
@@ -945,14 +945,14 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     ! -- find the variable group name
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
       call store_error('Program error: mpi_local_exchange for '//trim(vgname))
       call ustop()
-    endif
+    end if
     !
     read(solname,*) sol_origin
     call mem_setptr(active, 'IACTIVE', trim(sol_origin))
@@ -970,21 +970,21 @@ module MpiExchangeModule
           if (vgbuf%rcvmt(iv)%memitype /= iadbl1d) then
             call store_error('Program error: mpi_mv_halo')
             call ustop()
-          endif
+          end if
           if (vgbuf%rcvmt(iv)%isize /= nexg) then
             call store_error('Program error: mpi_mv_halo')
             call ustop()
-          endif
+          end if
           do iexg = 1, nexg
             n = nodem1(iexg) + moffset
             v = vgbuf%rcvmt(iv)%adbl1d(iexg)
             if (active(n) > 0) then
               x(n) = x(n) + cond(iexg)*v
-            endif
-          enddo
-        enddo
-      enddo 
-    enddo
+            end if
+          end do
+        end do
+      end do 
+    end do
     !
     ! -- return
     return
@@ -1007,7 +1007,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = dval
     call mpiwrpallreduce(dwrk, 1, 'mpi_sum', this%comm)
@@ -1034,7 +1034,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = dval1
     dwrk(2) = dval2
@@ -1063,7 +1063,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = abs(dval)
     call mpiwrpallreduce(dwrk, 1, 'mpi_max', this%comm)
@@ -1090,7 +1090,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = abs(dval1)
     dwrk(2) = abs(dval2)
@@ -1119,7 +1119,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     iwrk(1) = ival
     call mpiwrpallreduce(iwrk, 1, 'mpi_max', this%comm)
@@ -1146,7 +1146,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = abs(dval)
     call mpiwrpallreduce(dwrk, 1, 'mpi_min', this%comm)
@@ -1173,7 +1173,7 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     !
     dwrk(1) = abs(dval1)
     dwrk(2) = abs(dval2)
@@ -1220,9 +1220,9 @@ module MpiExchangeModule
           if (n < 0 .or. n > size(mti%aint1d)) then
             call store_error(errmsg)
             call ustop()
-          endif
+          end if
           mto%aint1d(i) = mti%aint1d(n)
-        enddo
+        end do
         !write(*,*) '# int n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%aint1d)
       case(iadbl1d)
         allocate(mto%adbl1d(nexg))
@@ -1231,9 +1231,9 @@ module MpiExchangeModule
           if (n < 0 .or. n > size(mti%adbl1d)) then
             call store_error(errmsg)
             call ustop()
-          endif
+          end if
           mto%adbl1d(i) = mti%adbl1d(n)
-        enddo
+        end do
         !write(*,*) '# dbl n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%adbl1d)
       case default
         call store_error(errmsg)
@@ -1333,7 +1333,7 @@ module MpiExchangeModule
     if (serialrun) then
       !add = .true. !DEBUG 
       !return
-    endif
+    end if
     !
     if (isub == this%myproc) then
       add = .true.
@@ -1364,7 +1364,7 @@ module MpiExchangeModule
 ! ------------------------------------------------------------------------------
     if (serialrun) then
        return !@@@ DEBUG
-    endif
+    end if
     !
     select case(iopt)
       ! store global
@@ -1416,14 +1416,14 @@ module MpiExchangeModule
     lok = .true.
     if (serialrun) then
       return
-    endif
+    end if
     !
     m = ifind(this%gmodelnames, mname)
     if (m <= 0) then
       write(errmsg,'(a)') 'Error, mover model not found.'
       call store_error(errmsg)
       call ustop()
-    endif
+    end if
     !
     m = ifind(this%lmodelnames, mname)
     if (m <= 0) then
@@ -1431,8 +1431,8 @@ module MpiExchangeModule
       m = ifind(modelname_halo, mname)
       if (m <= 0) then
         lok = .false.
-      endif
-    endif
+      end if
+    end if
     !
     ! -- return
     return
@@ -1457,7 +1457,7 @@ module MpiExchangeModule
 ! ------------------------------------------------------------------------------
     if (serialrun) then
       return
-    endif
+    end if
     !
     select case(iopt)
       ! store global
@@ -1505,7 +1505,7 @@ module MpiExchangeModule
       nhalo = nhalo + 1
       call ExpandArray(modelname_halo)
       modelname_halo(nhalo) = modelname
-    endif
+    end if
     !
     ! -- return
     return
@@ -1531,7 +1531,7 @@ module MpiExchangeModule
     is = is + 1
     if (iopt == 1) then
       return
-    endif
+    end if
     
     cmt(is)%name     = mt%name
     cmt(is)%origin   = mt%origin
@@ -1540,22 +1540,22 @@ module MpiExchangeModule
       cmt(is)%logicalsclr = mt%logicalsclr
     else
       cmt(is)%logicalsclr = .false.
-    endif  
+    end if  
     if (associated(mt%intsclr)) then
       cmt(is)%intsclr = mt%intsclr
     else
       cmt(is)%intsclr = 0
-    endif
+    end if
     if (associated(mt%dblsclr)) then
       cmt(is)%dblsclr = mt%dblsclr
     else
       cmt(is)%dblsclr = DZERO
-    endif
+    end if
     if (associated(mt%aint1d)) then
       cmt(is)%aint1d = mt%aint1d
     else
       cmt(is)%aint1d = 0
-    endif
+    end if
     ! -- return
     return
   end subroutine mpi_to_colmem
@@ -1576,7 +1576,7 @@ module MpiExchangeModule
 ! ------------------------------------------------------------------------------
     if (serialrun) then
       return
-    endif
+    end if
     !
     errmsg = 'Not (yet) supported in parallel: '//trim(msg)//'. Stopping.'
     call ustop(errmsg,0,writestd)
@@ -1605,39 +1605,39 @@ module MpiExchangeModule
     !
     if (serialrun) then
       return
-    endif
+    end if
     
     ! -- communicator
     if (associated(this%comm)) then
       call mem_deallocate(this%comm)
-    endif
+    end if
     if (associated(this%nrproc)) then
       call mem_deallocate(this%nrproc)
-    endif  
+    end if  
     if (associated(this%myrank)) then
       call mem_deallocate(this%myrank)
-    endif
+    end if
     if (associated(this%myproc)) then
       call mem_deallocate(this%myproc)
-    endif
+    end if
     if(associated(this%procmap)) then
       deallocate(this%procmap)
-    endif
+    end if
     !
     ! -- model lists
     if(allocated(this%gmodelnames)) then
       deallocate(this%gmodelnames)
-    endif
+    end if
     if(allocated(this%lmodelnames)) then
 
       deallocate(this%lmodelnames)
-    endif
+    end if
     if(allocated(this%gsubs)) then
       deallocate(this%gsubs)
-    endif
+    end if
     if(allocated(this%lsubs)) then
       deallocate(this%lsubs)
-    endif
+    end if
     !
     ! -- point-to-point
     if (associated(this%nrxp)) then
@@ -1646,44 +1646,44 @@ module MpiExchangeModule
           vgbuf => this%lxch(ixp)%vgbuf(ivg)
           if(associated(vgbuf%sndmt)) then
             deallocate(vgbuf%sndmt)
-          endif
+          end if
           if(associated(vgbuf%rcvmt)) then
             deallocate(vgbuf%rcvmt)
-          endif
+          end if
           if(associated(vgbuf%sndmmt)) then
             deallocate(vgbuf%sndmmt)
-          endif
+          end if
           if(associated(vgbuf%rcvmmt)) then
             deallocate(vgbuf%rcvmmt)
-          endif
-        enddo
+          end if
+        end do
         do iex = 1, this%lxch(ixp)%nexchange
           ex => this%lxch(ixp)%exchange(iex)
           if (associated(ex%vgvar)) then
             deallocate(ex%vgvar)
-          endif
-        enddo
+          end if
+        end do
         deallocate(this%lxch(ixp)%xprnk)
         deallocate(this%lxch(ixp)%exchange)
         deallocate(this%lxch(ixp)%nexchange)
         deallocate(this%lxch(ixp)%vgbuf)
-      enddo
-    endif
+      end do
+    end if
     if (associated(this%lxch)) then
       deallocate(this%lxch)
-    endif
+    end if
     if (associated(this%nrxp)) then
       call mem_deallocate(this%nrxp)
-    endif
+    end if
     if(associated(this%nrprocstr)) then
       deallocate(this%nrprocstr)
-    endif
+    end if
     if(associated(this%npdigits)) then
       call mem_deallocate(this%npdigits)
-    endif
+    end if
     if(associated(this%partstr)) then
       deallocate(this%partstr)
-    endif
+    end if
     !
     ! -- Initialize constants
     this%name = ''

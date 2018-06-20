@@ -476,7 +476,7 @@ module BaseDisModule
     return
   end subroutine connection_vector
     
-  subroutine allocate_scalars(this, name_model, dis_type) !JV
+  subroutine allocate_scalars(this, name_model, dis_type) !PAR
 ! ******************************************************************************
 ! allocate_scalars -- Allocate and initialize scalar variables in this class
 ! ******************************************************************************
@@ -488,13 +488,13 @@ module BaseDisModule
     ! -- dummy
     class(DisBaseType) :: this
     character(len=*), intent(in) :: name_model
-    character(len=*), intent(in) :: dis_type !JV
+    character(len=*), intent(in) :: dis_type !PAR
     ! -- local
     character(len=LENORIGIN) :: origin
 ! ------------------------------------------------------------------------------
     !
     ! -- Assign origin name
-    write(origin,'(a,1x,a)') trim(adjustl(name_model)), trim(dis_type) !JV
+    write(origin,'(a,1x,a)') trim(adjustl(name_model)), trim(dis_type) !PAR
     !
     ! -- Allocate
     allocate(this%origin)
@@ -712,8 +712,8 @@ module BaseDisModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeGenModule, only: mpi_is_halo !JV
-    use ArrayHandlersModule, only: ifind !JV
+    use MpiExchangeGenModule, only: mpi_is_halo !PAR
+    use ArrayHandlersModule, only: ifind !PAR
     ! -- return
     integer(I4B) :: noder
     ! -- dummy
@@ -746,7 +746,7 @@ module BaseDisModule
     !
     ! -- Convert user-based nodenumber to reduced node number
     
-    if (nodeu > 0 .and. .not. mpi_is_halo(this%name_model)) then !JV
+    if (nodeu > 0 .and. .not. mpi_is_halo(this%name_model)) then !PAR
       noder = this%get_nodenumber(nodeu, 0)
     else
       noder = nodeu

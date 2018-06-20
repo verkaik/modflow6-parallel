@@ -31,7 +31,7 @@ module UzfModule
 
   private
   public :: uzf_create
-  public :: ftype !JV
+  public :: ftype !PAR
 
   type, extends(BndType) :: UzfType
     ! output integers
@@ -233,13 +233,13 @@ contains
     if (this%imover /= 0) then
       allocate(this%pakmvrobj)
       call this%pakmvrobj%ar(this%maxbound, this%maxbound, this%origin,         &
-                             this%p_ishalo) !JV
+                             this%p_ishalo) !PAR
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     call this%obs%obs_ar()
     !
@@ -1065,9 +1065,9 @@ contains
     endif
     !
     ! -- Return in case this package belongs to a halo model
-    if (this%p_ishalo) then !JV
-      return !JV
-    endif !JV
+    if (this%p_ishalo) then !PAR
+      return !PAR
+    endif !PAR
     !
     ! -- Store values at start of outer iteration to compare with calculated
     !    values for convergence check
