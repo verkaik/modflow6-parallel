@@ -1608,10 +1608,18 @@ module MpiExchangeModule
     endif
     
     ! -- communicator
-    call mem_deallocate(this%comm)
-    call mem_deallocate(this%nrproc)
-    call mem_deallocate(this%myrank)
-    call mem_deallocate(this%myproc)
+    if (associated(this%comm)) then
+      call mem_deallocate(this%comm)
+    endif
+    if (associated(this%nrproc)) then
+      call mem_deallocate(this%nrproc)
+    endif  
+    if (associated(this%myrank)) then
+      call mem_deallocate(this%myrank)
+    endif
+    if (associated(this%myproc)) then
+      call mem_deallocate(this%myproc)
+    endif
     if(associated(this%procmap)) then
       deallocate(this%procmap)
     endif
@@ -1648,11 +1656,12 @@ module MpiExchangeModule
           if(associated(vgbuf%rcvmmt)) then
             deallocate(vgbuf%rcvmmt)
           endif
-          do iex = 1, this%lxch(ixp)%nexchange
-            ex => this%lxch(ixp)%exchange(iex)
-            vgvar => ex%vgvar(ivg)
-            deallocate(vgvar)
-          enddo
+        enddo
+        do iex = 1, this%lxch(ixp)%nexchange
+          ex => this%lxch(ixp)%exchange(iex)
+          if (associated(ex%vgvar)) then
+            deallocate(ex%vgvar)
+          endif
         enddo
         deallocate(this%lxch(ixp)%xprnk)
         deallocate(this%lxch(ixp)%exchange)

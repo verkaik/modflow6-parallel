@@ -1040,6 +1040,13 @@ contains
     call mem_deallocate(this%ptcthresh)
     call mem_deallocate(this%ptcrat)
     !
+    if (associated(this%MpiSol)) then !JV
+      call this%MpiSol%mpi_da() !JV
+    end if !JV
+    if (associated(this%MpiMvr)) then !JV
+      call this%MpiMvr%mpi_da() !JV
+    end if !JV
+    !
     ! -- return
     return
   end subroutine sln_da
