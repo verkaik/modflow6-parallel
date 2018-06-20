@@ -290,6 +290,10 @@ module MpiExchangeGwfModule
     class(BndType), pointer :: packobj
 ! ------------------------------------------------------------------------------
     !
+    if (serialrun) then
+      return
+    end if
+    !
     ! -- Set the list of halo model names
     !call mpi_set_modelname_halo()
     !
