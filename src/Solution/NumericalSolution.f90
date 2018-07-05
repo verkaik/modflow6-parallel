@@ -66,6 +66,7 @@ module NumericalSolutionModule
     real(DP), pointer                                    :: res_in  => NULL()
     integer(I4B), pointer                                :: ibcount => NULL()
     integer(I4B), pointer                                :: icnvg => NULL()
+    integer(I4B), pointer                                :: icnvgprev => NULL() !SOL
     integer(I4B), pointer                                :: mxiter => NULL()
     integer(I4B), pointer                                :: linmeth => NULL()
     integer(I4B), pointer                                :: nonmeth => NULL()
@@ -240,6 +241,7 @@ contains
     call mem_allocate (this%res_in, 'RES_IN', solutionname)
     call mem_allocate (this%ibcount, 'IBCOUNT', solutionname)
     call mem_allocate (this%icnvg, 'ICNVG', solutionname)
+    call mem_allocate (this%icnvgprev, 'ICNVGPREV', solutionname) !SOL
     call mem_allocate (this%mxiter, 'MXITER', solutionname)
     call mem_allocate (this%linmeth, 'LINMETH', solutionname)
     call mem_allocate (this%nonmeth, 'NONMETH', solutionname)
@@ -284,6 +286,7 @@ contains
     this%res_in = DZERO
     this%ibcount = 0
     this%icnvg = 0
+    this%icnvgprev = 0 !SOL
     this%mxiter = 0
     this%linmeth = 1
     this%nonmeth = 0
@@ -1014,6 +1017,7 @@ contains
     call mem_deallocate(this%res_in)
     call mem_deallocate(this%ibcount)
     call mem_deallocate(this%icnvg)
+    call mem_deallocate(this%icnvgprev) !SOL
     call mem_deallocate(this%mxiter)
     call mem_deallocate(this%linmeth)
     call mem_deallocate(this%nonmeth)
@@ -1317,6 +1321,7 @@ contains
         endif !PAR
         !
         if (this%icnvg /= 0) then
+          this%icnvgprev = this%icnvg !SOL
           this%icnvg = 0
           if (abs(hncg) <= this%hclose) this%icnvg = 1 !PAR
         end if
@@ -2640,7 +2645,8 @@ contains
                                           this%caccel, this%itinner,           &
                                           this%convlocdv, this%convlocdr,      &
                                           this%dvmax, this%drmax,              &
-                                          this%convdvmax, this%convdrmax)
+                                          this%convdvmax, this%convdrmax,      &
+                                          this%icnvgprev) !SOL
     end if
     !
     ! ptc finalize - set ratio of ptc value added to the diagonal and the

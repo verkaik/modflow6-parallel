@@ -19,6 +19,7 @@ module NumericalModelModule
     integer(I4B), pointer                   :: nja        => null()             !number of connections
     integer(I4B), pointer                   :: moffset    => null()             !offset of this model in the solution
     integer(I4B), pointer                   :: icnvg      => null()             !convergence flag
+    integer(I4B), pointer                   :: icnvgprev  => null()             !convergence flag of previous solve !SOL
     integer(I4B), dimension(:), pointer     :: ia         => null()             !csr row pointer
     integer(I4B), dimension(:), pointer     :: ja         => null()             !csr columns
     real(DP), dimension(:), pointer         :: x          => null()             !dependent variable (head, conc, etc)
@@ -271,6 +272,7 @@ module NumericalModelModule
     call mem_allocate(this%neq, 'NEQ', modelname)
     call mem_allocate(this%nja, 'NJA', modelname)
     call mem_allocate(this%icnvg, 'ICNVG', modelname)
+    call mem_allocate(this%icnvgprev, 'ICNVGPREV', modelname) !SOL
     call mem_allocate(this%moffset, 'MOFFSET', modelname)
     allocate(this%filename)
     allocate(this%bndlist)
@@ -279,6 +281,7 @@ module NumericalModelModule
     this%neq = 0
     this%nja = 0
     this%icnvg = 0
+    this%icnvgprev = 0 !SOL
     this%moffset = 0
     !
     ! -- return

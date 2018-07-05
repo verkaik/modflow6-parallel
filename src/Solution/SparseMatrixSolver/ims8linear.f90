@@ -33,6 +33,10 @@
     real(DP), POINTER :: RELAX => NULL()
     real(DP), POINTER :: EPFACT => NULL()
     real(DP), POINTER :: L2NORM0 => NULL()
+    real(DP), POINTER :: RHOTOL => NULL() !SOL
+    real(DP), POINTER :: ALPHATOL => NULL() !SOL
+    real(DP), POINTER :: OMEGATOL => NULL() !SOL
+    integer(I4B), POINTER :: IRCLOSEPRECHK => NULL() !SOL
     ! ILUT VARIABLES
     integer(I4B), POINTER :: LEVEL => NULL()
     real(DP), POINTER :: DROPTOL => NULL()
@@ -186,7 +190,11 @@
      &        ' RESIDUAL CHANGE CRITERION FOR CLOSURE =',E15.5,/, &
      &        ' RESIDUAL CONVERGENCE OPTION           =',I9,/, &
      &        ' RESIDUAL CONVERGENCE NORM             =',1X,A,/, &
-     &        ' RELAXATION FACTOR                     =',E15.5)
+     &        ' RELAXATION FACTOR                     =',E15.5,/, & !SOL
+     &        ' RELATIVE TOLERANCE FOR RHO            =',E15.5,/, & !SOL
+     &        ' RELATIVE TOLERANCE FOR ALPHA          =',E15.5,/, & !SOL
+     &        ' RELATIVE TOLERANCE FOR OMEGA          =',E15.5,/, & !SOL
+     &        ' RCLOSE PRE CHECK                      =',I9) !SOL
 02015 FORMAT (' NUMBER OF LEVELS                      =',A15,/, &
      &        ' DROP TOLERANCE                        =',A15,//)
 02020 FORMAT (///,1X,'IMSLINEAR DATA INPUT ERROR:', &
@@ -291,6 +299,8 @@
               else if (keyword == 'L2NORM_RELATIVE_RCLOSE') then
                 THIS%ICNVGOPT = 3
               end if
+            case ('INNER_RCLOSE_PRE_CHECK') !SOL
+              this%ircloseprechk = parser%GetInteger() !SOL
             case ('INNER_MAXIMUM')
               i = parser%GetInteger()
               this%iter1 = i
@@ -366,6 +376,33 @@
                 call store_error(errmsg)
               end if
               write (cdroptol, '(e15.5)') r
+            case ('INNER_RHO_TOL') !SOL
+              r = parser%GetDouble() !SOL
+              this%rhotol = r !SOL
+              if (r < DZERO) then !SOL
+                write(errmsg,'(4x,a,a)') & !SOL
+     &            '****ERROR. INNER_RHO_TOL: ', & !SOL
+     &            'MUST BE GREATER THAN OR EQUAL TO ZERO' !SOL
+                call store_error(errmsg) !SOL
+              end if !SOL
+            case ('INNER_ALPHA_TOL') !SOL
+              r = parser%GetDouble() !SOL
+              this%alphatol = r !SOL
+              if (r < DZERO) then !SOL
+                write(errmsg,'(4x,a,a)') & !SOL
+     &            '****ERROR. INNER_ALPHA_TOL: ', & !SOL
+     &            'MUST BE GREATER THAN OR EQUAL TO ZERO' !SOL
+                call store_error(errmsg) !SOL
+              end if !SOL
+            case ('INNER_OMEGA_TOL') !SOL
+              r = parser%GetDouble() !SOL
+              this%omegatol = r !SOL
+              if (r < DZERO) then !SOL
+                write(errmsg,'(4x,a,a)') & !SOL
+     &            '****ERROR. INNER_OMEGA_TOL: ', & !SOL
+     &            'MUST BE GREATER THAN OR EQUAL TO ZERO' !SOL
+                call store_error(errmsg) !SOL
+              end if !SOL
             case default
               write(errmsg,'(4x,a,a)') &
      &          '****WARNING. UNKNOWN IMSLINEAR KEYWORD: ', &
@@ -430,11 +467,13 @@
 !
 !-------PRINT MXITER,ITER1,IPC,ISCL,IORD,HCLOSE,RCLOSE
       WRITE (IOUT,2010) clintit(THIS%ILINMETH), MXITER, THIS%ITER1, &
-     &                  clin(THIS%ILINMETH), cipc(THIS%IPC),        &
-     &                  cscale(THIS%ISCL), corder(THIS%IORD),       &
-     &                  THIS%NORTH, THIS%HCLOSE, THIS%RCLOSE,       &
-     &                  THIS%ICNVGOPT, ccnvgopt(THIS%ICNVGOPT),    &
-     &                  THIS%RELAX
+                        clin(THIS%ILINMETH), cipc(THIS%IPC),        &
+                        cscale(THIS%ISCL), corder(THIS%IORD),       &
+                        THIS%NORTH, THIS%HCLOSE, THIS%RCLOSE,       &
+                        THIS%ICNVGOPT, ccnvgopt(THIS%ICNVGOPT),     &
+                        THIS%RELAX,                                 & !SOL
+                        THIS%RHOTOL, THIS%ALPHATOL,THIS%OMEGATOL,   & !SOL
+                        THIS%IRCLOSEPRECHK !SOL
       IF (THIS%LEVEL > 0) THEN
         WRITE (IOUT,2015) trim(adjustl(clevel)), &
      &                    trim(adjustl(cdroptol))
@@ -621,6 +660,10 @@
       call mem_allocate(this%njlu, 'NJLU', this%origin)
       call mem_allocate(this%njw, 'NJW', this%origin)
       call mem_allocate(this%nwlu, 'NWLU', this%origin)
+      call mem_allocate(this%rhotol, 'RHOTOL', this%origin) !SOL
+      call mem_allocate(this%alphatol, 'ALPHATOL', this%origin) !SOL
+      call mem_allocate(this%omegatol, 'OMEGATOL', this%origin) !SOL
+      call mem_allocate(this%ircloseprechk, 'IRCLOSEPRECHK', this%origin) !SOL
       !
       ! -- initialize
       this%iout = 0
@@ -646,6 +689,10 @@
       this%njlu = 0
       this%njw = 0
       this%nwlu = 0
+      this%rhotol = DZERO !SOL
+      this%alphatol = DZERO !SOL
+      this%omegatol = DZERO !SOL
+      this%ircloseprechk = 0 !SOL
       !
       ! --Return
       return
@@ -706,6 +753,10 @@
       call mem_deallocate(this%njlu)
       call mem_deallocate(this%njw)
       call mem_deallocate(this%nwlu)
+      call mem_deallocate(this%rhotol) !SOL
+      call mem_deallocate(this%alphatol) !SOL
+      call mem_deallocate(this%omegatol) !SOL
+      call mem_deallocate(this%ircloseprechk) !SOL
       !
       ! -- nullify pointers
       nullify(this%iprims)
@@ -745,6 +796,10 @@
           THIS%LEVEL = 0
           THIS%DROPTOL = DZERO
           THIS%NORTH = 0
+          THIS%RHOTOL = DEM5 !SOL
+          THIS%ALPHATOL = DEM5 !SOL
+          THIS%OMEGATOL = DEM5 !SOL
+          THIS%IRCLOSEPRECHK = 0 !SOL
         ! Moderate
         CASE(2)
           THIS%ITER1 = 100
@@ -758,6 +813,10 @@
           THIS%LEVEL = 0
           THIS%DROPTOL = DZERO
           THIS%NORTH = 0
+          THIS%RHOTOL = DEM5 !SOL
+          THIS%ALPHATOL = DEM5 !SOL
+          THIS%OMEGATOL = DEM5 !SOL
+          THIS%IRCLOSEPRECHK = 0 !SOL
         ! Complex
         CASE(3)
           THIS%ITER1 = 500
@@ -771,6 +830,10 @@
           THIS%LEVEL = 5
           THIS%DROPTOL = DEM4
           THIS%NORTH = 2
+          THIS%RHOTOL = DEM5 !SOL
+          THIS%ALPHATOL = DEM5 !SOL
+          THIS%OMEGATOL = DEM5 !SOL
+          THIS%IRCLOSEPRECHK = 0 !SOL
       END SELECT
       RETURN
     END SUBROUTINE SET_IMSLINEAR_INPUT
@@ -778,7 +841,8 @@
       SUBROUTINE IMSLINEAR_AP(THIS,ICNVG,KSTP,KITER,IN_ITER,                  &
                               NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,    &
                               CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,          &
-                              DVMAX, DRMAX, CONVDVMAX, CONVDRMAX)
+                              DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,             &
+                              ICNVGPREV) !SOL
 !
 !     ******************************************************************
 !     SOLUTION BY THE CONJUGATE GRADIENT METHOD -
@@ -793,6 +857,7 @@
 !     + + + DUMMY ARGUMENTS + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
       integer(I4B), INTENT(INOUT)                          :: ICNVG
+      integer(I4B), INTENT(INOUT)                          :: ICNVGPREV !SOL
       integer(I4B), INTENT(IN)                             :: KSTP
       integer(I4B), INTENT(IN)                             :: KITER
       integer(I4B), INTENT(INOUT)                          :: IN_ITER
@@ -818,6 +883,8 @@
       integer(I4B) :: itmax
       real(DP) :: tv
       real(DP) :: rmax
+      logical :: lsolve !SOL
+      real(DP) :: rcnvg !SOL
 !     + + + PARAMETERS + + +
 !     + + + FUNCTIONS + + +
 !
@@ -860,11 +927,11 @@
       END IF
 !
 !-------UPDATE PRECONDITIONER
-      CALL IMSLINEARSUB_PCU(this%iout,THIS%NJA,THIS%NEQ,THIS%NIAPC,THIS%NJAPC,  &
-                            THIS%IPC, THIS%RELAX, THIS%A0, THIS%IA0, THIS%JA0,  &
-                            THIS%APC,THIS%IAPC,THIS%JAPC,THIS%IW,THIS%W,        &
-                            THIS%LEVEL, THIS%DROPTOL, THIS%NJLU, THIS%NJW,      &
-                            THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU)
+!      CALL IMSLINEARSUB_PCU(this%iout,THIS%NJA,THIS%NEQ,THIS%NIAPC,THIS%NJAPC,  & !SOL
+!                            THIS%IPC, THIS%RELAX, THIS%A0, THIS%IA0, THIS%JA0,  & !SOL
+!                            THIS%APC,THIS%IAPC,THIS%JAPC,THIS%IW,THIS%W,        & !SOL
+!                            THIS%LEVEL, THIS%DROPTOL, THIS%NJLU, THIS%NJW,      & !SOL
+!                            THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU) !SOL
 !-------INITIALIZE SOLUTION VARIABLE AND ARRAYS
       IF (KITER.EQ.1 ) THIS%NITERC = 0
       irc    = 1
@@ -900,6 +967,32 @@
         itmax = 0
         ICNVG = 1
       END IF
+!-------RCLOSE PRE CHECK BEFORE SOLVING
+      LSOLVE = .TRUE. !SOL
+      IF ((ICNVGPREV /= 0) .AND. (THIS%IRCLOSEPRECHK == 1)) THEN !SOL
+        IF (THIS%ICNVGOPT.EQ.2 .OR. THIS%ICNVGOPT.EQ.3 .OR.                     & !SOL
+            THIS%ICNVGOPT.EQ.4) THEN !SOL
+          RCNVG = THIS%L2NORM0 !SOL
+        ELSE !SOL
+          RCNVG = RMAX !SOL
+        END IF !SOL
+        CALL IMSLINEARSUB_TESTCNVG(THIS%ICNVGOPT, ICNVG, 1,                     & !SOL
+                                   DZERO, RCNVG,                                & !SOL
+                                   THIS%L2NORM0,                                & !SOL
+                                   THIS%EPFACT, THIS%HCLOSE, THIS%RCLOSE) !SOL
+        IF (ICNVG /= 0) THEN !SOL
+          LSOLVE = .FALSE. !SOL
+          INNERIT = 0 !SOL
+        END IF !SOL
+      END IF !SOL
+! 
+!-------UPDATE PRECONDITIONER
+      IF (LSOLVE) THEN !SOL
+      CALL IMSLINEARSUB_PCU(this%iout,THIS%NJA,THIS%NEQ,THIS%NIAPC,THIS%NJAPC,  & !SOL
+                            THIS%IPC, THIS%RELAX, THIS%A0, THIS%IA0, THIS%JA0,  & !SOL
+                            THIS%APC,THIS%IAPC,THIS%JAPC,THIS%IW,THIS%W,        & !SOL
+                            THIS%LEVEL, THIS%DROPTOL, THIS%NJLU, THIS%NJW,      & !SOL
+                            THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU) !SOL
 !-------SOLUTION BY THE CONJUGATE GRADIENT METHOD
       IF (THIS%ILINMETH.EQ.1) THEN
         CALL IMSLINEARSUB_CG(ICNVG, itmax, innerit,                             &
@@ -913,7 +1006,8 @@
                              NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,       &
                              CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,             &
                              DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,                &
-                             THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS) !PAR
+                             THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS,             & !PAR
+                             THIS%RHOTOL) !SOL
 !-------SOLUTION BY THE BICONJUGATE GRADIENT STABILIZED METHOD
       ELSE IF (THIS%ILINMETH.EQ.2) THEN
         CALL IMSLINEARSUB_BCGS(ICNVG, itmax, innerit,                           &
@@ -929,8 +1023,11 @@
                                NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,     &
                                CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,           &
                                DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,              &
-                               THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS) !PAR
+                               THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS,           & !PAR
+                               THIS%RHOTOL, THIS%ALPHATOL,                      & !SOL
+                               THIS%OMEGATOL) !SOL
       END IF
+      END IF !SOL
 !
 !-------BACK PERMUTE AMAT, SOLUTION, AND RHS
       IF (THIS%IORD.NE.0) THEN
@@ -1495,7 +1592,8 @@
                                  NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,   &
                                  CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,         &
                                  DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,            &
-                                 ORIGIN, MPISOL, IPRIMS) !PAR
+                                 ORIGIN, MPISOL, IPRIMS,                        & !PAR
+                                 RHOTOL) !SOL
         use MpiExchangeGenModule, only: writestd !PAR
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
@@ -1547,6 +1645,7 @@
         character(len=*) :: origin !PAR
         integer(I4B), INTENT(IN) :: IPRIMS !PAR
         type(MpiExchangeType), intent(inout) :: MpiSol !PAR
+        real(DP), INTENT(IN) :: RHOTOL !SOL
 !       + + + LOCAL DEFINITIONS + + + 
         LOGICAL :: LORTH
         character(len=31) :: cval
@@ -1686,7 +1785,7 @@
           IF (rcnvg.EQ.DZERO) ICNVG = 1 
           IF (ICNVG.NE.0) EXIT INNER 
 !-----------CHECK THAT CURRENT AND PREVIOUS rho ARE DIFFERENT           
-          isame = IMSLINEARSUB_SAME(rho, rho0) 
+          isame = IMSLINEARSUB_SAME(rho, rho0, RHOTOL) !SOL
           IF (isame.NE.0) THEN 
             EXIT INNER 
           END IF 
@@ -1731,7 +1830,8 @@
                                    NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR, &
                                    CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,       &
                                    DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,          &
-                                   ORIGIN, MPISOL, IPRIMS) !PAR
+                                   ORIGIN, MPISOL, IPRIMS,                      & !PAR
+                                   RHOTOL, ALPHATOL, OMEGATOL) !SOL
         use MpiExchangeGenModule, only: writestd !PAR
 
         IMPLICIT NONE 
@@ -1790,6 +1890,9 @@
         character(len=*) :: origin !PAR
         integer(I4B), INTENT(IN) :: IPRIMS !PAR
         type(MpiExchangeType), intent(inout) :: MpiSol !PAR
+        REAL(DP), INTENT(IN) :: RHOTOL !SOL
+        REAL(DP), INTENT(IN) :: ALPHATOL !SOL
+        REAL(DP), INTENT(IN) :: OMEGATOL !SOL
 !       + + + LOCAL DEFINITIONS + + +  
         LOGICAL :: LORTH
         character(len=15) :: cval1, cval2
@@ -2001,15 +2104,15 @@
           IF (ICNVG.NE.0) EXIT INNER
 !-----------CHECK THAT CURRENT AND PREVIOUS rho, alpha, AND omega ARE 
 !           DIFFERENT
-          isame = IMSLINEARSUB_SAME(rho, rho0) 
+          isame = IMSLINEARSUB_SAME(rho, rho0, RHOTOL) !SOL
           IF (isame.NE.0) THEN 
             EXIT INNER 
           END IF 
-          isame = IMSLINEARSUB_SAME(alpha, alpha0) 
+          isame = IMSLINEARSUB_SAME(alpha, alpha0, ALPHATOL) !SOL
           IF (isame.NE.0) THEN 
             EXIT INNER 
           END IF 
-          isame = IMSLINEARSUB_SAME(omega, omega0) 
+          isame = IMSLINEARSUB_SAME(omega, omega0, OMEGATOL) !SOL
           IF (isame.NE.0) THEN 
             EXIT INNER 
           END IF 
@@ -2374,12 +2477,13 @@
       return
     END FUNCTION IMSLINEARSUB_RNRM2
 
-    FUNCTION IMSLINEARSUB_SAME(a, b) RESULT(ivalue)
+    FUNCTION IMSLINEARSUB_SAME(a, b, tol) RESULT(ivalue) !SOL
 !     + + + return
       integer(I4B) :: ivalue
 !     + + + dummy arguments + + +
       real(DP), intent(in)   :: a
       real(DP), intent(in)   :: b
+      real(DP), intent(in)   :: tol !SOL
 !     + + + local definitions + + +
       real(DP) :: denom
       real(DP) :: rerror
@@ -2399,7 +2503,7 @@
           end if
           rerror = abs( (a - b) / denom )
         end if
-        if (rerror <= DEM5) then
+        if (rerror <= tol) then !SOL
           ivalue = 1
         end if
       end if
