@@ -960,22 +960,21 @@ module MpiExchangeModule
         call mem_setptr(cond, 'COND', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(moffset, 'MOFFSET', trim(this%lxch(ixp)%exchange(ix)%m1_name))
         !
-        do iv = 1, vgbuf%nrcv
-          if (vgbuf%rcvmt(iv)%memitype /= iadbl1d) then
-            call store_error('Program error: mpi_mv_halo')
-            call ustop()
+        iv = ix
+        if (vgbuf%rcvmt(iv)%memitype /= iadbl1d) then
+          call store_error('Program error 1: mpi_mv_halo')
+          call ustop()
+        end if
+        if (vgbuf%rcvmt(iv)%isize /= nexg) then
+          call store_error('Program error 2: mpi_mv_halo')
+          call ustop()
+        end if
+        do iexg = 1, nexg
+          n = nodem1(iexg) + moffset
+          v = vgbuf%rcvmt(iv)%adbl1d(iexg)
+          if (active(n) > 0) then
+            x(n) = x(n) + cond(iexg)*v
           end if
-          if (vgbuf%rcvmt(iv)%isize /= nexg) then
-            call store_error('Program error: mpi_mv_halo')
-            call ustop()
-          end if
-          do iexg = 1, nexg
-            n = nodem1(iexg) + moffset
-            v = vgbuf%rcvmt(iv)%adbl1d(iexg)
-            if (active(n) > 0) then
-              x(n) = x(n) + cond(iexg)*v
-            end if
-          end do
         end do
       end do 
     end do
