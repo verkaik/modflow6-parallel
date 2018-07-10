@@ -463,7 +463,7 @@ contains
         call this%parser%GetStringCaps(keyword)
         if (keyword=='SPECIFIED') then
           this%mawwells(n)%ieqn = 0
-        else if (keyword=='THEIM') then
+        else if (keyword=='THEIM' .or. keyword=='THIEM') then
           this%mawwells(n)%ieqn = 1
         else if (keyword=='SKIN') then
           this%mawwells(n)%ieqn = 2
@@ -474,7 +474,7 @@ contains
         else
           write(errmsg,'(4x,a,1x,i6,1x,a)') &
             '****ERROR. CONDEQN FOR WELL', n, &
-            'MUST BE "CONDUCTANCE", "THEIM" "MEAN", OR "SKIN".'
+            'MUST BE "CONDUCTANCE", "THIEM" "MEAN", OR "SKIN".'
         end if
         ! -- ngwnodes
         ival = this%parser%GetInteger()
@@ -898,10 +898,10 @@ contains
     character (len=10) :: crskin, ckskin
     ! -- data
     data ccond(0) /'SPECIFIED '/
-    data ccond(1) /'THEIM     '/
+    data ccond(1) /'THIEM     '/
     data ccond(2) /'SKIN      '/
     data ccond(3) /'CUMULATIVE'/
-    data ccond(2) /'MEAN      '/
+    data ccond(4) /'MEAN      '/
     ! -- format
     character(len=*), parameter :: fmtwelln = &
       "(1X,//43X,'MULTI-AQUIFER WELL DATA'" // &
@@ -3705,7 +3705,7 @@ contains
       eradius = sqrt(area / (DEIGHT * DPI))
     end if
     !
-    ! -- conductance calculated using Theim equation
+    ! -- conductance calculated using Thiem equation
     if (this%mawwells(i)%ieqn == 1) then
       c = (DTWO * DPI * tthka * sqrtk11k22) / log(eradius / this%mawwells(i)%radius)
     ! -- conductance calculated using skin
@@ -3717,7 +3717,7 @@ contains
                log(this%mawwells(i)%sradius(j)/this%mawwells(i)%radius)
         c = (DTWO * DPI * tthka * sqrtk11k22) / skin
       end if
-    ! -- conductance calculated using cumulative Theim and skin equations
+    ! -- conductance calculated using cumulative Thiem and skin equations
     else if (this%mawwells(i)%ieqn == 3) then
       ! calculate lc1
       lc1 = log(eradius / this%mawwells(i)%radius) / (DTWO * DPI * tthka * sqrtk11k22)

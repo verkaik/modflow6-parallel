@@ -33,6 +33,7 @@ module gwfpgwfpExchangeModule
     integer(I4B), pointer                            :: ivarcv    => null()     ! variable cv
     integer(I4B), pointer                            :: idewatcv  => null()     ! dewatered cv
     integer(I4B), pointer                            :: ianglex   => null()     ! flag indicating anglex was read, if read, ianglex is index in auxvar
+    integer(I4B), pointer                            :: icdist    => null()     ! flag indicating cdist was read, if read, icdist is index in auxvar
     integer(I4B), pointer                            :: inamedbound => null()   ! flag to read boundnames
     real(DP), pointer                                :: satomega  => null()     ! saturation smoothing
     integer(I4B), dimension(:), pointer              :: ihc       => null()     ! horizontal connection indicator array
@@ -44,7 +45,7 @@ module gwfpgwfpExchangeModule
     type(GhostNodeType), pointer                     :: gnc       => null()     ! gnc object
     integer(I4B), pointer                            :: inmvr     => null()     ! unit number for mover (0 if off)
     type(gwfMvrType), pointer                        :: mvr       => null()     ! water mover object
-    integer(I4B), pointer                            :: inobs     => null()     ! unit number for gwfp-gwfp observations
+    integer(I4B), pointer                            :: inobs     => null()     ! unit number for GWFP-GWFP observations
     type(ObsType), pointer                           :: obs       => null()     ! observation object
     character(len=LENBOUNDNAME), pointer, dimension(:) :: boundname   => null() ! boundnames
   contains
@@ -56,7 +57,7 @@ module gwfpgwfpExchangeModule
     procedure          :: exg_ad      => gwfp_gwfp_ad
     procedure          :: exg_cf      => gwfp_gwfp_cf
     procedure          :: exg_fc      => gwfp_gwfp_fc
-!!    procedure          :: exg_fn      => gwfp_gwfp_fn
+!TODO    procedure          :: exg_fn      => gwfp_gwfp_fn
     procedure          :: exg_bd      => gwfp_gwfp_bd
     procedure          :: exg_ot      => gwfp_gwfp_ot
     procedure          :: exg_da      => gwfp_gwfp_da
@@ -71,6 +72,7 @@ module gwfpgwfpExchangeModule
     procedure          :: read_mvr
     procedure, private :: condcalc
     procedure, private :: rewet
+    procedure, private :: qcalc
     procedure, private :: gwfp_gwfp_df_obs
     procedure, private :: gwfp_gwfp_rp_obs
     procedure, public  :: gwfp_gwfp_save_simvals
@@ -81,7 +83,7 @@ contains
 subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
                               createhalo, nexg)
 ! ******************************************************************************
-! Create a new gwfp to gwfp exchange object: initialization.
+! Create a new GWFP to GWFP exchange object.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -193,7 +195,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
   
   subroutine gwfp_gwfp_df(this)
 ! ******************************************************************************
-! gwfp_gwfp_df -- Define gwfp to gwfp exchange object.
+! gwfp_gwfp_df -- Define GWFP to GWFP exchange object.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -220,14 +222,14 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !PAR-TODO: idsoln
     !
     ! -- Ensure models are in same solution
-    !if(this%gwfpmodel1%idsoln /= this%gwfpmodel2%idsoln) then
-    !  call store_error('ERROR.  TWO MODELS ARE CONNECTED ' //                  &
-    !    'IN A gwfp EXCHANGE BUT THEY ARE IN DIFFERENT SOLUTIONS. ' //           &
-    !    'gwfp MODELS MUST BE IN SAME SOLUTION: ' //                             &
-    !    trim(this%gwfpmodel1%name) // ' ' // trim(this%gwfpmodel2%name) )
-    !  call this%parser%StoreErrorUnit()
-    !  call ustop()
-    !endif
+    !TODO if(this%gwfpmodel1%idsoln /= this%gwfpmodel2%idsoln) then
+    !TODO  call store_error('ERROR.  TWO MODELS ARE CONNECTED ' //                  &
+    !TODO    'IN A gwfp EXCHANGE BUT THEY ARE IN DIFFERENT SOLUTIONS. ' //           &
+    !TODO    'gwfp MODELS MUST BE IN SAME SOLUTION: ' //                             &
+    !TODO    trim(this%gwfpmodel1%name) // ' ' // trim(this%gwfpmodel2%name) )
+    !TODO  call this%parser%StoreErrorUnit()
+    !TODO  call ustop()
+    !TODOendif
     !
     ! -- read options
     call this%read_options(iout)
@@ -240,6 +242,10 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !
     ! -- read exchange data
     call this%read_data(iout)
+    !
+    ! -- call each model and increase the edge count
+    call this%gwfpmodel1%npf%increase_edge_count(this%nexg)
+    call this%gwfpmodel2%npf%increase_edge_count(this%nexg)
     !
     ! -- Create and read ghost node information
     if(this%ingnc > 0) then
@@ -365,6 +371,29 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       endif
     endif
     !
+    ! -- Check to see if specific discharge is needed for model1 or model2.
+    !    If so, then ANGLDEGX must be provided as an auxiliary variable for this
+    !    GWF-GWF exchange (this%ianglex > 0).
+    if(this%gwfpmodel1%npf%icalcspdis /= 0 .or. &
+       this%gwfpmodel2%npf%icalcspdis /= 0) then
+      if(this%ianglex == 0) then
+        write(errmsg, '(a)') 'Error.  GWFP-GWFP requires that ANGLDEGX be ' // &
+                             'specified as an auxiliary variable because ' //  &
+                             'specific discharge is being calculated in' // &
+                             ' one or both groundwater models.'
+        call store_error(errmsg)
+        call ustop()
+      endif
+      if(this%icdist == 0) then
+        write(errmsg, '(a)') 'Error.  GWFP-GWFP requires that CDIST be ' // &
+                             'specified as an auxiliary variable because ' //  &
+                             'specific discharge is being calculated in' // &
+                             ' one or both groundwater models.'
+        call store_error(errmsg)
+        call ustop()
+      endif
+    endif
+    !
     ! -- Go through each connection and calculate the saturated conductance
     do iexg = 1, this%nexg
       !
@@ -410,19 +439,19 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
           vg(3) = DZERO
           !
           ! -- anisotropy in model 1
-          !!if(this%gwfpmodel1%npf%ik22 /= 0) then
-          !!  hyn = this%gwfpmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
-          !!endif
+          !TODO if(this%gwfpmodel1%npf%ik22 /= 0) then
+          !TODO  hyn = this%gwfpmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
+          !TODOendif
           !
           ! -- anisotropy in model 2
-          !!if(this%gwfpmodel2%npf%ik22 /= 0) then
-          !!  hym = this%gwfpmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
-          !!endif
+          !TODOif(this%gwfpmodel2%npf%ik22 /= 0) then
+          !TODO  hym = this%gwfpmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
+          !TODOendif
         endif
         !
         fawidth = this%hwva(iexg)
-        csat = hcond(1, 1, 1, 1, this%inewton, 0, ihc, 0,                     &
-                      this%icellavg, DONE,                                    &
+        csat = hcond(1, 1, 1, 1, this%inewton, 0, ihc,                        &
+                      this%icellavg, 0, 0, DONE,                              &
                       topn, topm, satn, satm, hyn, hym,                       &
                       topn, topm,                                             &
                       botn, botm,                                             &
@@ -475,9 +504,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: DZERO
     ! -- dummy
-    class(gwfpExchangeType) :: this
+    class(GwfpExchangeType) :: this
     integer(I4B), intent(in) :: isolnid
     integer(I4B), intent(in) :: kpicard
     integer(I4B), intent(in) :: isubtime
@@ -563,26 +591,26 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     if(present(inwtflag)) then
       if (inwtflag == 0) inwt = 0
     endif
-!!    if (inwt /= 0) then
-!!      call this%exg_fn(kiter, iasln, amatsln)
-!!    endif
+!TODO    if (inwt /= 0) then
+!TODO      call this%exg_fn(kiter, iasln, amatsln)
+!TODO    endif
     !
     ! -- Ghost node Newton-Raphson
-!!    if (this%ingnc > 0) then
-!!      if (inwt /= 0) then
-!!        njasln = size(amatsln)
-!!        call this%gnc%gnc_fn(kiter, njasln, amatsln, this%condsat,             &
-!!          ihc_opt=this%ihc, ivarcv_opt=this%ivarcv,                            &
-!!          ictm1_opt=this%gwfpmodel1%npf%icelltype,                              &
-!!          ictm2_opt=this%gwfpmodel2%npf%icelltype)
-!!      endif
-!!    endif
+!TODO    if (this%ingnc > 0) then
+!TODO      if (inwt /= 0) then
+!TODO        njasln = size(amatsln)
+!TODO        call this%gnc%gnc_fn(kiter, njasln, amatsln, this%condsat,             &
+!TODO          ihc_opt=this%ihc, ivarcv_opt=this%ivarcv,                            &
+!TODO          ictm1_opt=this%gwfpmodel1%npf%icelltype,                              &
+!TODO          ictm2_opt=this%gwfpmodel2%npf%icelltype)
+!TODO      endif
+!TODO    endif
     !
     ! -- Return
     return
   end subroutine gwfp_gwfp_fc
 
-!  subroutine gwfp_gwfp_fn(this, kiter, iasln, amatsln)
+!TODO  subroutine gwfp_gwfp_fn(this, kiter, iasln, amatsln)
 !! ******************************************************************************
 !! gwfp_gwfp_fn -- Fill amatsln with Newton terms
 !! ******************************************************************************
@@ -696,6 +724,146 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
 !    return
 !  end subroutine gwfp_gwfp_fn
 
+  subroutine gwfp_gwfp_cq(this, icnvg, isuppress_output, isolnid)
+! ******************************************************************************
+! gwfp_gwfp_cq -- Calculate flow between two cells
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ConstantsModule, only: DZERO, DPIO180
+    use GwfNpfModule, only: thksatnm
+    ! -- dummy
+    class(GwfpExchangeType) :: this
+    integer(I4B), intent(inout) :: icnvg
+    integer(I4B), intent(in) :: isuppress_output
+    integer(I4B), intent(in) :: isolnid
+    ! -- local
+    integer(I4B) :: i
+    integer(I4B) :: n1
+    integer(I4B) :: n2
+    integer(I4B) :: ihc
+    integer(I4B) :: ibdn1
+    integer(I4B) :: ibdn2
+    integer(I4B) :: ictn1
+    integer(I4B) :: ictn2
+    integer(I4B) :: iusg
+    real(DP) :: topn1
+    real(DP) :: topn2
+    real(DP) :: botn1
+    real(DP) :: botn2
+    real(DP) :: satn1
+    real(DP) :: satn2
+    real(DP) :: hn1
+    real(DP) :: hn2
+    real(DP) :: rrate
+    real(DP) :: thksat
+    real(DP) :: angle
+    real(DP) :: nx
+    real(DP) :: ny
+    real(DP) :: distance
+    real(DP) :: dltot
+    real(DP) :: hwva
+    real(DP) :: area
+! ------------------------------------------------------------------------------
+    !
+    ! -- Return if there neither model needs to calculate specific discharge
+    if (this%gwfpmodel1%npf%icalcspdis == 0 .and. &
+        this%gwfpmodel2%npf%icalcspdis == 0) return
+    !
+    ! -- initialize
+    iusg = 0
+    !
+    ! -- Loop through all exchanges
+    do i = 1, this%nexg
+      rrate = DZERO
+      n1 = this%nodem1(i)
+      n2 = this%nodem2(i)
+      ihc = this%ihc(i)
+      hwva = this%hwva(i)
+      ibdn1 = this%gwfpmodel1%ibound(n1)
+      ibdn2 = this%gwfpmodel2%ibound(n2)
+      ictn1 = this%gwfpmodel1%npf%icelltype(n1)
+      ictn2 = this%gwfpmodel2%npf%icelltype(n2)
+      topn1 = this%gwfpmodel1%dis%top(n1)
+      topn2 = this%gwfpmodel2%dis%top(n2)
+      botn1 = this%gwfpmodel1%dis%bot(n1)
+      botn2 = this%gwfpmodel2%dis%bot(n2)
+      satn1 = this%gwfpmodel1%npf%sat(n1)
+      satn2 = this%gwfpmodel2%npf%sat(n2)
+      hn1 = this%gwfpmodel1%x(n1)
+      hn2 = this%gwfpmodel2%x(n2)
+      !
+      ! -- If both cells are active then calculate flow rate, and add ghost
+      !    node contribution
+      if(ibdn1 /= 0 .and. ibdn2 /= 0) then
+        rrate = this%qcalc(i, n1, n2)
+        if(this%ingnc > 0) then
+          rrate = rrate + this%gnc%deltaqgnc(i)
+        endif
+      endif
+      !
+      ! -- Calculate face normal components
+      if(ihc == 0) then
+        nx = DZERO
+        ny = DZERO
+        area = hwva
+        if (botn1 < botn2) then
+          ! -- n1 is beneath n2, so rate is positive downward.  Flip rate
+          !    upward so that points in positive z direction
+          rrate = - rrate
+        endif
+      else
+        if(this%ianglex > 0) then
+          angle = this%auxvar(this%ianglex, i) * DPIO180
+          nx = cos(angle)
+          ny = sin(angle)
+        else
+          ! error?
+          call ustop('error in gwf_gwf_cq')
+        endif
+        !
+        ! -- Calculate the saturated thickness at interface between n1 and n2
+        thksat = thksatnm(ibdn1, ibdn2, ictn1, ictn2, this%inewton, ihc,       & 
+                          iusg, hn1, hn2, satn1, satn2,                        &
+                          topn1, topn2, botn1, botn2, this%satomega)
+        area = hwva * thksat
+      endif
+      !
+      ! -- Submit this connection and flow information to the npf
+      !    package of gwfmodel1
+      if(this%icdist > 0) then
+        dltot = this%auxvar(this%icdist, i)
+      else
+        call ustop('error in gwf_gwf_cq')
+      endif
+      distance = dltot * this%cl1(i) / (this%cl1(i) + this%cl2(i))
+      if (this%gwfpmodel1%npf%icalcspdis == 1) then
+        call this%gwfpmodel1%npf%set_edge_properties(n1, ihc, rrate, area,     &
+                                                    nx, ny, distance)
+      endif
+      !
+      ! -- Submit this connection and flow information to the npf
+      !    package of gwfmodel2
+      if(this%icdist > 0) then
+        dltot = this%auxvar(this%icdist, i)
+      else
+        call ustop('error in gwf_gwf_cq')
+      endif
+      if (this%gwfpmodel2%npf%icalcspdis == 1) then
+        distance = dltot * this%cl2(i) / (this%cl1(i) + this%cl2(i))
+        if (ihc /= 0) rrate = -rrate
+        call this%gwfpmodel2%npf%set_edge_properties(n2, ihc, rrate, area,    &
+                                                    nx, ny, distance)
+      endif
+      !
+    enddo
+    !
+    ! -- return
+    return
+  end subroutine gwfp_gwfp_cq
+
   subroutine gwfp_gwfp_bd(this, icnvg, isuppress_output, isolnid)
 ! ******************************************************************************
 ! gwfp_gwfp_bd -- Budget for implicit gwfp to gwfp exchange; the budget for the
@@ -783,7 +951,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       ! -- If both cells are active then calculate flow rate
       if(this%gwfpmodel1%ibound(n1) /= 0 .and. &
           this%gwfpmodel2%ibound(n2) /= 0) then
-        rrate = this%cond(i) * this%m2%x(n2) - this%cond(i) * this%m1%x(n1)
+        rrate = this%qcalc(i, n1, n2)
         !
         ! -- add ghost node contribution
         if(this%ingnc > 0) then
@@ -1058,6 +1226,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
             !    used in either model.  Store ANGLDEGX position in this%ianglex
             ival = ifind(this%auxname, 'ANGLDEGX')
             if(ival > 0) this%ianglex = ival
+            ival = ifind(this%auxname, 'CDIST')
+            if(ival > 0) this%icdist = ival
           case ('PRINT_INPUT')
             this%iprpak = 1
             write(iout,'(4x,a)') &
@@ -1577,7 +1747,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         !
         fawidth = this%hwva(iexg)
         cond = hcond(ibdn, ibdm, ictn, ictm, this%inewton, this%inewton,       &
-                     this%ihc(iexg), this%icellavg, 0, this%condsat(iexg),     &
+                     this%ihc(iexg), this%icellavg, 0, 0, this%condsat(iexg),  &
                      hn, hm, satn, satm, hyn, hym, topn, topm, botn, botm,     &
                      this%cl1(iexg), this%cl2(iexg), fawidth, this%satomega)
       endif
@@ -1617,6 +1787,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_allocate(this%idewatcv, 'IDEWATCV', origin)
     call mem_allocate(this%inewton, 'INEWTON', origin)
     call mem_allocate(this%ianglex, 'IANGLEX', origin)
+    call mem_allocate(this%icdist, 'ICDIST', origin)
     call mem_allocate(this%ingnc, 'INGNC', origin)
     call mem_allocate(this%inmvr, 'INMVR', origin)
     call mem_allocate(this%inobs, 'INOBS', origin)
@@ -1630,6 +1801,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     this%idewatcv = 0
     this%inewton = 0
     this%ianglex = 0
+    this%icdist = 0
     this%ingnc = 0
     this%inmvr = 0
     this%inobs = 0
@@ -1678,6 +1850,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_deallocate(this%idewatcv)
     call mem_deallocate(this%inewton)
     call mem_deallocate(this%ianglex)
+    call mem_deallocate(this%icdist)
     call mem_deallocate(this%ingnc)
     call mem_deallocate(this%inmvr)
     call mem_deallocate(this%inobs)
@@ -1854,6 +2027,30 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !
     return
   end subroutine gwfp_gwfp_fp
+
+  function qcalc(this, iexg, n1, n2)
+! ******************************************************************************
+! qcalc -- calculate flow between two cells, positive into n1
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- return
+    real(DP) :: qcalc
+    ! -- dummy
+    class(GwfpExchangeType) :: this
+    integer(I4B), intent(in) :: iexg
+    integer(I4B), intent(in) :: n1
+    integer(I4B), intent(in) :: n2
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    ! -- Calculate flow between nodes in the two models
+    qcalc = this%cond(iexg) * (this%m2%x(n2) - this%m1%x(n1))
+    !
+    ! -- return
+    return
+  end function qcalc
 
   function gwfp_gwfp_get_iasym(this) result (iasym)
 ! ******************************************************************************

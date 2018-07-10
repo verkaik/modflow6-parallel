@@ -442,7 +442,7 @@
         call store_error(errmsg)
       END IF
       IF (THIS%NORTH < 0) THEN
-        WRITE( errmsg,'(A)' ) 'IMSLINEAR7AR: NORTH MUST .GE. 0.0'
+        WRITE( errmsg,'(A)' ) 'IMSLINEAR7AR: NORTH MUST .GE. 0'
         call store_error(errmsg)
       END IF
       IF (THIS%RCLOSE.EQ.DZERO) THEN
@@ -474,7 +474,7 @@
                         THIS%RELAX,                                 & !SOL
                         THIS%RHOTOL, THIS%ALPHATOL,THIS%OMEGATOL,   & !SOL
                         THIS%IRCLOSEPRECHK !SOL
-      IF (THIS%LEVEL > 0) THEN
+      IF (THIS%LEVEL > 0 .OR. THIS%DROPTOL > DZERO) THEN
         WRITE (IOUT,2015) trim(adjustl(clevel)), &
      &                    trim(adjustl(cdroptol))
       ELSE
@@ -500,7 +500,18 @@
       ! -- ILUT AND MILUT
       IF (THIS%IPC.EQ.3 .OR. THIS%IPC.EQ.4) THEN
         THIS%NIAPC = THIS%NEQ
-        iwk        = THIS%NEQ * (THIS%LEVEL * 2 + 1)
+        IF (THIS%LEVEL > 0) THEN
+          iwk      = THIS%NEQ * (THIS%LEVEL * 2 + 1)
+        ELSE
+          iwk = 0
+          DO n = 1, NEQ
+            i = IA(n+1) - IA(n)
+            IF (i > iwk) THEN
+              iwk = i
+            END IF
+          END DO
+          iwk      = THIS%NEQ * iwk
+        END IF
         THIS%NJAPC = iwk
         ijlu       = iwk
         ijw        = 2 * THIS%NEQ
