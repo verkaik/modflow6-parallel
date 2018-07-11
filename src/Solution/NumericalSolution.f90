@@ -462,6 +462,7 @@ contains
     use SimModule, only: ustop, store_error, count_errors
     use InputOutputModule, only: getunit, openfile
     use MpiExchangeGenModule, only: serialrun !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     class(NumericalSolutionType) :: this
     ! -- local
@@ -541,6 +542,7 @@ contains
             call store_error(errmsg)
           end if
         case ('CSV_OUTPUT')
+          call MpiWorld%mpi_not_supported('CSV_OUTPUT') !PAR
           call this%parser%GetStringCaps(keyword)
           if (keyword == 'FILEOUT') then
             call this%parser%GetString(fname)

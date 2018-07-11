@@ -57,13 +57,13 @@ module gwfpgwfpExchangeModule
     procedure          :: exg_ad      => gwfp_gwfp_ad
     procedure          :: exg_cf      => gwfp_gwfp_cf
     procedure          :: exg_fc      => gwfp_gwfp_fc
-!TODO    procedure          :: exg_fn      => gwfp_gwfp_fn
+    procedure          :: exg_fn      => gwfp_gwfp_fn
     procedure          :: exg_bd      => gwfp_gwfp_bd
     procedure          :: exg_ot      => gwfp_gwfp_ot
     procedure          :: exg_da      => gwfp_gwfp_da
     procedure          :: exg_fp      => gwfp_gwfp_fp
     procedure          :: get_iasym   => gwfp_gwfp_get_iasym
-    procedure          :: get_m1m2    => gwfp_gwfp_get_m1m2
+    procedure          :: get_m1m2    => gwfp_gwfp_get_m1m2 !PAR
     procedure          :: allocate_scalars
     procedure          :: allocate_arrays
     procedure          :: read_options
@@ -80,8 +80,8 @@ module gwfpgwfpExchangeModule
 
 contains
 
-subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
-                              createhalo, nexg)
+subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   & !PAR
+                              createhalo, nexg) !PAR
 ! ******************************************************************************
 ! Create a new GWFP to GWFP exchange object.
 ! ******************************************************************************
@@ -89,28 +89,28 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ArrayHandlersModule, only: ifind
+    use ArrayHandlersModule, only: ifind !PAR
     use ConstantsModule, only: LINELENGTH
     use BaseModelModule, only: BaseModelType
-    use ListsModule, only: baseexchangelist, halomodellist
+    use ListsModule, only: baseexchangelist, halomodellist !PAR
     use ObsModule, only: obs_cr
     use MpiExchangeModule, only: mpi_add_halo_model !PAR
     use InputOutputModule, only: getunit, openfile !PAR
     ! -- dummy
     character(len=*),intent(in) :: filename
     integer(I4B), intent(in) :: id
-    integer, intent(in) :: m1i, m2i
-    character(len=LINELENGTH), intent(in) :: mname1i, mname2i
-    integer(I4B), intent(inout) :: im
-    logical, intent(in) :: createhalo
-    integer(I4B), intent(in) :: nexg
+    integer, intent(in) :: m1i, m2i !PAR
+    character(len=LINELENGTH), intent(in) :: mname1i, mname2i !PAR
+    integer(I4B), intent(inout) :: im !PAR
+    logical, intent(in) :: createhalo !PAR
+    integer(I4B), intent(in) :: nexg !PAR
     ! -- local
-    type(gwfpExchangeType), pointer :: exchange
+    type(gwfpExchangeType), pointer :: exchange !PAR
     class(BaseModelType), pointer :: mb
     class(BaseExchangeType), pointer :: baseexchange
     character(len=20) :: cint
     integer(I4B) :: m1, m2, m, s1, s2, inunit, ierr !PAR
-    character(len=LINELENGTH) :: mname2
+    character(len=LINELENGTH) :: mname2 !PAR
     logical :: isfound !PAR
 ! ------------------------------------------------------------------------------
     !
@@ -138,24 +138,19 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     ! -- Create the obs package
     call obs_cr(exchange%obs, exchange%inobs)
     !
-    if (m1i > 0 .or. .not.createhalo) then
-      m1 = m1i
-      m2 = m2i
-      mname2 = mname2i
-      exchange%m1m2_swap = .false.
-    else
-      m1 = m2i
-      m2 = m1i
-      mname2 = mname1i
-      exchange%m1m2_swap = .true.
-    endif
-    if (m2 > 0) then
-      exchange%m2_prov = m2
-    else
-      exchange%m2_prov = -1
-    endif
+    if (m1i > 0 .or. .not.createhalo) then !PAR
+      m1 = m1i !PAR
+      m2 = m2i !PAR
+      mname2 = mname2i !PAR
+      exchange%m1m2_swap = .false. !PAR
+    else !PAR
+      m1 = m2i !PAR
+      m2 = m1i !PAR
+      mname2 = mname1i !PAR
+      exchange%m1m2_swap = .true. !PAR
+    endif !PAR
     !
-    mb => GetBaseModelFromList(basemodellist, m1)
+    mb => GetBaseModelFromList(basemodellist, m1) !PAR
     ! -- set exchange%m1
     select type (mb)
     class is (NumericalModelType)
@@ -168,16 +163,16 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     end select
     !
     ! -- set gwfmodel2
-    if (.not.createhalo) then
-      mb => GetBaseModelFromList(basemodellist, m2)
-    else  
-      im = im + 1
+    if (.not.createhalo) then !PAR
+      mb => GetBaseModelFromList(basemodellist, m2) !PAR
+    else !PAR 
+      im = im + 1 !PAR
       exchange%m2_ishalo = .true. !PAR
       call mpi_add_halo_model(im, mname2) !PAR
       call gwf_cr_halo(im, mname2, nexg) !PAR
-      mb => GetBaseModelFromList(halomodellist, im)
+      mb => GetBaseModelFromList(halomodellist, im) !PAR
       mb%ishalo = .true. !PAR
-    endif
+    endif !PAR
     ! -- set exchange%m2
     select type (mb)
     class is (NumericalModelType)
@@ -249,7 +244,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     !
     ! -- Create and read ghost node information
     if(this%ingnc > 0) then
-      call MpiWorld%mpi_not_supported('Ghost Node Correction') !PAR
       call gnc_cr(this%gnc, this%name, this%ingnc, iout)
       call this%read_gnc(iout)
     endif
@@ -439,14 +433,14 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
           vg(3) = DZERO
           !
           ! -- anisotropy in model 1
-          !TODO if(this%gwfpmodel1%npf%ik22 /= 0) then
-          !TODO  hyn = this%gwfpmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
-          !TODOendif
+          if(this%gwfpmodel1%npf%ik22 /= 0) then
+            hyn = this%gwfpmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
+          endif
           !
           ! -- anisotropy in model 2
-          !TODOif(this%gwfpmodel2%npf%ik22 /= 0) then
-          !TODO  hym = this%gwfpmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
-          !TODOendif
+          if(this%gwfpmodel2%npf%ik22 /= 0) then
+            hym = this%gwfpmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
+          endif
         endif
         !
         fawidth = this%hwva(iexg)
@@ -591,138 +585,140 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     if(present(inwtflag)) then
       if (inwtflag == 0) inwt = 0
     endif
-!TODO    if (inwt /= 0) then
-!TODO      call this%exg_fn(kiter, iasln, amatsln)
-!TODO    endif
-    !
-    ! -- Ghost node Newton-Raphson
-!TODO    if (this%ingnc > 0) then
-!TODO      if (inwt /= 0) then
-!TODO        njasln = size(amatsln)
-!TODO        call this%gnc%gnc_fn(kiter, njasln, amatsln, this%condsat,             &
-!TODO          ihc_opt=this%ihc, ivarcv_opt=this%ivarcv,                            &
-!TODO          ictm1_opt=this%gwfpmodel1%npf%icelltype,                              &
-!TODO          ictm2_opt=this%gwfpmodel2%npf%icelltype)
-!TODO      endif
-!TODO    endif
+    if (inwt /= 0) then
+      call this%exg_fn(kiter, iasln, amatsln)
+    endif
+
+! -- Ghost node Newton-Raphson
+    if (this%ingnc > 0) then
+      if (inwt /= 0) then
+        njasln = size(amatsln)
+        call this%gnc%gnc_fn(kiter, njasln, amatsln, this%condsat,             &
+          ihc_opt=this%ihc, ivarcv_opt=this%ivarcv,                            &
+          ictm1_opt=this%gwfpmodel1%npf%icelltype,                              &
+          ictm2_opt=this%gwfpmodel2%npf%icelltype)
+      endif
+    endif
     !
     ! -- Return
     return
   end subroutine gwfp_gwfp_fc
 
-!TODO  subroutine gwfp_gwfp_fn(this, kiter, iasln, amatsln)
-!! ******************************************************************************
-!! gwfp_gwfp_fn -- Fill amatsln with Newton terms
-!! ******************************************************************************
-!!
-!!    SPECIFICATIONS:
-!! ------------------------------------------------------------------------------
-!    ! -- modules
-!    use SmoothingModule, only: sQuadraticSaturationDerivative
-!    ! -- dummy
-!    class(gwfpExchangeType) :: this
-!    integer(I4B), intent(in) :: kiter
-!    integer(I4B), dimension(:), intent(in) :: iasln
-!    real(DP), dimension(:), intent(inout) :: amatsln
-!    ! -- local
-!    logical :: nisup
-!    integer(I4B) :: iexg
-!    integer(I4B) :: n, m
-!    integer(I4B) :: nodensln, nodemsln
-!    integer(I4B) :: ibdn, ibdm
-!    integer(I4B) :: idiagnsln, idiagmsln
-!    real(DP) :: topn, topm
-!    real(DP) :: botn, botm
-!    real(DP) :: topup, botup
-!    real(DP) :: hn, hm
-!    real(DP) :: hup, hdn
-!    real(DP) :: cond
-!    real(DP) :: term
-!    real(DP) :: consterm
-!    real(DP) :: derv
-!! ------------------------------------------------------------------------------
-!    !
-!    do iexg = 1, this%nexg
-!      n = this%nodem1(iexg)
-!      m = this%nodem2(iexg)
-!      nodensln = this%nodem1(iexg) + this%m1%moffset
-!      nodemsln = this%nodem2(iexg) + this%m2%moffset
-!      ibdn = this%gwfpmodel1%ibound(n)
-!      ibdm = this%gwfpmodel2%ibound(m)
-!      topn = this%gwfpmodel1%dis%top(n)
-!      topm = this%gwfpmodel2%dis%top(m)
-!      botn = this%gwfpmodel1%dis%bot(n)
-!      botm = this%gwfpmodel2%dis%bot(m)
-!      hn = this%gwfpmodel1%x(n)
-!      hm = this%gwfpmodel2%x(m)
-!      if(this%ihc(iexg) == 0) then
-!        ! -- vertical connection, newton not supported
-!      else
-!        ! -- determine upstream node
-!        nisup = .false.
-!        if(hm < hn) nisup = .true.
-!        !
-!        ! -- set upstream top and bot
-!        if(nisup) then
-!          topup = topn
-!          botup = botn
-!          hup = hn
-!          hdn = hm
-!        else
-!          topup = topm
-!          botup = botm
-!          hup = hm
-!          hdn = hn
-!        endif
-!        !
-!        ! -- no newton terms if upstream cell is confined
-!        if (nisup) then
-!          if (this%gwfpmodel1%npf%icelltype(n) == 0) cycle
-!        else
-!          if (this%gwfpmodel2%npf%icelltype(m) == 0) cycle
-!        end if
-!        !
-!        ! -- set topup and botup
-!        if(this%ihc(iexg) == 2) then
-!          topup = min(topn, topm)
-!          botup = max(botn, botm)
-!        endif
-!        !
-!        ! get saturated conductivity for derivative
-!        cond = this%condsat(iexg)
-!        !
-!        ! -- compute terms
-!        consterm = -cond * (hup - hdn)
-!        derv = sQuadraticSaturationDerivative(topup, botup, hup)
-!        idiagnsln = iasln(nodensln)
-!        idiagmsln = iasln(nodemsln)
-!        if(nisup) then
-!          !
-!          ! -- fill jacobian with n being upstream
-!          term = consterm * derv
-!          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hn
-!          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hn
-!          amatsln(idiagnsln) = amatsln(idiagnsln) + term
-!          if(ibdm > 0) then
-!            amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) - term
-!          endif
-!        else
-!          !
-!          ! -- fill jacobian with m being upstream
-!          term = -consterm * derv
-!          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hm
-!          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hm
-!          amatsln(idiagmsln) = amatsln(idiagmsln) - term
-!          if(ibdn > 0) then
-!            amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + term
-!          endif
-!        endif
-!      endif
-!    enddo
-!    !
-!    ! -- Return
-!    return
-!  end subroutine gwfp_gwfp_fn
+  subroutine gwfp_gwfp_fn(this, kiter, iasln, amatsln)
+! ******************************************************************************
+! gwfp_gwfp_fn -- Fill amatsln with Newton terms
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use SmoothingModule, only: sQuadraticSaturationDerivative
+    ! -- dummy
+    class(gwfpExchangeType) :: this
+    integer(I4B), intent(in) :: kiter
+    integer(I4B), dimension(:), intent(in) :: iasln
+    real(DP), dimension(:), intent(inout) :: amatsln
+    ! -- local
+    logical :: nisup
+    integer(I4B) :: iexg
+    integer(I4B) :: n, m
+    integer(I4B) :: nodensln, nodemsln
+    integer(I4B) :: ibdn, ibdm
+    integer(I4B) :: idiagnsln, idiagmsln
+    real(DP) :: topn, topm
+    real(DP) :: botn, botm
+    real(DP) :: topup, botup
+    real(DP) :: hn, hm
+    real(DP) :: hup, hdn
+    real(DP) :: cond
+    real(DP) :: term
+    real(DP) :: consterm
+    real(DP) :: derv
+! ------------------------------------------------------------------------------
+    !
+    do iexg = 1, this%nexg
+      n = this%nodem1(iexg)
+      m = this%nodem2(iexg)
+      nodensln = this%nodem1(iexg) + this%m1%moffset
+      nodemsln = this%nodem2(iexg) + this%m2%moffset
+      ibdn = this%gwfpmodel1%ibound(n)
+      ibdm = this%gwfpmodel2%ibound(m)
+      topn = this%gwfpmodel1%dis%top(n)
+      topm = this%gwfpmodel2%dis%top(m)
+      botn = this%gwfpmodel1%dis%bot(n)
+      botm = this%gwfpmodel2%dis%bot(m)
+      hn = this%gwfpmodel1%x(n)
+      hm = this%gwfpmodel2%x(m)
+      if(this%ihc(iexg) == 0) then
+        ! -- vertical connection, newton not supported
+      else
+        ! -- determine upstream node
+        nisup = .false.
+        if(hm < hn) nisup = .true.
+        !
+        ! -- set upstream top and bot
+        if(nisup) then
+          topup = topn
+          botup = botn
+          hup = hn
+          hdn = hm
+        else
+          topup = topm
+          botup = botm
+          hup = hm
+          hdn = hn
+        endif
+        !
+        ! -- no newton terms if upstream cell is confined
+        if (nisup) then
+          if (this%gwfpmodel1%npf%icelltype(n) == 0) cycle
+        else
+          if (this%gwfpmodel2%npf%icelltype(m) == 0) cycle
+        end if
+        !
+        ! -- set topup and botup
+        if(this%ihc(iexg) == 2) then
+          topup = min(topn, topm)
+          botup = max(botn, botm)
+        endif
+        !
+        ! get saturated conductivity for derivative
+        cond = this%condsat(iexg)
+        !
+        ! -- TO DO deal with MODFLOW-NWT upstream weighting option
+        !
+        ! -- compute terms
+        consterm = -cond * (hup - hdn)
+        derv = sQuadraticSaturationDerivative(topup, botup, hup)
+        idiagnsln = iasln(nodensln)
+        idiagmsln = iasln(nodemsln)
+        if(nisup) then
+          !
+          ! -- fill jacobian with n being upstream
+          term = consterm * derv
+          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hn
+          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hn
+          amatsln(idiagnsln) = amatsln(idiagnsln) + term
+          if(ibdm > 0) then
+            amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) - term
+          endif
+        else
+          !
+          ! -- fill jacobian with m being upstream
+          term = -consterm * derv
+          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hm
+          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hm
+          amatsln(idiagmsln) = amatsln(idiagmsln) - term
+          if(ibdn > 0) then
+            amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + term
+          endif
+        endif
+      endif
+    enddo
+    !
+    ! -- Return
+    return
+  end subroutine gwfp_gwfp_fn
 
   subroutine gwfp_gwfp_cq(this, icnvg, isuppress_output, isolnid)
 ! ******************************************************************************
@@ -980,7 +976,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
       n1u = this%gwfpmodel1%dis%get_nodeuser(n1)
       if (this%m2_ishalo) then !PAR
         n2u = this%nodeum2(i) !PAR
-      else
+      else !PAR
         n2u = this%gwfpmodel2%dis%get_nodeuser(n2)
       endif !PAR
       if(ibinun1 /= 0)                                                         &
@@ -1018,8 +1014,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
                                          this%m2%name, this%name,              &
                                          this%m1%name, this%name,              &
                                          this%naux, this%auxname,              &
-                                         ibinun2, this%nexg,                   &
-                                         this%gwfpmodel2%iout)
+                                      ibinun2, this%nexg, this%gwfpmodel2%iout)
       endif
       !
       ! Initialize accumulators
@@ -1194,6 +1189,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     use ConstantsModule, only: LINELENGTH, DEM6
     use InputOutputModule, only: getunit, openfile, urdaux
     use SimModule, only: store_error, store_error_unit, ustop
+    use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     class(gwfpExchangeType) :: this
     integer(I4B), intent(in) :: iout
@@ -1268,10 +1264,12 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
                 'AN UNDERLYING CELL.'
             endif
           case ('NEWTON')
+            call MpiWorld%mpi_not_supported('Newton-Raphson formulation') !PAR
             this%inewton = 1
             write(iout, '(4x,a)')                                              &
                              'NEWTON-RAPHSON method used for unconfined cells'
           case ('GNC6')
+            call MpiWorld%mpi_not_supported('Ghost Node Correction') !PAR
             call this%parser%GetStringCaps(keyword)
             if(keyword /= 'FILEIN') then
               call store_error('GNC6 KEYWORD MUST BE FOLLOWED BY ' //          &
@@ -1355,9 +1353,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     ! -- modules
     use ConstantsModule, only: LINELENGTH
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
-    use BaseModelModule, only: BaseModelType
+    use BaseModelModule, only: BaseModelType !PAR
     use MpiExchangeGenModule, only: mpi_is_halo !PAR
-    use MpiExchangeModule, only: MpiWorld !PAR DEBUG
     ! -- dummy
     class(gwfpExchangeType) :: this
     integer(I4B), intent(in) :: iout
@@ -1372,7 +1369,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     character(len=*), parameter :: fmtexgdata  =                               &
       "(5x, a, 1x, a ,I10, 50(1pg16.6))"
     character(len=40) :: fmtexgdata2
-    class(NumericalModelType), pointer :: m1, m2
+    class(NumericalModelType), pointer :: m1, m2 !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- get ExchangeData block
@@ -1415,10 +1412,10 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
           nodem2 = this%m2%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
                                                  iout, flag_string=.true.)
           this%nodem2(iexg) = nodem2
-          if (this%m2_ishalo) then
-            this%nodeum2(iexg) = nodem2
-            this%nodem2(iexg) = iexg
-          endif
+          if (this%m2_ishalo) then !PAR
+            this%nodeum2(iexg) = nodem2 !PAR
+            this%nodem2(iexg) = iexg !PAR
+          endif !PAR
         else
           ! -- Read and check node 2
           call this%parser%GetCellid(this%m2%dis%ndim, cellid, flag_string=.true.)
@@ -1439,13 +1436,13 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         !
         ! -- Read rest of input line
         this%ihc(iexg) = this%parser%GetInteger()
-        if (.not.this%m1m2_swap) then
+        if (.not.this%m1m2_swap) then !PAR
           this%cl1(iexg) = this%parser%GetDouble()
           this%cl2(iexg) = this%parser%GetDouble()
         else
-          this%cl2(iexg) = this%parser%GetDouble()
-          this%cl1(iexg) = this%parser%GetDouble()
-        endif
+          this%cl2(iexg) = this%parser%GetDouble() !PAR
+          this%cl1(iexg) = this%parser%GetDouble() !PAR
+        endif !PAR
         this%hwva(iexg) = this%parser%GetDouble()
         do iaux = 1, this%naux
           this%auxvar(iaux, iexg) = this%parser%GetDouble()
@@ -1794,7 +1791,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_allocate(this%inamedbound, 'INAMEDBOUND', origin)
     call mem_allocate(this%satomega, 'SATOMEGA', origin)
     call mem_allocate(this%m2_ishalo, 'M2_ISHALO', origin) !PAR
-    call mem_allocate(this%m2_prov, 'M2_PROV', origin) !PAR
     call mem_allocate(this%m1m2_swap, 'M1M2_SWAP', origin) !PAR
     this%icellavg = 0
     this%ivarcv = 0
@@ -1808,7 +1804,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     this%inamedbound = 0
     this%satomega = DZERO
     this%m2_ishalo = .false. !PAR
-    this%m2_prov = -1 !PAR
     this%m1m2_swap = .false. !PAR
     !
     ! -- return
@@ -1856,7 +1851,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     call mem_deallocate(this%inobs)
     call mem_deallocate(this%inamedbound)
     call mem_deallocate(this%satomega)
-    call mem_deallocate(this%m2_prov) !PAR
     call mem_deallocate(this%m1m2_swap) !PAR
     !
     ! -- arrays
@@ -2081,7 +2075,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     return
   end function gwfp_gwfp_get_iasym
 
-  subroutine gwfp_gwfp_get_m1m2(this, m1, m2)
+  subroutine gwfp_gwfp_get_m1m2(this, m1, m2) !PAR
 ! ******************************************************************************
 ! gwfp_gwfp_get_m1m2
 !   -- Get the pointer to gwfmodel1 and gwfmodel2.

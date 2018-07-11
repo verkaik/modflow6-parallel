@@ -35,7 +35,6 @@ module NumericalExchangeModule
     real(DP), pointer, dimension(:, :)           :: auxvar                      !array of auxiliary variable values
     type(BlockParserType)                        :: parser                      !block parser
     logical, pointer                             :: m2_ishalo                   ! flag indicating that model 2 is of type halo !PAR 
-    integer(I4B), pointer                        :: m2_prov                     ! flag indicating the origin of model 2 !PAR
     logical, pointer                             :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
   contains
     procedure :: exg_df
@@ -428,7 +427,6 @@ contains
     call mem_allocate(this%nexg, 'NEXG', this%name)
     call mem_allocate(this%naux, 'NAUX', this%name)
     call mem_allocate(this%m2_ishalo,'M2_ISHALO', this%name) !PAR
-    call mem_allocate(this%m2_prov, 'M2_PROV', this%name) !PAR
     call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%name) !PAR
     allocate(this%auxname(0))
     this%filename = ''
@@ -440,7 +438,6 @@ contains
     this%nexg = 0
     this%naux = 0
     this%m2_ishalo = .false. !PAR
-    this%m2_prov = -1 !PAR
     this%m1m2_swap = .false. !PAR
     !
     ! -- return
