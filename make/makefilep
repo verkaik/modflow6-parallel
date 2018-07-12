@@ -55,6 +55,7 @@ SYSLIBS = -lc
 OBJECTS = \
 $(OBJDIR)/kind.o \
 $(OBJDIR)/OpenSpec.o \
+$(OBJDIR)/version.o \
 $(OBJDIR)/HashTable.o \
 $(OBJDIR)/List.o \
 $(OBJDIR)/Sparse.o \
@@ -63,16 +64,16 @@ $(OBJDIR)/Constants.o \
 $(OBJDIR)/ims8reordering.o \
 $(OBJDIR)/Xt3dAlgorithm.o \
 $(OBJDIR)/BaseGeometry.o \
-$(OBJDIR)/SimVariables.o \
 $(OBJDIR)/mf6lists.o \
 $(OBJDIR)/SmoothingFunctions.o \
 $(OBJDIR)/TimeSeriesRecord.o \
 $(OBJDIR)/Memory.o \
 $(OBJDIR)/StringList.o \
 $(OBJDIR)/ObsOutput.o \
-$(OBJDIR)/ArrayHandlers.o \
+$(OBJDIR)/SimVariables.o \
 $(OBJDIR)/MpiWrapper.o \
 $(OBJDIR)/MemoryList.o \
+$(OBJDIR)/ArrayHandlers.o \
 $(OBJDIR)/MpiExchangeGen.o \
 $(OBJDIR)/Sim.o \
 $(OBJDIR)/Iunit.o \
@@ -82,6 +83,7 @@ $(OBJDIR)/InputOutput.o \
 $(OBJDIR)/BlockParser.o \
 $(OBJDIR)/RectangularGeometry.o \
 $(OBJDIR)/CircularGeometry.o \
+$(OBJDIR)/comarg.o \
 $(OBJDIR)/RectangularChGeometry.o \
 $(OBJDIR)/MemoryManager.o \
 $(OBJDIR)/DisvGeom.o \
@@ -117,12 +119,12 @@ $(OBJDIR)/gwf3disv8.o \
 $(OBJDIR)/Observe.o \
 $(OBJDIR)/TimeArray.o \
 $(OBJDIR)/gwf3ic8.o \
-$(OBJDIR)/gwf3hfb8.o \
 $(OBJDIR)/ObsContainer.o \
 $(OBJDIR)/gwf3mvr8.o \
 $(OBJDIR)/TimeArraySeries.o \
 $(OBJDIR)/gwf3sto8.o \
 $(OBJDIR)/OutputControl.o \
+$(OBJDIR)/gwf3hfb8.o \
 $(OBJDIR)/ObsUtility.o \
 $(OBJDIR)/gwf3npf8.o \
 $(OBJDIR)/TimeArraySeriesLink.o \
