@@ -545,7 +545,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: DHALF
+    use ConstantsModule, only: DHALF, DZERO !PAR
     use gwfNpfModule, only: hcond, vcond
     ! -- dummy
     class(gwfpExchangeType) :: this
@@ -581,6 +581,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     if(this%inmvr > 0) call this%mvr%mvr_fc()
     !
     ! -- Set inwt to exchange newton, but shut off if requested by caller
+    this%newtonterm = DZERO !PAR
     inwt = this%inewton
     if(present(inwtflag)) then
       if (inwtflag == 0) inwt = 0
@@ -692,28 +693,48 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         derv = sQuadraticSaturationDerivative(topup, botup, hup)
         idiagnsln = iasln(nodensln)
         idiagmsln = iasln(nodemsln)
-        if(nisup) then
-          !
-          ! -- fill jacobian with n being upstream
-          term = consterm * derv
-          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hn
-          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hn
-          amatsln(idiagnsln) = amatsln(idiagnsln) + term
-          if(ibdm > 0) then
-            amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) - term
-          endif
-        else
-          !
-          ! -- fill jacobian with m being upstream
-          term = -consterm * derv
-          this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hm
-          this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hm
-          amatsln(idiagmsln) = amatsln(idiagmsln) - term
-          if(ibdn > 0) then
-            amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + term
-          endif
-        endif
-      endif
+        
+        ! -- Set upstream check the same for all MPI processes
+        if(this%m1m2_swap) then
+          nisup = .not.nisup
+        end if
+        
+        if(nisup) then !PAR
+          term = consterm * derv !PAR
+          if(.not.this%m1m2_swap) then !PAR
+            this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hn !PAR
+            this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hn !PAR
+            amatsln(idiagnsln) = amatsln(idiagnsln) + term ! set a_nn !PAR
+            if ((.not.this%m2_ishalo) .and. (ibdm > 0)) then ! set a_nm !PAR
+              amatsln(this%idxsymglo(iexg)) =                                 & !PAR
+                amatsln(this%idxsymglo(iexg)) - term !PAR
+            end if !PAR
+          else ! parallel only !PAR
+            this%gwfpmodel1%rhs(m) = this%gwfpmodel1%rhs(m) + term * hm !PAR
+            this%gwfpmodel2%rhs(n) = this%gwfpmodel2%rhs(n) - term * hm !PAR
+            if(ibdn > 0) then ! store for a_mn !PAR
+              this%newtonterm(iexg) = -term !PAR
+            end if !PAR
+          end if !PAR
+        else !PAR
+          term = -consterm * derv !PAR
+          if(.not.this%m1m2_swap) then !PAR
+            this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hm !PAR
+            this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hm !PAR
+            amatsln(idiagmsln) = amatsln(idiagmsln) - term ! set a_mm !PAR
+            if ((.not.this%m2_ishalo) .and. (ibdn > 0)) then ! set a_nm !PAR
+              amatsln(this%idxglo(iexg)) =                                    & !PAR
+                amatsln(this%idxglo(iexg)) + term !PAR
+            end if !PAR
+          else ! parallel only !PAR
+            this%gwfpmodel1%rhs(m) = this%gwfpmodel1%rhs(m) + term * hn !PAR
+            this%gwfpmodel2%rhs(n) = this%gwfpmodel2%rhs(n) - term * hn !PAR
+            if(ibdm > 0) then ! store for a_nm !PAR
+              this%newtonterm(iexg) = term !PAR
+            end if !PAR
+          end if !PAR
+        end if !PAR
+      end if
     enddo
     !
     ! -- Return

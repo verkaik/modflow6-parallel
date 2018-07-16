@@ -934,6 +934,7 @@ module MpiExchangeModule
     integer(I4B), dimension(:), pointer :: active
     integer(I4B), pointer :: moffset
     real(DP), dimension(:), pointer :: cond
+    real(DP), dimension(:), pointer :: newtonterm
     real(DP) :: v
 ! ------------------------------------------------------------------------------
     !
@@ -958,6 +959,7 @@ module MpiExchangeModule
         call mem_setptr(nexg, 'NEXG', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(nodem1, 'NODEM1', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(cond, 'COND', trim(this%lxch(ixp)%exchange(ix)%name))
+        call mem_setptr(newtonterm, 'NEWTONTERM', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(moffset, 'MOFFSET', trim(this%lxch(ixp)%exchange(ix)%m1_name))
         !
         iv = ix
@@ -973,7 +975,7 @@ module MpiExchangeModule
           n = nodem1(iexg) + moffset
           v = vgbuf%rcvmt(iv)%adbl1d(iexg)
           if (active(n) > 0) then
-            x(n) = x(n) + cond(iexg)*v
+            x(n) = x(n) + (cond(iexg) - newtonterm(iexg))*v
           end if
         end do
       end do 

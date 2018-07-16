@@ -26,6 +26,7 @@ module NumericalExchangeModule
     integer(I4B), dimension(:), pointer          :: nodem2                      !node numbers in model 2
     integer(I4B), dimension(:), pointer          :: nodeum2                     !user node numbers in model 2 !PAR
     real(DP), pointer, dimension(:)              :: cond                        !conductance
+    real(DP), pointer, dimension(:)              :: newtonterm                  !newton terms !PAR
     integer(I4B), dimension(:), pointer          :: idxglo                      !pointer to solution amat for each connection
     integer(I4B), dimension(:), pointer          :: idxsymglo                   !pointer to symmetric amat position for each connection
     class(NumericalModelType), pointer           :: m1                          !pointer to model 1
@@ -467,6 +468,7 @@ contains
     call mem_allocate(this%nodem2, this%nexg, 'NODEM2', origin)
     call mem_allocate(this%nodeum2, this%nexg, 'NODEUM2', origin) !PAR
     call mem_allocate(this%cond, this%nexg, 'COND', origin)
+    call mem_allocate(this%newtonterm, this%nexg, 'NEWTONTERM', origin) !PAR
     call mem_allocate(this%idxglo, this%nexg, 'IDXGLO', origin)
     call mem_allocate(this%idxsymglo, this%nexg, 'IDXSYMGLO', origin)
     call mem_allocate(this%auxvar, this%naux, this%nexg, 'AUXVAR', origin)
@@ -506,6 +508,7 @@ contains
     call mem_deallocate(this%nodem2)
     call mem_deallocate(this%nodeum2) !PAR
     call mem_deallocate(this%cond)
+    call mem_deallocate(this%newtonterm) !PAR
     call mem_deallocate(this%idxglo)
     call mem_deallocate(this%idxsymglo)
     call mem_deallocate(this%auxvar)
