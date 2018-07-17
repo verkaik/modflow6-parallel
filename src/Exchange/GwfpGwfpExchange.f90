@@ -705,13 +705,13 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
             this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hn !PAR
             this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hn !PAR
             amatsln(idiagnsln) = amatsln(idiagnsln) + term ! set a_nn !PAR
-            if ((.not.this%m2_ishalo) .and. (ibdm > 0)) then ! set a_nm !PAR
-              amatsln(this%idxsymglo(iexg)) =                                 & !PAR
+            if((.not.this%m2_ishalo) .and. (ibdm > 0)) then !PAR
+              amatsln(this%idxsymglo(iexg)) =                                   & !PAR
                 amatsln(this%idxsymglo(iexg)) - term !PAR
-            end if !PAR
+            endif !PAR
           else ! parallel only !PAR
-            this%gwfpmodel1%rhs(m) = this%gwfpmodel1%rhs(m) + term * hm !PAR
-            this%gwfpmodel2%rhs(n) = this%gwfpmodel2%rhs(n) - term * hm !PAR
+            this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) + term * hm !PAR
+            this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) - term * hm !PAR
             if(ibdn > 0) then ! store for a_mn !PAR
               this%newtonterm(iexg) = -term !PAR
             end if !PAR
@@ -721,20 +721,23 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
           if(.not.this%m1m2_swap) then !PAR
             this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) + term * hm !PAR
             this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) - term * hm !PAR
-            amatsln(idiagmsln) = amatsln(idiagmsln) - term ! set a_mm !PAR
-            if ((.not.this%m2_ishalo) .and. (ibdn > 0)) then ! set a_nm !PAR
-              amatsln(this%idxglo(iexg)) =                                    & !PAR
-                amatsln(this%idxglo(iexg)) + term !PAR
+            if (.not.this%m2_ishalo) then !PAR
+              amatsln(idiagmsln) = amatsln(idiagmsln) - term !PAR
+              if(ibdn > 0) then !PAR
+                amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + term !PAR
+              endif !PAR
+            else !PAR
+              if(ibdn > 0) then ! store for a_nm !PAR
+                this%newtonterm(iexg) = term !PAR
+              end if !PAR
             end if !PAR
           else ! parallel only !PAR
-            this%gwfpmodel1%rhs(m) = this%gwfpmodel1%rhs(m) + term * hn !PAR
-            this%gwfpmodel2%rhs(n) = this%gwfpmodel2%rhs(n) - term * hn !PAR
-            if(ibdm > 0) then ! store for a_nm !PAR
-              this%newtonterm(iexg) = term !PAR
-            end if !PAR
+            this%gwfpmodel2%rhs(m) = this%gwfpmodel2%rhs(m) + term * hn !PAR
+            this%gwfpmodel1%rhs(n) = this%gwfpmodel1%rhs(n) - term * hn !PAR
+            amatsln(idiagnsln) = amatsln(idiagnsln) - term ! set a_mm !PAR
           end if !PAR
         end if !PAR
-      end if
+      end if !PAR
     enddo
     !
     ! -- Return
@@ -1285,7 +1288,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
                 'AN UNDERLYING CELL.'
             endif
           case ('NEWTON')
-            call MpiWorld%mpi_not_supported('Newton-Raphson formulation') !PAR
             this%inewton = 1
             write(iout, '(4x,a)')                                              &
                              'NEWTON-RAPHSON method used for unconfined cells'

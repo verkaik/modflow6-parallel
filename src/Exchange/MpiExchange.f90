@@ -975,7 +975,7 @@ module MpiExchangeModule
           n = nodem1(iexg) + moffset
           v = vgbuf%rcvmt(iv)%adbl1d(iexg)
           if (active(n) > 0) then
-            x(n) = x(n) + (cond(iexg) - newtonterm(iexg))*v
+            x(n) = x(n) + (cond(iexg) + newtonterm(iexg))*v
           end if
         end do
       end do 
