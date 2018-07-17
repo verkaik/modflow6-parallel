@@ -28,12 +28,12 @@ module MpiExchangeGwfModule
   private
   
   ! -- Public functions
-  public :: mpi_halo_world
-  public :: mpi_set_halo_world
+  public :: mpi_gwfhalo_world
+  public :: mpi_set_gwfhalo_world
   
   contains
   
-  subroutine mpi_halo_world(iopt)
+  subroutine mpi_gwfhalo_world(iopt)
 ! ******************************************************************************
 ! This subroutine gathers DIS information for all models.
 ! ******************************************************************************
@@ -248,9 +248,9 @@ module MpiExchangeGwfModule
     !
     ! -- return
     return
-  end subroutine mpi_halo_world
+  end subroutine mpi_gwfhalo_world
   
-  subroutine mpi_set_halo_world()
+  subroutine mpi_set_gwfhalo_world()
 ! ******************************************************************************
 ! This subroutine sets the DIS scalars for the halo (m2) models.
 ! ******************************************************************************
@@ -294,7 +294,7 @@ module MpiExchangeGwfModule
       return
     end if
     !
-    call mpi_halo_world(2)
+    call mpi_gwfhalo_world(2)
     !
     ! -- Set the list of halo model names
     !call mpi_set_modelname_halo()
@@ -429,6 +429,6 @@ module MpiExchangeGwfModule
     !
     ! -- return
     return
-  end subroutine mpi_set_halo_world
+  end subroutine mpi_set_gwfhalo_world
   
 end module MpiExchangeGwfModule

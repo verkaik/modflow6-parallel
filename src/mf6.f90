@@ -33,7 +33,7 @@ program mf6
   use MpiExchangeGenModule,   only: serialrun, writestd !PAR
   use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !PAR
                                     MpiWorld !PAR
-  use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !PAR
+  use MpiExchangeGwfModule,   only: mpi_set_gwfhalo_world !PAR
   use NumericalSolutionModule, only: NumericalSolutionType !PAR
   implicit none
   ! -- local
@@ -87,7 +87,7 @@ program mf6
   enddo
   !
   ! -- Collective MPI communication scalars DIS
-  call mpi_set_halo_world() !PAR
+  call mpi_set_gwfhalo_world() !PAR
   !
   ! -- Define each exchange
   do ic = 1, baseexchangelist%Count()

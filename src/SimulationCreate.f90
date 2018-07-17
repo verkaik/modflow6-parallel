@@ -157,7 +157,7 @@ module SimulationCreateModule
     ! -- modules
     use MpiExchangeGenModule, only: writestd !PAR
     use MpiExchangeModule, only: MpiWorld
-    use MpiExchangeGwfModule, only: mpi_halo_world !PAR
+    use MpiExchangeGwfModule, only: mpi_gwfhalo_world !PAR
     ! -- dummy
     character(len=*),intent(inout) :: simfile !PAR
     ! -- local
@@ -186,7 +186,7 @@ module SimulationCreateModule
     call models_create()
     !
     ! -- Collective MPI communication scalars DIS
-    call mpi_halo_world(1) !PAR
+    call mpi_gwfhalo_world(1) !PAR
     !
     ! -- Process EXCHANGES block in simfile
     call exchanges_create()
