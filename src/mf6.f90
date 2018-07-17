@@ -30,7 +30,7 @@ program mf6
                                     final_message
   use TdisModule,             only: tdis_tu, tdis_da,                          &
                                     endofsimulation
-  use MpiExchangeGenModule,   only: mpi_initialize, serialrun, writestd !PAR
+  use MpiExchangeGenModule,   only: serialrun, writestd !PAR
   use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !PAR
                                     MpiWorld !PAR
   use MpiExchangeGwfModule,   only: mpi_halo_world, mpi_set_halo_world !PAR
@@ -49,7 +49,6 @@ program mf6
 ! ------------------------------------------------------------------------------
   !
   ! -- Initialize MPI if required
-  call mpi_initialize() !PAR
   call mpi_initialize_world() !PAR
   !
   ! -- parse any command line arguments
@@ -88,7 +87,6 @@ program mf6
   enddo
   !
   ! -- Collective MPI communication scalars DIS
-  call mpi_halo_world(2) !PAR
   call mpi_set_halo_world() !PAR
   !
   ! -- Define each exchange
@@ -171,7 +169,7 @@ program mf6
         end select !PAR
         call nsp%slnmpimvrinit(nsp%name) !PAR
       enddo !PAR
-    endif
+    endif !PAR
     !
     ! -- Read and prepare each solution
     do is=1,basesolutionlist%Count()

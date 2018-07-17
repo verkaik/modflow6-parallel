@@ -294,6 +294,8 @@ module MpiExchangeGwfModule
       return
     end if
     !
+    call mpi_halo_world(2)
+    !
     ! -- Set the list of halo model names
     !call mpi_set_modelname_halo()
     !

@@ -121,13 +121,13 @@ module MpiExchangeModule
     procedure :: mpi_mv_halo
     procedure :: mpi_global_exchange_sum1
     procedure :: mpi_global_exchange_sum2
-    generic, public :: mpi_global_exchange_sum => mpi_global_exchange_sum1, mpi_global_exchange_sum2
+    generic   :: mpi_global_exchange_sum => mpi_global_exchange_sum1, mpi_global_exchange_sum2
     procedure :: mpi_global_exchange_absmin1
     procedure :: mpi_global_exchange_absmin2
-    generic, public :: mpi_global_exchange_absmin => mpi_global_exchange_absmin1, mpi_global_exchange_absmin2
+    generic   :: mpi_global_exchange_absmin => mpi_global_exchange_absmin1, mpi_global_exchange_absmin2
     procedure :: mpi_global_exchange_absmax1
     procedure :: mpi_global_exchange_absmax2
-    generic, public :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1, mpi_global_exchange_absmax2
+    generic   :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1, mpi_global_exchange_absmax2
     procedure :: mpi_global_exchange_max => mpi_global_exchange_max_int
     procedure :: mpi_debug
     procedure :: mpi_da
@@ -152,11 +152,15 @@ module MpiExchangeModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate !, mem_get_info
+    use MpiExchangeGenModule,   only: mpi_initialize
     ! -- dummy
     ! -- local
     character(len=LENORIGIN) :: origin
     integer(I4B) :: memitype, isize
 ! ------------------------------------------------------------------------------
+    !
+    ! -- Initialize MPI
+    call mpi_initialize()
     !
     ! -- Allocate MpiWorld object
     allocate(MpiWorld)

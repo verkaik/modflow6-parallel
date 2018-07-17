@@ -22,7 +22,7 @@ module NumericalSolutionModule
   use SimVariablesModule,      only: iout
   use BlockParserModule,       only: BlockParserType
   use IMSLinearModule
-  use MpiExchangeModule,      only: MpiExchangeType !PAR
+  use MpiExchangeModule,       only: MpiExchangeType !PAR
 
   implicit none
   private
