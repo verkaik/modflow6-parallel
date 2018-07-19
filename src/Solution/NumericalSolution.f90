@@ -461,7 +461,7 @@ contains
     use SimVariablesModule, only: iout
     use SimModule, only: ustop, store_error, count_errors
     use InputOutputModule, only: getunit, openfile
-    use MpiExchangeGenModule, only: serialrun !PAR
+    use MpiExchangeGenModule, only: parallelrun !PAR
     use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     class(NumericalSolutionType) :: this
@@ -780,9 +780,9 @@ contains
       WRITE(IOUT,*) '***IMS LINEAR SOLVER WILL BE USED***'
       ! -- Set pointer to MpiSol
       allocate(this%imslinear%MpiSol) !PAR
-      if (.not.serialrun) then !PAR
+      if (parallelrun) then !PAR
         this%imslinear%MpiSol => this%MpiSol !PAR
-      endif !PAR
+      end if !PAR
       call this%imslinear%imslinear_allocate(this%name, this%iu, IOUT,         &
                                              this%iprims, this%mxiter,         &
                                              ifdparam, imslinear,              &
@@ -1863,7 +1863,7 @@ contains
 
   subroutine slnmpiaddgmodel(this, mname, idsoln) !PAR
 ! ******************************************************************************
-! Add global modelname to this solution
+! Allocate MpiSol and MpiMv and add global modelname to MpiSol
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:

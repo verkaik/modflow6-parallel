@@ -109,9 +109,8 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     class(BaseModelType), pointer :: mb
     class(BaseExchangeType), pointer :: baseexchange
     character(len=20) :: cint
-    integer(I4B) :: m1, m2, m, s1, s2, inunit, ierr !PAR
+    integer(I4B) :: m1, m2 !PAR
     character(len=LINELENGTH) :: mname2 !PAR
-    logical :: isfound !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- Return in case this exchange does not have connected models
@@ -199,7 +198,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     use SimVariablesModule, only: iout
     use InputOutputModule, only: getunit, openfile
     use GhostNodeModule, only: gnc_cr
-    use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     class(gwfpExchangeType) :: this
     ! -- local
@@ -1392,7 +1390,6 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     character(len=*), parameter :: fmtexgdata  =                               &
       "(5x, a, 1x, a ,I10, 50(1pg16.6))"
     character(len=40) :: fmtexgdata2
-    class(NumericalModelType), pointer :: m1, m2 !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- get ExchangeData block

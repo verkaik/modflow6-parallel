@@ -111,7 +111,7 @@
 !     ------------------------------------------------------------------
       use MemoryManagerModule, only: mem_allocate
       use SimModule, only: ustop, store_error, count_errors
-      use MpiExchangeGenModule, only: serialrun !PAR
+      use MpiExchangeGenModule, only: parallelrun !PAR
       IMPLICIT NONE
 !     + + + DUMMY VARIABLES + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
@@ -565,7 +565,7 @@
       CALL mem_allocate(THIS%PHAT, THIS%NIABCGS, 'PHAT', TRIM(THIS%ORIGIN))
       CALL mem_allocate(THIS%QHAT, THIS%NIABCGS, 'QHAT', TRIM(THIS%ORIGIN))
       ! -- add variables for MPI point-to-point
-      if (.not.serialrun) then
+      if (parallelrun) then !PAR
         call this%MpiSol%mpi_add_vg('IMS-X') !PAR
         call this%MpiSol%mpi_add_vmt('IMS-X','','X','','SOL') !PAR
         call this%MpiSol%mpi_init_vg('IMS-X') !PAR
@@ -581,7 +581,7 @@
           call this%MpiSol%mpi_add_vmt('IMS-QHAT','','QHAT','IMSLINEAR','SOL') !PAR
           call this%MpiSol%mpi_init_vg('IMS-QHAT') !PAR
         END IF !PAR
-      endif
+      end if !PAR
 !-------INITIALIZE IMSLINEAR VECTORS
       DO n = 1, iscllen
         THIS%DSCALE(n)  = DONE

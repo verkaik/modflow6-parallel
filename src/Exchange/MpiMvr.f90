@@ -28,7 +28,7 @@ module MpiMvrModule
   
   subroutine mpi_init_ngmvr(this)
 ! ******************************************************************************
-! Initialize the mover counter
+! Initialize the mover counter.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:

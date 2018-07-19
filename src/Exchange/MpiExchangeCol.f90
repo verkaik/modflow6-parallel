@@ -35,7 +35,6 @@ contains
     logical, intent(out) :: ldis, ldisu, ldisv
     ! -- local
     character(len=LINELENGTH) :: errmsg
-    character(len=1) :: cdum
     character(len=LENMODELNAME) :: m, mh
     character(len=4) :: dis_type
     logical :: lfound

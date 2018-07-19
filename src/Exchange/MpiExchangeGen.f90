@@ -20,7 +20,9 @@ module MpiExchangeGenModule
   public :: modelname_halo
 
   ! -- Global variables based of the world communicator
-  logical, public ::  parallelrun = .false., serialrun = .true., writestd = .true.
+  logical, public :: parallelrun = .false.
+  logical, public :: serialrun   = .true.
+  logical, public :: writestd    = .true.
   character(len=50), public :: partstr
   
   integer(I4B) :: nhalo = 0
@@ -97,7 +99,6 @@ module MpiExchangeGenModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    ! -- return
     ! -- dummy
     character(len=*), intent(inout) :: modelname
     integer(I4B), intent(in) :: im
@@ -124,7 +125,6 @@ module MpiExchangeGenModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    ! -- return
     ! -- dummy
     character(len=*), intent(inout) :: modelname
     ! -- local

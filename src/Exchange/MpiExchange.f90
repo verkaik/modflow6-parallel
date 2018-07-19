@@ -91,24 +91,23 @@ module MpiExchangeModule
     character(len=LENMODELNAME), dimension(:), allocatable :: lmodelnames   ! local model names
     integer(I4B)                                           :: lnsub = 0     ! number of local subdomains
     integer(I4B), dimension(:), allocatable                :: lsubs         ! model local subdomains
-    integer(I4B), pointer                                  :: comm      => null() ! MPI communicator
-    integer(I4B), pointer                                  :: nrproc    => null() ! number of MPI process for this communicator
-    integer(I4B), pointer                                  :: myrank    => null() ! MPI rank in for this communicator
-    integer(I4B), pointer                                  :: myproc    => null() ! MPI proc in for this communicator
-    integer(I4B), dimension(:), pointer                    :: procmap   => null() ! Mapping
-    integer(I4B), pointer                                  :: nrxp => null() ! Number of exchange partners
-    type(MpiGwfCommInt), dimension(:), pointer             :: lxch => null() ! Point to-point communication structure
-    integer(I4B)                                           :: nvg  ! number of variable groups
-    character(len=LINELENGTH), dimension(MAXNVG)           :: vg   ! variable groups
-    logical,  dimension(MAXNVG)                            :: lxchmeta = .true. ! exchange meta data 
-    character(len=50), pointer                             :: nrprocstr => null() ! Number of processes string
-    integer(I4B), pointer                                  :: npdigits  => null() ! Number of digits for nrproc
-    character(len=50), pointer                             :: partstr   => null() ! Partition string
-    logical                                                :: lp2p = .true.
+    integer(I4B), pointer                                :: comm   => null() ! MPI communicator
+    integer(I4B), pointer                                :: nrproc => null() ! number of MPI process for this communicator
+    integer(I4B), pointer                                :: myrank => null() ! MPI rank in for this communicator
+    integer(I4B), pointer                                :: myproc => null() ! MPI proc in for this communicator
+    integer(I4B), dimension(:), pointer                  :: procmap => null() ! Mapping
+    integer(I4B), pointer                                :: nrxp => null() ! Number of exchange partners
+    type(MpiGwfCommInt), dimension(:), pointer           :: lxch => null() ! Point to-point communication structure
+    integer(I4B)                                         :: nvg  ! number of variable groups
+    character(len=LINELENGTH), dimension(MAXNVG)         :: vg   ! variable groups
+    logical,  dimension(MAXNVG)                          :: lxchmeta = .true. ! exchange meta data 
+    character(len=50), pointer                           :: nrprocstr => null() ! Number of processes string
+    integer(I4B), pointer                                :: npdigits  => null() ! Number of digits for nrproc
+    character(len=50), pointer                           :: partstr   => null() ! Partition string
+    logical                                              :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
   contains
     procedure :: mpi_barrier
     procedure :: mpi_create_output_str
-    procedure :: mpi_append_fname
     procedure :: mpi_is_iproc
     procedure :: mpi_addmodel
     procedure :: mpi_getmodel
@@ -121,13 +120,16 @@ module MpiExchangeModule
     procedure :: mpi_mv_halo
     procedure :: mpi_global_exchange_sum1
     procedure :: mpi_global_exchange_sum2
-    generic   :: mpi_global_exchange_sum => mpi_global_exchange_sum1, mpi_global_exchange_sum2
+    generic   :: mpi_global_exchange_sum => mpi_global_exchange_sum1,          &
+                                            mpi_global_exchange_sum2
     procedure :: mpi_global_exchange_absmin1
     procedure :: mpi_global_exchange_absmin2
-    generic   :: mpi_global_exchange_absmin => mpi_global_exchange_absmin1, mpi_global_exchange_absmin2
+    generic   :: mpi_global_exchange_absmin => mpi_global_exchange_absmin1,    &
+                                               mpi_global_exchange_absmin2
     procedure :: mpi_global_exchange_absmax1
     procedure :: mpi_global_exchange_absmax2
-    generic   :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1, mpi_global_exchange_absmax2
+    generic   :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1,    &
+                                               mpi_global_exchange_absmax2
     procedure :: mpi_global_exchange_max => mpi_global_exchange_max_int
     procedure :: mpi_debug
     procedure :: mpi_da
@@ -156,7 +158,6 @@ module MpiExchangeModule
     ! -- dummy
     ! -- local
     character(len=LENORIGIN) :: origin
-    integer(I4B) :: memitype, isize
 ! ------------------------------------------------------------------------------
     !
     ! -- Initialize MPI
@@ -283,29 +284,6 @@ module MpiExchangeModule
     ! -- return
     return
   end subroutine mpi_create_output_str
-  
-  subroutine mpi_append_fname(this,f)
-! ******************************************************************************
-! Append the file name with the process rank ID.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    class(MpiExchangeType) :: this
-    character(len=*), intent(inout) :: f
-    ! -- local
-! ------------------------------------------------------------------------------
-    if (serialrun) then
-      return
-    end if
-    !
-    write(f,'(3a)') trim(f),'.',trim(this%partstr)
-    !
-    ! -- return
-    return
-  end subroutine mpi_append_fname
   
   subroutine mpi_debug(this)
 ! ******************************************************************************
@@ -597,7 +575,7 @@ module MpiExchangeModule
     type(MpiGwfBuf), pointer :: vgbuf
 
     character(len=LENORIGIN) :: mod_origin, sol_origin, src_origin, tgt_origin
-    integer(I4B) :: ixp, iex, nsnd, nrcv, iv, is, i, j, istat
+    integer(I4B) :: ixp, iex, nrcv, iv, is, i, j, istat
     character(len=LENMODELNAME) :: mname, id, m1_name, m2_name
     !
     integer(I4B) :: newtype
@@ -932,7 +910,7 @@ module MpiExchangeModule
     ! -- local
     type(MpiGwfBuf), pointer :: vgbuf
     character(len=LENORIGIN) :: sol_origin
-    integer(I4B) :: ivg, ixp, ix, iv, iexg, n, i
+    integer(I4B) :: ivg, ixp, ix, iv, iexg, n
     integer(I4B), pointer :: nexg
     integer(I4B), dimension(:), pointer :: nodem1
     integer(I4B), dimension(:), pointer :: active
@@ -961,10 +939,13 @@ module MpiExchangeModule
       do ix = 1, this%lxch(ixp)%nexchange
         ! -- get exchange nodes and conductance
         call mem_setptr(nexg, 'NEXG', trim(this%lxch(ixp)%exchange(ix)%name))
-        call mem_setptr(nodem1, 'NODEM1', trim(this%lxch(ixp)%exchange(ix)%name))
+        call mem_setptr(nodem1, 'NODEM1',                                      &
+          trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(cond, 'COND', trim(this%lxch(ixp)%exchange(ix)%name))
-        call mem_setptr(newtonterm, 'NEWTONTERM', trim(this%lxch(ixp)%exchange(ix)%name))
-        call mem_setptr(moffset, 'MOFFSET', trim(this%lxch(ixp)%exchange(ix)%m1_name))
+        call mem_setptr(newtonterm, 'NEWTONTERM',                              &
+          trim(this%lxch(ixp)%exchange(ix)%name))
+        call mem_setptr(moffset, 'MOFFSET',                                    &
+          trim(this%lxch(ixp)%exchange(ix)%m1_name))
         !
         iv = ix
         if (vgbuf%rcvmt(iv)%memitype /= iadbl1d) then
@@ -1401,7 +1382,7 @@ module MpiExchangeModule
     ! -- modules
     use ArrayHandlersModule, only: ExpandArray
     use SimModule, only: store_error, ustop
-    use MpiExchangeGenModule, only: nhalo, modelname_halo,                      &
+    use MpiExchangeGenModule, only: modelname_halo,                             &
                                     mpi_create_modelname_halo
     ! -- dummy
     class(MpiExchangeType) :: this
@@ -1597,7 +1578,6 @@ module MpiExchangeModule
     ! -- local
     type(MpiGwfBuf), pointer :: vgbuf
     type(ExchangeType), pointer :: ex
-    type(VarGroupType), pointer :: vgvar
     integer(I4B) :: ivg, ixp, iex
 ! ------------------------------------------------------------------------------
     !

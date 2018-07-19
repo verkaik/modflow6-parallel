@@ -60,14 +60,13 @@ module MpiExchangeGwfModule
     character(len=1) :: cdum
     character(len=4) :: dis_type
     integer :: im, ipo, ip, is, iact
-    integer(I4B), pointer :: iptr
     class(BaseModelType), pointer :: mb 
     class(NumericalModelType), pointer :: mp
     class(BndType), pointer :: packobj
     type(MemoryType), pointer :: mt
     !
     integer, parameter :: cntypes = 6
-    integer :: ierr, i, n, n_send, newtype
+    integer :: i, n, n_send, newtype
     integer, dimension(1) :: iwrk
     integer, dimension(:), allocatable :: recvcounts, displs
     type(ColMemoryType), dimension(:), allocatable :: cmt_send
@@ -252,7 +251,8 @@ module MpiExchangeGwfModule
   
   subroutine mpi_set_gwfhalo_world()
 ! ******************************************************************************
-! This subroutine sets the DIS scalars for the halo (m2) models.
+! This subroutine sets the DIS scalars for the halo (m2) GWF models. It also
+! initializes halo GWF packages.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -260,7 +260,7 @@ module MpiExchangeGwfModule
     ! -- modules
     use MpiExchangeGenModule, only: modelname_halo, nhalo,                      &
                                     mpi_create_modelname_halo
-    use MpiExchangeColModule, only: ciopt, n_recv, cmt_recv
+    use MpiExchangeColModule, only: n_recv, cmt_recv
     use MemoryTypeModule, only: ilogicalsclr, iintsclr, idblsclr,               & 
                                 iaint1d, iaint2d,                               & 
                                 iadbl1d, iadbl2d
@@ -281,9 +281,8 @@ module MpiExchangeGwfModule
     character(len=LENMODELNAME) :: id
     character(len=LENFTYPE)     :: ft
     character(len=LENPACKAGENAME) :: pakname
-    integer(I4B) :: i, j, k, m, ip, istat, lenid, lenft, ipo, ibcnum
+    integer(I4B) :: i, j, m, ip, istat, lenid, lenft, ipo, ibcnum
     logical, dimension(mxpack) :: lpack, lcreate
-    integer(I4B) :: wrk(3) !DEBUG
     class(BaseModelType), pointer :: mb
     class(GwfModelType), pointer :: mp
     class(NumericalModelType), pointer :: nmp
@@ -295,23 +294,6 @@ module MpiExchangeGwfModule
     end if
     !
     call mpi_gwfhalo_world(2)
-    !
-    ! -- Set the list of halo model names
-    !call mpi_set_modelname_halo()
-    !
-    if (serialrun.and..false.) then
-      !call mem_setval(1, 'NLAY', 'GWF_MODEL_2 HALO1 DIS') !@@@DEBUG
-      !call mem_setval(3, 'NROW', 'GWF_MODEL_2 HALO1 DIS')
-      !call mem_setval(3, 'NCOL', 'GWF_MODEL_2 HALO1 DIS')
-      !wrk(1) = 1
-      !wrk(2) = 3
-      !wrk(3) = 3
-      !call mem_setval(wrk, 'MSHAPE', 'GWF_MODEL_2 HALO1 DIS')
-      !call mem_setval(9, 'NODESUSER', 'GWF_MODEL_2 HALO1 DIS')
-      !call mem_setval(1, 'INNPF', 'GWF_MODEL_2 HALO1')
-      !call mem_setval(1, 'INIC', 'GWF_MODEL_2 HALO1')
-      return
-    end if
     !
     do i = 1, n_recv
       name   = cmt_recv(i)%name
@@ -371,7 +353,8 @@ module MpiExchangeGwfModule
             do ipo=1,nmp%bndlist%Count()
               packobj => GetBndFromList(nmp%bndlist, ipo)
               do ip = 1, mxpack
-                if (lpack(ip) .and. packobj%filtyp == packftype(1,ip) .and. packobj%ibcnum == ibcnum) then
+                if (lpack(ip) .and. packobj%filtyp == packftype(1,ip) .and.    &
+                  packobj%ibcnum == ibcnum) then
                   lcreate(ip) = .false.
                 end if
               end do
@@ -379,7 +362,6 @@ module MpiExchangeGwfModule
             ! -- create package
             do ip = 1, mxpack
               if (lcreate(ip)) then
-                !write(*,*) '@@@ creating ',trim(packftype(2,ip)), MpiWorld%myrank, trim(mname_halo)
                 call mp%package_create(trim(packftype(2,ip)), 0, ibcnum,        &
                                        pakname, 0, 0)
                 packobj => GetBndFromList(nmp%bndlist, nmp%bndlist%Count())
@@ -408,16 +390,8 @@ module MpiExchangeGwfModule
           origin_halo = trim(mname_halo)//' '//trim(id)
           select case(cmt_recv(i)%memitype)
           case(iintsclr)
-              if (MpiWorld%myrank == 1) then
-                !write(*,*) MpiWorld%myrank
-                !write(*,*) 'Setting integer: '//trim(name)//', "'//trim(origin_halo)//'"', cmt_recv(i)%intsclr
-              end if
               call mem_setval(cmt_recv(i)%intsclr, name, origin_halo)
             case(iaint1d)
-              if (MpiWorld%myrank == 1) then
-                !write(*,*) MpiWorld%myrank
-                !write(*,*) 'Setting array for model '//trim(mname_halo)//': '//trim(name)//', '//trim(origin_halo)
-              end if
               call mem_setval(cmt_recv(i)%aint1d, name, origin_halo)
           end select
         end if
