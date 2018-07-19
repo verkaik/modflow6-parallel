@@ -53,10 +53,6 @@ module MpiExchangeGwfModule
     ! -- dummy
     integer, intent(in) :: iopt
     ! -- local
-    integer, parameter :: idis  = 1 
-    integer, parameter :: idisv = 2 
-    integer, parameter :: idisu = 3 
-    !
     character(len=1) :: cdum
     character(len=4) :: dis_type
     integer :: im, ipo, ip, is, iact
@@ -104,17 +100,9 @@ module MpiExchangeGwfModule
           mp => mb
         end select  
         read(mp%dis%origin,*) cdum, dis_type
-
         select case (dis_type)
           case ('DIS')
             if (iopt == 1) then
-              !call mem_get_ptr('NEQ', 'GWF_MODEL_1', mt)
-              !mp%neq = 456
-              !call mem_get_ptr('NEQ', 'GWF_MODEL_1', mt)
-              !call mem_setval(789,'NEQ','GWF_MODEL_1')
-              !call mem_get_ptr('NEQ', 'GWF_MODEL_1', mt)
-              !mp%neq = 456
-              !call mem_get_ptr('NEQ', 'GWF_MODEL_1', mt)
               call mem_get_ptr('DNDIM', mp%dis%origin, mt)
               call mpi_to_colmem(mt, is, cmt_send, iact)
             else

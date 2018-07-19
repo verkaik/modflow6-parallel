@@ -70,6 +70,8 @@ module MpiExchangeModule
     character(len=LENVARNAME)                 :: name
     character(len=LENMODELNAME)               :: m1_name
     character(len=LENMODELNAME)               :: m2_name
+    character(len=4)                          :: m1_dis
+    character(len=4)                          :: m2_dis
   end type ExchangeType
   
   ! -- Local types
@@ -637,6 +639,9 @@ module MpiExchangeModule
               write(mod_origin,'(a,1x,a)') trim(m1_name), trim(var%nameext)
               select case(var%vmttype)
                 case(ivmtgwf)
+                  if (trim(var%nameext) == 'DIS') then
+                    write(mod_origin,'(a,1x,a)') trim(m1_name), trim(ex%m1_dis)
+                  end if
                   src_origin = mod_origin
                   moffset = 0
                 case(ivmtsol)
@@ -867,6 +872,9 @@ module MpiExchangeModule
                   end if
                   if (index(id,'HALO') > 0) then
                     id = ''
+                  end if
+                  if (trim(id) == 'DIS') then
+                    id = ex%m2_dis
                   end if
                   write(tgt_origin, '(a,1x,a)') trim(m2_name), trim(id)
                   vgbuf%rcvmt(is)%origin = tgt_origin
@@ -1506,6 +1514,7 @@ module MpiExchangeModule
     type(ColMemoryType), dimension(*), intent(inout) :: cmt
     integer(I4B), intent(in) :: iopt
     ! -- local
+    integer(I4B) :: i
 ! ------------------------------------------------------------------------------
     is = is + 1
     if (iopt == 1) then
@@ -1531,7 +1540,13 @@ module MpiExchangeModule
       cmt(is)%dblsclr = DZERO
     end if
     if (associated(mt%aint1d)) then
-      cmt(is)%aint1d = mt%aint1d
+      if (mt%isize > size(cmt(is)%aint1d)) then
+        call store_error('Program error: mpi_to_colmem')
+        call ustop()
+      end if
+      do i = 1, mt%isize
+        cmt(is)%aint1d(i) = mt%aint1d(i)
+      end do
     else
       cmt(is)%aint1d = 0
     end if

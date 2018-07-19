@@ -1915,7 +1915,8 @@ contains
     character(len=LINELENGTH) :: errmsg
     integer(I4B) :: im, i, isub1, isub2, ixp, nex, ip, ic
     integer(I4B), dimension(:), allocatable :: iwrk
-    integer(I4B) :: irnk !PAR
+    integer(I4B) :: irnk
+    character(len=1) :: cdum
 ! ------------------------------------------------------------------------------
     !
     if (serialrun) then
@@ -2019,6 +2020,10 @@ contains
         this%MpiSol%lxch(ixp)%exchange(nex)%name = cp%name
         this%MpiSol%lxch(ixp)%exchange(nex)%m1_name = m1%name
         this%MpiSol%lxch(ixp)%exchange(nex)%m2_name = m2%name
+        read(m1%dis%origin,*) cdum,                                           &
+          this%MpiSol%lxch(ixp)%exchange(nex)%m1_dis
+        read(m2%dis%origin,*) cdum, cdum,                                     &
+          this%MpiSol%lxch(ixp)%exchange(nex)%m2_dis
         this%MpiSol%lxch(ixp)%nexchange = nex
       end if
     end do
