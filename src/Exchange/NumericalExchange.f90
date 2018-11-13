@@ -15,28 +15,28 @@ module NumericalExchangeModule
             AddNumericalExchangeToList, GetNumericalExchangeFromList
 
   type, extends(BaseExchangeType) :: NumericalExchangeType
-    character(len=LINELENGTH), pointer           :: filename                    !name of the input file
-    character(len=9), pointer                    :: typename                    !name of the type (e.g., 'NM-NM') !PAR
-    logical, pointer                             :: implicit                    !logical flag to indicate implicit or explict exchange
-    integer(I4B), pointer                        :: iprpak                      !print input flag
-    integer(I4B), pointer                        :: iprflow                     !print flag for cell by cell flows
-    integer(I4B), pointer                        :: ipakcb                      !save flag for cell by cell flows
-    integer(I4B), pointer                        :: nexg                        !number of exchanges
-    integer(I4B), dimension(:), pointer          :: nodem1                      !node numbers in model 1
-    integer(I4B), dimension(:), pointer          :: nodem2                      !node numbers in model 2
-    integer(I4B), dimension(:), pointer          :: nodeum2                     !user node numbers in model 2 !PAR
-    real(DP), pointer, dimension(:)              :: cond                        !conductance
-    real(DP), pointer, dimension(:)              :: newtonterm                  !newton terms !PAR
-    integer(I4B), dimension(:), pointer          :: idxglo                      !pointer to solution amat for each connection
-    integer(I4B), dimension(:), pointer          :: idxsymglo                   !pointer to symmetric amat position for each connection
-    class(NumericalModelType), pointer           :: m1                          !pointer to model 1
-    class(NumericalModelType), pointer           :: m2                          !pointer to model 2
-    integer(I4B), pointer                        :: naux                        !number of auxiliary variables
-    character(len=16), allocatable, dimension(:) :: auxname                     !array of auxiliary variable names
-    real(DP), pointer, dimension(:, :)           :: auxvar                      !array of auxiliary variable values
-    type(BlockParserType)                        :: parser                      !block parser
-    logical, pointer                             :: m2_ishalo                   ! flag indicating that model 2 is of type halo !PAR 
-    logical, pointer                             :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
+    character(len=LINELENGTH), pointer              :: filename  => null()       !name of the input file
+    character(len=9), pointer                       :: typename  => null()       !name of the type (e.g., 'NM-NM') !PAR
+    logical, pointer                                :: implicit  => null()       !logical flag to indicate implicit or explict exchange
+    integer(I4B), pointer                           :: iprpak    => null()       !print input flag
+    integer(I4B), pointer                           :: iprflow   => null()       !print flag for cell by cell flows
+    integer(I4B), pointer                           :: ipakcb    => null()       !save flag for cell by cell flows
+    integer(I4B), pointer                           :: nexg      => null()       !number of exchanges
+    integer(I4B), dimension(:), pointer, contiguous :: nodem1    => null()       !node numbers in model 1
+    integer(I4B), dimension(:), pointer, contiguous :: nodem2    => null()       !node numbers in model 2
+    integer(I4B), dimension(:), pointer, contiguous :: nodeum2   => null()       !user node numbers in model 2 !PAR
+    real(DP), dimension(:), pointer, contiguous     :: cond      => null()       !conductance
+    real(DP), pointer, dimension(:), contiguous     :: newtonterm => null()      !newton terms !PAR
+    integer(I4B), dimension(:), pointer, contiguous :: idxglo    => null()       !pointer to solution amat for each connection
+    integer(I4B), dimension(:), pointer, contiguous :: idxsymglo => null()       !pointer to symmetric amat position for each connection
+    class(NumericalModelType), pointer              :: m1        => null()       !pointer to model 1
+    class(NumericalModelType), pointer              :: m2        => null()       !pointer to model 2
+    integer(I4B), pointer                           :: naux      => null()       !number of auxiliary variables
+    character(len=16), allocatable, dimension(:)    :: auxname                   !array of auxiliary variable names
+    real(DP), dimension(:, :), pointer, contiguous  :: auxvar    => null()       !array of auxiliary variable values
+    type(BlockParserType)                           :: parser                    !block parser
+    logical, pointer                                :: m2_ishalo                   ! flag indicating that model 2 is of type halo !PAR 
+    logical, pointer                                :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
   contains
     procedure :: exg_df
     procedure :: exg_ac

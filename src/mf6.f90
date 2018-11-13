@@ -9,7 +9,7 @@ program mf6
   ! -- modules
   use KindModule,             only: DP, I4B
   use ConstantsModule,        only: ISTDOUT
-  use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,   & 
+  use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,   &
                                     IDEVELOPMODE
   use CompilerVersion
   use CommandArguments,       only: GetCommandLineArguments
@@ -37,11 +37,11 @@ program mf6
   use NumericalSolutionModule, only: NumericalSolutionType !PAR
   implicit none
   ! -- local
-  class(SolutionGroupType), pointer :: sgp
-  class(BaseSolutionType),  pointer :: sp
+  class(SolutionGroupType), pointer :: sgp => null()
+  class(BaseSolutionType),  pointer :: sp => null()
   class(NumericalSolutionType), pointer :: nsp !PAR
-  class(BaseModelType),     pointer :: mp
-  class(BaseExchangeType),  pointer :: ep
+  class(BaseModelType),     pointer :: mp => null()
+  class(BaseExchangeType),  pointer :: ep => null()
   integer(I4B) :: im, ic, is, isg
   logical :: exit_tsloop
   character(len=80) :: compiler
@@ -113,7 +113,7 @@ program mf6
     mp => GetBaseModelFromList(halomodellist, im) !PAR
     call mp%model_ar() !PAR
   enddo !PAR
-  ! 
+  !
   ! -- Local exchange
   if (isimdd == 1) then !PAR
     do is=1,basesolutionlist%Count() !PAR

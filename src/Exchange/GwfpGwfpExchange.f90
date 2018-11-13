@@ -36,18 +36,19 @@ module gwfpgwfpExchangeModule
     integer(I4B), pointer                            :: icdist    => null()     ! flag indicating cdist was read, if read, icdist is index in auxvar
     integer(I4B), pointer                            :: inamedbound => null()   ! flag to read boundnames
     real(DP), pointer                                :: satomega  => null()     ! saturation smoothing
-    integer(I4B), dimension(:), pointer              :: ihc       => null()     ! horizontal connection indicator array
-    real(DP), dimension(:), pointer                  :: condsat   => null()     ! saturated conductance
-    real(DP), dimension(:), pointer                  :: cl1       => null()     ! connection length 1
-    real(DP), dimension(:), pointer                  :: cl2       => null()     ! connection length 2
-    real(DP), dimension(:), pointer                  :: hwva      => null()     ! horizontal widths, vertical flow areas
+    integer(I4B), dimension(:), pointer, contiguous  :: ihc         => null()    ! horizontal connection indicator array
+    real(DP), dimension(:), pointer, contiguous      :: condsat     => null()    ! saturated conductance
+    real(DP), dimension(:), pointer, contiguous      :: cl1         => null()    ! connection length 1
+    real(DP), dimension(:), pointer, contiguous      :: cl2         => null()    ! connection length 2
+    real(DP), dimension(:), pointer, contiguous      :: hwva        => null()    ! horizontal widths, vertical flow areas
     integer(I4B), pointer                            :: ingnc     => null()     ! unit number for gnc (0 if off)
     type(GhostNodeType), pointer                     :: gnc       => null()     ! gnc object
     integer(I4B), pointer                            :: inmvr     => null()     ! unit number for mover (0 if off)
     type(gwfMvrType), pointer                        :: mvr       => null()     ! water mover object
     integer(I4B), pointer                            :: inobs     => null()     ! unit number for GWFP-GWFP observations
     type(ObsType), pointer                           :: obs       => null()     ! observation object
-    character(len=LENBOUNDNAME), pointer, dimension(:) :: boundname   => null() ! boundnames
+    character(len=LENBOUNDNAME), dimension(:),                                  &
+                                 pointer, contiguous :: boundname   => null()    ! boundnames
   contains
     procedure          :: exg_df      => gwfp_gwfp_df
     procedure          :: exg_ac      => gwfp_gwfp_ac
@@ -587,7 +588,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
     if (inwt /= 0) then
       call this%exg_fn(kiter, iasln, amatsln)
     endif
-
+    !
 ! -- Ghost node Newton-Raphson
     if (this%ingnc > 0) then
       if (inwt /= 0) then
@@ -873,7 +874,7 @@ subroutine gwfpexchange_create(filename, id, m1i, m2i, mname1i, mname2i, im,   &
         distance = dltot * this%cl2(i) / (this%cl1(i) + this%cl2(i))
         if (ihc /= 0) rrate = -rrate
         call this%gwfpmodel2%npf%set_edge_properties(n2, ihc, rrate, area,    &
-                                                    nx, ny, distance)
+                                                     -nx, -ny, distance)
       endif
       !
     enddo
