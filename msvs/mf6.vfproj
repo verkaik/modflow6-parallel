@@ -5,7 +5,7 @@
 		<Platform Name="x64"/></Platforms>
 	<Configurations>
 		<Configuration Name="Debug|Win32" OutputDirectory="../bin" TargetName="$(ProjectName)d">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" HeapArrays="0" StandardWarnings="standardWarningsF08" WarnUnusedVariables="true" WarnUncalled="true" WarnInterfaces="true" OptDiagFile="optrpt" FloatingPointExceptionHandling="fpe0" Traceback="true" BoundsCheck="true" UninitializedVariablesCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
+				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" HeapArrays="0" StandardWarnings="standardWarningsF08" WarnUncalled="true" WarnInterfaces="true" OptDiagFile="optrpt" FloatingPointExceptionHandling="fpe0" Traceback="true" BoundsCheck="true" UninitializedVariablesCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
 				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" ProgramDatabaseFile="$(IntDir)\$(TargetName).pdb" SubSystem="subSystemConsole"/>
 				<Tool Name="VFResourceCompilerTool"/>
 				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
@@ -72,7 +72,6 @@
 		<File RelativePath="..\src\Exchange\BaseExchange.f90"/>
 		<File RelativePath="..\src\Exchange\GhostNode.f90"/>
 		<File RelativePath="..\src\Exchange\GwfGwfExchange.f90"/>
-		<File RelativePath="..\src\Exchange\GwfpGwfpExchange.f90"/>
 		<File RelativePath="..\src\Exchange\MpiExchange.f90"/>
 		<File RelativePath="..\src\Exchange\MpiExchangeCol.f90"/>
 		<File RelativePath="..\src\Exchange\MpiExchangeGen.f90"/>
@@ -114,6 +113,7 @@
 		<File RelativePath="..\src\Model\ModelUtilities\Connections.f90"/>
 		<File RelativePath="..\src\Model\ModelUtilities\DiscretizationBase.f90"/>
 		<File RelativePath="..\src\Model\ModelUtilities\DisvGeom.f90"/>
+		<File RelativePath="..\src\Model\ModelUtilities\GwfHalo.f90"/>
 		<File RelativePath="..\src\Model\ModelUtilities\Mover.f90"/>
 		<File RelativePath="..\src\Model\ModelUtilities\PackageMover.f90"/>
 		<File RelativePath="..\src\Model\ModelUtilities\Xt3dAlgorithm.f90"/>
@@ -165,9 +165,9 @@
 			<FileConfiguration Name="Debug|Win32">
 				<Tool Name="VFFortranCompilerTool" Preprocess="preprocessYes"/></FileConfiguration></File>
 		<File RelativePath="..\src\Utilities\Constants.f90"/>
+		<File RelativePath="..\src\Utilities\genericutils.f90"/>
 		<File RelativePath="..\src\Utilities\HashTable.f90"/>
 		<File RelativePath="..\src\Utilities\InputOutput.f90"/>
-		<File RelativePath="..\src\Utilities\genericutils.f90"/>
 		<File RelativePath="..\src\Utilities\Iunit.f90"/>
 		<File RelativePath="..\src\Utilities\kind.f90"/>
 		<File RelativePath="..\src\Utilities\List.f90"/>

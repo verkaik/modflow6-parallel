@@ -27,20 +27,38 @@ module MpiExchangeModule
   public :: VarGroupType
   ! -- Public variables
   public :: MpiWorld
-  public :: ivmtmvr
+  public :: isrcmvr, ipckmvr, itgtmvr, iunpmvr
   ! -- Public functions
   public :: mpi_initialize_world
   public :: mpi_world_da
-  public :: mpi_add_halo_model
+  !public :: mpi_add_halo_model
   public :: mpi_to_colmem
   
   integer, parameter :: MAXNVG  = 10  ! maximum number of variable groups 
   integer, parameter :: MAXNVAR = 100
   integer, parameter :: MAXNEX  = 5
-  integer, parameter :: ivmtsol = 1
-  integer, parameter :: ivmtgwf = 2
-  integer, parameter :: ivmtmvr = 3
   
+  integer, parameter :: isrcsol = 1
+  integer, parameter :: isrcgwf = 2
+  integer, parameter :: isrcmvr = 3
+  integer, parameter :: isrchal = 4
+  integer, parameter :: isrchll = 5
+  !
+  integer, parameter :: ipckmm1  = 1
+  integer, parameter :: ipckhm1  = 2
+  integer, parameter :: ipckall  = 3
+  integer, parameter :: ipckmvr  = 4
+  !
+  integer, parameter :: itgtsol = 1
+  integer, parameter :: itgtgwf = 2
+  integer, parameter :: itgtmvr = 3
+  integer, parameter :: itgthal = 4
+  integer, parameter :: itgthll = 5
+  !
+  integer, parameter :: iunpmem = 1 !memory manager
+  integer, parameter :: iunphal = 2
+  integer, parameter :: iunpmvr = 3
+  !
   type MpiGwfBuf
     integer(I4B)                                :: nsnd = 0         ! total number of variables to send
     integer(I4B)                                :: nrcv = 0         ! total number of variables to receive
@@ -56,7 +74,11 @@ module MpiExchangeModule
     character(len=LENORIGIN)  :: origin
     character(len=LENVARNAME) :: name
     character(len=LENVARNAME) :: nameext
-    integer(I4B)              :: vmttype
+    integer(I4B)              :: srctype
+    integer(I4B)              :: pcktype
+    integer(I4B)              :: tgttype
+    integer(I4B)              :: unptype
+    !logical                   :: lhalonode = .true.
     integer(I4B), dimension(1) :: id = 0
   end type Vartype
 
@@ -68,10 +90,12 @@ module MpiExchangeModule
   type ExchangeType
     type(VarGroupType), dimension(:), pointer :: vgvar => null()
     character(len=LENVARNAME)                 :: name
+    character(len=LENMODELNAME)               :: halo_name
     character(len=LENMODELNAME)               :: m1_name
     character(len=LENMODELNAME)               :: m2_name
     character(len=4)                          :: m1_dis
     character(len=4)                          :: m2_dis
+    integer(I4B)                              :: halo_offset
   end type ExchangeType
   
   ! -- Local types
@@ -85,6 +109,7 @@ module MpiExchangeModule
   type :: MpiExchangeType
     logical                                                :: linit = .false.
     character(len=LENPACKAGENAME)                          :: name          ! name (origin)
+    character(len=LENPACKAGENAME)                          :: solname       ! solution name (origin)
     integer(I4B)                                           :: gnmodel = 0   ! number of global models
     character(len=LENMODELNAME), dimension(:), allocatable :: gmodelnames   ! global model names
     integer(I4B)                                           :: gnsub = 0     ! number of global subdomains
@@ -93,6 +118,10 @@ module MpiExchangeModule
     character(len=LENMODELNAME), dimension(:), allocatable :: lmodelnames   ! local model names
     integer(I4B)                                           :: lnsub = 0     ! number of local subdomains
     integer(I4B), dimension(:), allocatable                :: lsubs         ! model local subdomains
+    integer(I4B)                                           :: hnmodel = 0   ! number of halo models
+    character(len=LENMODELNAME), dimension(:), allocatable :: hmodelnames   ! halo model names
+    character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm1names   ! halo model m1 names
+    character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm2names   ! halo model m2 names
     integer(I4B), pointer                                :: comm   => null() ! MPI communicator
     integer(I4B), pointer                                :: nrproc => null() ! number of MPI process for this communicator
     integer(I4B), pointer                                :: myrank => null() ! MPI rank in for this communicator
@@ -112,6 +141,7 @@ module MpiExchangeModule
     procedure :: mpi_create_output_str
     procedure :: mpi_is_iproc
     procedure :: mpi_addmodel
+    procedure :: mpi_addhmodel
     procedure :: mpi_getmodel
     procedure :: mpi_addsub
     procedure :: mpi_local_exchange_init
@@ -136,6 +166,11 @@ module MpiExchangeModule
     procedure :: mpi_debug
     procedure :: mpi_da
     procedure :: mpi_not_supported
+    procedure :: mpi_get_halo_rcvmt
+    procedure :: mpi_copy_int_to_halo
+    generic   :: mpicopyinttohalo => mpi_copy_int_to_halo
+    procedure :: mpi_copy_dbl_to_halo
+    generic   :: mpicopydbltohalo => mpi_copy_dbl_to_halo
   end type MpiExchangeType
   
   ! -- World communicator
@@ -173,15 +208,17 @@ module MpiExchangeModule
     !
     ! -- Allocate scalars
     origin = MpiWorld%name
-    call mem_allocate(MpiWorld%comm, 'COMM', origin)
+    call mem_allocate(MpiWorld%comm,   'COMM',   origin)
     call mem_allocate(MpiWorld%nrproc, 'NRPROC', origin)
     call mem_allocate(MpiWorld%myrank, 'MYRANK', origin)
     call mem_allocate(MpiWorld%myproc, 'MYPROC', origin)
+    call mem_allocate(MpiWorld%nrxp,   'NRXP',   origin)
     !
     MpiWorld%comm   = mpiwrpcommworld()
     MpiWorld%nrproc = mpiwrpcomm_size(MpiWorld%comm)
     MpiWorld%myrank = mpiwrpcomm_rank(MpiWorld%comm)
     MpiWorld%myproc = MpiWorld%myrank + 1
+    MpiWorld%nrxp   = 0
     !
     if (MpiWorld%nrproc == 1) then
       serialrun = .true.
@@ -421,12 +458,10 @@ module MpiExchangeModule
     ! -- Allocate arrays
     do ixp = 1, this%nrxp
       if (.not.associated(this%lxch(ixp)%vgbuf)) then
-        !write(*,*) '@@@@@ allocating vgbuf for '//trim(vgname),ixp
         allocate(this%lxch(ixp)%vgbuf(MAXNVG))
       end if
       do iex = 1, this%lxch(ixp)%nexchange
         if (.not.associated(this%lxch(ixp)%exchange(iex)%vgvar)) then
-          !write(*,*) '@@@@@ allocating vgvar for '//trim(vgname),iex
           allocate(this%lxch(ixp)%exchange(iex)%vgvar(MAXNVG))
         end if
       end do
@@ -436,7 +471,8 @@ module MpiExchangeModule
     return
   end subroutine mpi_add_vg
 
-  subroutine mpi_add_vmt(this, vgname, origin, name, nameext, vmttype)
+  subroutine mpi_add_vmt(this, vgname, name, nameext, srctype, pcktype,         &
+     tgttype, unptype)
 ! ******************************************************************************
 ! ******************************************************************************
 !
@@ -446,10 +482,13 @@ module MpiExchangeModule
     ! -- dummy
     class(MpiExchangeType) :: this
     character(len=*), intent(in) :: vgname
-    character(len=*), intent(in) :: origin
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: nameext
-    character(len=*), intent(in) :: vmttype
+    character(len=*), intent(in) :: srctype
+    character(len=*), intent(in) :: pcktype
+    character(len=*), intent(in) :: tgttype
+    character(len=*), intent(in) :: unptype
+    !logical, intent(in), optional :: lhalonode
     ! -- local
     type(VarGroupType), pointer :: vgvar
     integer(I4B) :: ivg, ixp, iex, iv
@@ -460,13 +499,13 @@ module MpiExchangeModule
     end if
     !
     if (.not.this%linit) then
-      call store_error('Program error: mpi_add_vmt')
+      call store_error('Program error 1: mpi_add_vmt')
       call ustop()
     end if
     !
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
-      write(errmsg,'(a)') 'Program error: mpi_add_vmt'
+      write(errmsg,'(a)') 'Program error 2: mpi_add_vmt'
       call store_error(errmsg)
       call ustop()
     end if
@@ -477,22 +516,65 @@ module MpiExchangeModule
         iv = vgvar%nvar
         iv = iv + 1 
         if (iv > MAXNVAR) then
-          call store_error('Program error: mpi_add_vmt')
+          call store_error('Program error 3: mpi_add_vmt')
           call ustop()
         end if
         vgvar%nvar = iv
-        vgvar%var(iv)%origin  = trim(origin)
         vgvar%var(iv)%name    = trim(name)
         vgvar%var(iv)%nameext = trim(nameext)
-        select case(trim(vmttype))
+        !if (present(lhalonode)) then
+        !  vgvar%var(iv)%lhalonode = lhalonode
+        !end if
+        select case(srctype)
           case('SOL')
-            vgvar%var(iv)%vmttype = ivmtsol
+            vgvar%var(iv)%srctype = isrcsol
           case('GWF')
-            vgvar%var(iv)%vmttype = ivmtgwf
+            vgvar%var(iv)%srctype = isrcgwf
           case('MVR')        
-            vgvar%var(iv)%vmttype = ivmtmvr
+            vgvar%var(iv)%srctype = isrcmvr
+          case('HAL')        
+            vgvar%var(iv)%srctype = isrchal
+          case('HLL')        
+            vgvar%var(iv)%srctype = isrchll
           case default
-            call store_error('Program error: mpi_add_vmt')
+            call store_error('Program error 4: mpi_add_vmt')
+            call ustop()
+        end select
+        select case(pcktype)
+          case('MM1')
+            vgvar%var(iv)%pcktype = ipckmm1
+          case('HM1')
+            vgvar%var(iv)%pcktype = ipckhm1
+          case('ALL')
+            vgvar%var(iv)%pcktype = ipckall
+          case default
+            call store_error('Program error 5: mpi_add_vmt')
+            call ustop()
+        end select
+        select case(tgttype)
+          case('SOL')
+            vgvar%var(iv)%tgttype = itgtsol
+          case('GWF')
+            vgvar%var(iv)%tgttype = itgtgwf
+          case('MVR')        
+            vgvar%var(iv)%tgttype = itgtmvr
+          case('HAL')        
+            vgvar%var(iv)%tgttype = itgthal
+          case('HLL')        
+            vgvar%var(iv)%tgttype = itgthll
+          case default
+            call store_error('Program error 6: mpi_add_vmt')
+            call ustop()
+        end select
+        select case(unptype)
+        case('MEM')
+            vgvar%var(iv)%unptype = iunpmem
+          case('HAL')
+            vgvar%var(iv)%unptype = iunphal
+          case('MVR')
+            vgvar%var(iv)%unptype = iunpmvr
+         case default 
+            call store_error('Program error 7: mpi_add_vmt')
             call ustop()
         end select
       end do
@@ -557,7 +639,7 @@ module MpiExchangeModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MemoryTypeModule, only: iaint1d, iadbl1d !@@@@DEBUG
+    use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d !@@@@DEBUG
     use MemoryManagerModule, only: mem_get_ptr, mem_setptr, mem_setval,        &
                                    mem_setval_id, mem_check_by_name !@@@@
     use MpiWrapper, only: mpiwrpstats
@@ -565,7 +647,7 @@ module MpiExchangeModule
     class(MpiExchangeType) :: this
     character(len=*), intent(in) :: solname
     character(len=*), intent(in) :: vgname
-    logical, intent(in) :: lunpack
+    logical, intent(in) :: lunpack 
     ! -- local
     !type(VarMemoryType), pointer :: vmt
     !
@@ -578,7 +660,7 @@ module MpiExchangeModule
 
     character(len=LENORIGIN) :: mod_origin, sol_origin, src_origin, tgt_origin
     integer(I4B) :: ixp, iex, nrcv, iv, is, i, j, istat
-    character(len=LENMODELNAME) :: mname, id, m1_name, m2_name
+    character(len=LENMODELNAME) :: mname, id, m1_name, m2_name, halo_name
     !
     integer(I4B) :: newtype
     integer(I4B), dimension(:), allocatable :: snd_newtype, rcv_newtype
@@ -624,6 +706,7 @@ module MpiExchangeModule
           ex => this%lxch(ixp)%exchange(iex)
           vgvar => ex%vgvar(ivg)
           m1_name = ex%m1_name
+          halo_name = ex%halo_name
           ! -- Loop over the exchange send variables
           do iv = 1, vgvar%nvar
             var => vgvar%var(iv)
@@ -632,48 +715,63 @@ module MpiExchangeModule
               ! -- check
               if (is > vgbuf%nsnd) then
                 !write(*,*) '@@@ packing '//trim(vgname)//' '//trim(var%name),is
-                call store_error('Program error: mpi_local_exchange')
+                call store_error('Program error 1: mpi_local_exchange')
                 call ustop()
               end if
-              ! -- Set the origin and offset
-              write(mod_origin,'(a,1x,a)') trim(m1_name), trim(var%nameext)
-              select case(var%vmttype)
-                case(ivmtgwf)
+              !
+              ! source and offset
+              select case(var%srctype)
+                case(isrcgwf)
                   if (trim(var%nameext) == 'DIS') then
                     write(mod_origin,'(a,1x,a)') trim(m1_name), trim(ex%m1_dis)
-                  end if
+                  else
+                    write(mod_origin,'(a,1x,a)') trim(m1_name), trim(var%nameext)
+                  endif
                   src_origin = mod_origin
                   moffset = 0
-                case(ivmtsol)
+                case(isrcsol)
                   read(solname,*) sol_origin
                   write(sol_origin,'(a,1x,a)') trim(sol_origin), trim(var%nameext)
                   src_origin = sol_origin
                   call mem_setptr(tmp, 'MOFFSET', trim(m1_name))
                   moffset = tmp
-                case(ivmtmvr)
+                case(isrchal)
+                  src_origin = trim(halo_name)
+                  moffset = 0
+                case(isrchll)
+                  src_origin = trim(halo_name)//'_M1 '//trim(var%nameext)
+                  moffset = 0
+                case(isrcmvr)
                   src_origin = var%origin
-                  tgt_origin = src_origin
                   moffset = 0
               end select
-              !  
+              !
+              !write(*,*) '@@@@ Getting "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank
               call mem_get_ptr(var%name, src_origin, mt)
               !
-              select case(var%vmttype)
-                case(ivmtgwf,ivmtsol)
-                  tgt_origin = mod_origin
+              select case(var%pcktype)
+                case(ipckmm1)
                   call mem_setptr(tmp, 'NEXG', trim(ex%name))
                   call mem_setptr(nodem1, 'NODEM1', trim(ex%name))
                   if (.not.associated(tmp).or..not.associated(nodem1)) then
-                    call store_error('Program error: mpi_local_exchange')
+                    call store_error('Program error 2: mpi_local_exchange')
                     call ustop()
                   end if
                   nexg = tmp
-                case(ivmtmvr)
+                  call mpi_pack_mt(src_origin,  mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                case(ipckhm1)
+                  call mem_setptr(nodem1, 'IMAPMTOHALO', trim(halo_name)//'_M1')
+                  nexg = size(nodem1)
+                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                case(ipckmvr)
                   nexg = 1
                   nodem1 => var%id
-                end select
-                call mpi_pack_mt_nodem1(tgt_origin, nodem1, nexg, moffset, mt,  &
-                                       vgbuf%sndmt(is))
+                  call mpi_pack_mt(src_origin,  mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                case(ipckall)
+                  call mpi_pack_mt(tgt_origin, mt, vgbuf%sndmt(is))
+                  !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank
+              end select
+              !
             end if
           end do
         end do
@@ -790,13 +888,15 @@ module MpiExchangeModule
     !
     ! -- Debug
     if (.false. .and. trim(vgname) == 'MOVER') then
+      write(*,*) '@@@@@ VARGROUP = '//trim(vgname)
       do irank = 0, this%nrproc-1
         if (irank == this%myrank) then
           write(*,*) '=================myrank',this%myrank
           do ixp = 1, this%nrxp
             vgbuf => this%lxch(ixp)%vgbuf(ivg)
-            write(*,*) '---sent to',this%lxch(ixp)%xprnk
+            write(*,*) '---sent to',this%lxch(ixp)%xprnk, vgbuf%nsnd
             do i = 1, vgbuf%nsnd
+              !if (trim(vgbuf%sndmt(i)%name) /= 'X') cycle
               write(*,*) 'name:      ', trim(vgbuf%sndmt(i)%name)
               write(*,*) 'origin:    ', trim(vgbuf%sndmt(i)%origin)
               write(*,*) 'isize:     ', vgbuf%sndmt(i)%isize
@@ -804,19 +904,18 @@ module MpiExchangeModule
               !write(*,*) 'memitype:  ', memitype
               select case(memitype)
                 case(iadbl1d)
-!                  do j = 1, vgbuf%sndmt(i)%isize
-                  do j = 1, 1
+                  do j = 1, vgbuf%sndmt(i)%isize
                     write(*,*) 'dval:      ', vgbuf%sndmt(i)%adbl1d(j)
                   end do
                 case(iaint1d)
-!                  do j = 1, vgbuf%sndmt(i)%isize
-                  do j = 1, 1
+                  do j = 1, vgbuf%sndmt(i)%isize
                     write(*,*) 'ival:      ', vgbuf%sndmt(i)%aint1d(j)
                   end do
               end select
             end do
-            write(*,*) '---received from',this%lxch(ixp)%xprnk
+            write(*,*) '---received from',this%lxch(ixp)%xprnk, vgbuf%nrcv
             do i = 1,vgbuf%nrcv
+              !if (trim(vgbuf%rcvmt(i)%name) /= 'X') cycle
               write(*,*) 'name:      ', trim(vgbuf%rcvmt(i)%name)
               write(*,*) 'origin:    ', trim(vgbuf%rcvmt(i)%origin)
               write(*,*) 'isize:     ', vgbuf%rcvmt(i)%isize
@@ -825,13 +924,11 @@ module MpiExchangeModule
               !write(*,*) 'memitype:  ', memitype
               select case(memitype)
                 case(iadbl1d)
-!                  do j = 1, vgbuf%sndmt(i)%isize
-                  do j = 1, 1
+                  do j = 1, vgbuf%rcvmt(i)%isize
                     write(*,*) 'dval:      ', vgbuf%rcvmt(i)%adbl1d(j)
                   end do
                 case(iaint1d)
-!                  do j = 1, vgbuf%rcvmt(i)%isize
-                  do j = 1, 1
+                  do j = 1, vgbuf%rcvmt(i)%isize
                     write(*,*) 'ival:      ', vgbuf%rcvmt(i)%aint1d(j)
                   end do
                end select
@@ -840,6 +937,7 @@ module MpiExchangeModule
         end if
         call mpiwrpbarrier(this%comm)
       end do
+      !call ustop('@@@@@debug')
     end if
     !
     ! -- Set the received data for the halo (m2) models
@@ -852,22 +950,23 @@ module MpiExchangeModule
           ! -- halo model name
           m2_name = ex%m2_name
           vgvar => ex%vgvar(ivg)
-          !write(*,*) '@@@@@@@ vgvar%nvar =',vgvar%nvar, this%myrank
+          halo_name = ex%halo_name
           do iv = 1, vgvar%nvar
             var => vgvar%var(iv)
             if (var%lrcv) then
               is = is + 1
               ! check
               if (vgbuf%rcvmt(is)%name /= var%name) then
-                call store_error('Program error: mpi_local_exchange')
+                call store_error('Program error 5: mpi_local_exchange')
                 call ustop()
               end if
-              select case(var%vmttype)
-                case(ivmtgwf,ivmtsol)
-                  src_origin = vgbuf%rcvmt(is)%origin
-                  read(src_origin,*,iostat=istat) mname, id
+              !
+              ! target origin
+              select case (var%tgttype)
+                case(itgtgwf,itgtsol)
+                  read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname, id
                   if (istat /= 0) then
-                    read(src_origin,*,iostat=istat) mname
+                    read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname
                     id = ''
                   end if
                   if (index(id,'HALO') > 0) then
@@ -876,18 +975,40 @@ module MpiExchangeModule
                   if (trim(id) == 'DIS') then
                     id = ex%m2_dis
                   end if
-                  write(tgt_origin, '(a,1x,a)') trim(m2_name), trim(id)
-                  vgbuf%rcvmt(is)%origin = tgt_origin
-                  !write(*,*) '@@@ setting '//'"'//trim(vgbuf%rcvmt(is)%origin),'" "',trim(vgbuf%rcvmt(is)%name)
-                  call mem_setval(vgbuf%rcvmt(is))
-                case(ivmtmvr)
+                  tgt_origin = trim(m2_name)//' '//trim(id)
+                case(itgthal)
+                  read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname, id
+                  if (istat /= 0) then
+                    read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname
+                    id = ''
+                  end if
+                  if (trim(id) == 'DIS') then
+                    id = 'DISU'
+                  end if
+                  tgt_origin = trim(halo_name)//' '//trim(id)
+                case(itgthll)  
+                  tgt_origin = trim(halo_name)//'_M2 '//trim(var%nameext)
+                case(itgtmvr)
                   tgt_origin = var%origin
-                  !if (this%myrank == 0) then
-                  !  write(*,*) '@@@ setting MPI '//'"'//trim(tgt_origin), &
-                  !    '" "',trim(vgbuf%rcvmt(is)%name),'": ',var%id, vgbuf%rcvmt(is)%adbl1d(1)
+              end select
+              !
+              vgbuf%rcvmt(is)%origin = tgt_origin
+              !
+              select case(var%unptype)
+                case(iunpmem)
+                  !if (trim(vgname)=='HALO_INIT_CON_A' .and. trim(var%name)=='CL1') then
+                  !  write(*,*) '-->Unpacking for HALO_A: '//trim(var%name)//' '//trim(vgbuf%rcvmt(is)%origin), var%unptype
                   !end if
-                  vgbuf%rcvmt(is)%origin = tgt_origin
+                  call mem_setval(vgbuf%rcvmt(is))
+                case(iunpmvr)
                   call mem_setval_id(vgbuf%rcvmt(is), var%id, 1)
+                case(iunphal)
+                  call mem_setptr(nodem1, 'IMAPMTOHALO', trim(halo_name)//'_M1')
+                  if (.not.associated(nodem1)) then
+                    call store_error('Program error 6: mpi_local_exchange')
+                    call ustop()
+                  endif
+                  call mem_setval(vgbuf%rcvmt(is), size(nodem1))
               end select
             end if
           end do
@@ -935,7 +1056,7 @@ module MpiExchangeModule
     ! -- find the variable group name
     ivg = ifind(this%vg, trim(vgname))
     if (ivg < 0) then
-      call store_error('Program error: mpi_local_exchange for '//trim(vgname))
+      call store_error('Program error: mpi_mv_halo for '//trim(vgname))
       call ustop()
     end if
     !
@@ -978,6 +1099,164 @@ module MpiExchangeModule
     return
   end subroutine mpi_mv_halo
   
+  function mpi_get_halo_rcvmt(this, vgname, varname, varext, hmname) result(mt)
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    character(len=*), intent(in) :: vgname
+    character(len=*), intent(in) :: varname
+    character(len=*), intent(in) :: varext
+    character(len=*), intent(in) :: hmname
+    type(MemoryType), pointer :: mt
+    ! -- local
+    type(MpiGwfBuf), pointer :: vgbuf
+    type(ExchangeType), pointer :: ex
+    type(VarGroupType), pointer :: vgvar
+    type(VarType), pointer :: var
+    logical :: lfound
+    integer(I4B) :: ivg, ixp, iex, iv, is
+! ------------------------------------------------------------------------------
+    !
+    mt => null()
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    ! -- find the variable group name
+    ivg = ifind(this%vg, trim(vgname))
+    if (ivg < 0) then
+      call store_error('Program error: mpicopydbltohalo for '//trim(vgname))
+      call ustop()
+    end if
+    !
+    lfound = .false.
+    do ixp = 1, this%nrxp
+      vgbuf => this%lxch(ixp)%vgbuf(ivg)
+      is = 0
+      do iex = 1, this%lxch(ixp)%nexchange
+        ex => this%lxch(ixp)%exchange(iex)
+        vgvar => ex%vgvar(ivg)
+        do iv = 1, vgvar%nvar
+          var => vgvar%var(iv)
+          if (var%lrcv) then
+            is = is + 1
+          end if
+          if ((trim(hmname) == trim(ex%halo_name)) .and.                       &
+              (trim(var%name) == trim(varname)) .and.                          &
+              (trim(var%nameext) == trim(varext))) then
+            mt => vgbuf%rcvmt(is)
+            lfound = .true.
+          end if
+          if(lfound) exit
+        end do
+        if (lfound) exit
+      end do
+      if (lfound) exit
+    end do
+    !
+    ! -- return
+    return
+  end function mpi_get_halo_rcvmt
+  
+  subroutine mpi_copy_int_to_halo(this, vgname, varname, varext, hmname,        &
+    gwfhaloarray, offset)
+! ******************************************************************************
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use MemoryTypeModule, only: iaint1d
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    character(len=*), intent(in) :: vgname
+    character(len=*), intent(in) :: varname
+    character(len=*), intent(in) :: varext
+    character(len=*), intent(in) :: hmname
+    integer(I4B), dimension(:), intent(inout) :: gwfhaloarray
+    integer(I4B), intent(in) :: offset
+    ! -- local
+    type(MemoryType), pointer :: mt
+    integer(I4B) :: i
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    mt => this%mpi_get_halo_rcvmt(vgname, varname, varext, hmname)
+    !
+    if (.not.associated(mt)) then
+      call store_error('Program error 1: mpi_copy_int_to_halo')
+      call ustop()
+    end if
+    !
+    ! check
+    if (mt%memitype /= iaint1d) then
+      call store_error('Program error 2: mpi_copy_int_to_halo')
+      call ustop()
+    endif
+    !
+    do i = 1, mt%isize
+      gwfhaloarray(i+offset) = mt%aint1d(i)
+    end do
+    !
+    ! -- return
+    return
+  end subroutine mpi_copy_int_to_halo
+
+  subroutine mpi_copy_dbl_to_halo(this, vgname, varname, varext, hmname,        &
+    gwfhaloarray, offset)
+! ******************************************************************************
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use MemoryTypeModule, only: iadbl1d
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    character(len=*), intent(in) :: vgname
+    character(len=*), intent(in) :: varname
+    character(len=*), intent(in) :: varext
+    character(len=*), intent(in) :: hmname
+    real(DP), dimension(:), intent(inout) :: gwfhaloarray
+    integer(I4B), intent(in) :: offset
+    ! -- local
+    type(MemoryType), pointer :: mt
+    integer(I4B) :: i
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    mt => this%mpi_get_halo_rcvmt(vgname, varname, varext, hmname)
+    !
+    if (.not.associated(mt)) then
+      call store_error('Program error 1: mpi_copy_dbl_to_halo')
+      call ustop()
+    end if
+    !
+    ! check
+    if (mt%memitype /= iadbl1d) then
+      call store_error('Program error 2: mpi_copy_dbl_to_halo')
+      call ustop()
+    endif
+    !
+    do i = 1, mt%isize
+      gwfhaloarray(i+offset) = mt%adbl1d(i)
+    end do
+    !
+    ! -- return
+    return
+  end subroutine mpi_copy_dbl_to_halo
+
   subroutine mpi_global_exchange_sum1(this, dval)
 ! ******************************************************************************
 ! Collective sum over all processes for one double precision value.
@@ -1173,7 +1452,7 @@ module MpiExchangeModule
     return
   end subroutine mpi_global_exchange_absmin2
   
-  subroutine mpi_pack_mt_nodem1(origin, node, nexg, moffset, mti, mto)
+  subroutine mpi_pack_mt(origin, mti, mto, node, nexg, moffset)
 ! ******************************************************************************
 ! Pack memory type for point-to-point communication.
 ! ******************************************************************************
@@ -1181,71 +1460,16 @@ module MpiExchangeModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MemoryTypeModule, only: iaint1d, iadbl1d
+    use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d
     ! -- dummy
     character(len=*), intent(in) :: origin
-    integer(I4B), intent(in) :: nexg
-    integer(I4B), intent(in) :: moffset
-    integer(I4B), dimension(nexg), intent(in) :: node
     type(MemoryType), intent(in) :: mti
     type(MemoryType), intent(out) :: mto
+    integer(I4B), intent(in), optional :: nexg
+    integer(I4B), intent(in), optional :: moffset
+    integer(I4B), dimension(:), intent(in), optional :: node
     ! -- local
     integer(I4B) :: i, n
-! ------------------------------------------------------------------------------
-    !
-    write(errmsg,'(a)') 'Program error in mpi_pack_mt_nodem1.'
-    !
-    mto%name     = mti%name
-    mto%origin   = trim(origin)
-    mto%memitype = mti%memitype
-    mto%isize    = nexg
-    !
-    select case(mti%memitype)
-      case(iaint1d)
-        allocate(mto%aint1d(nexg))
-        do i = 1, nexg
-          n = node(i) + moffset
-          if (n < 0 .or. n > size(mti%aint1d)) then
-            call store_error(errmsg)
-            call ustop()
-          end if
-          mto%aint1d(i) = mti%aint1d(n)
-        end do
-        !write(*,*) '# int n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%aint1d)
-      case(iadbl1d)
-        allocate(mto%adbl1d(nexg))
-        do i = 1, nexg
-          n = node(i) + moffset
-          if (n < 0 .or. n > size(mti%adbl1d)) then
-            call store_error(errmsg)
-            call ustop()
-          end if
-          mto%adbl1d(i) = mti%adbl1d(n)
-        end do
-        !write(*,*) '# dbl n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%adbl1d)
-      case default
-        call store_error(errmsg)
-        call ustop()
-    end select
-    !
-    ! -- return
-    return
-  end subroutine mpi_pack_mt_nodem1
-  
-  subroutine mpi_pack_mt(origin, mti, mto)
-! ******************************************************************************
-! Pack memory type for point-to-point communication.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use MemoryTypeModule, only: iintsclr, idblsclr
-    ! -- dummy
-    character(len=*), intent(in) :: origin
-    type(MemoryType), intent(in) :: mti
-    type(MemoryType), intent(out) :: mto
-    ! -- local
 ! ------------------------------------------------------------------------------
     !
     write(errmsg,'(a)') 'Program error in mpi_pack_mt.'
@@ -1253,7 +1477,16 @@ module MpiExchangeModule
     mto%name     = mti%name
     mto%origin   = trim(origin)
     mto%memitype = mti%memitype
-    mto%isize    = mti%isize
+    mto%isize    = 0 
+    !
+    ! TODO: checks for K22, K33, ANGLE1, ANGLE2 and ANGLE3
+    if (present(node)) then
+      if ((mti%memitype == iaint1d) .or. (mti%memitype == iadbl1d)) then
+        if (mti%isize < nexg) then
+          return
+        end if
+      end if
+    end if
     !
     select case(mti%memitype)
       case(iintsclr)
@@ -1262,6 +1495,42 @@ module MpiExchangeModule
       case(idblsclr)
         allocate(mto%dblsclr)
         mto%dblsclr = mti%dblsclr
+      case(iaint1d)
+        if (present(node)) then
+          mto%isize = nexg
+          allocate(mto%aint1d(mto%isize))
+          do i = 1, mto%isize
+            n = node(i) + moffset
+            if ((n > 0) .and. (n <= size(mti%aint1d))) then
+              mto%aint1d(i) = mti%aint1d(n)
+            end if
+          end do
+        else
+          mto%isize = mti%isize
+          allocate(mto%aint1d(mto%isize))
+          do i = 1, mto%isize
+            mto%aint1d(i) = mti%aint1d(i)
+          end do
+        end if
+        !write(*,*) '# int n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%aint1d)
+      case(iadbl1d)
+        if (present(node)) then
+          mto%isize = nexg
+          allocate(mto%adbl1d(mto%isize))
+          do i = 1, mto%isize
+            n = node(i) + moffset
+            if ((n > 0) .and. (n <= size(mti%adbl1d))) then
+              mto%adbl1d(i) = mti%adbl1d(n)
+            end if
+          end do
+        else
+          mto%isize = mti%isize
+          allocate(mto%adbl1d(mto%isize))
+          do i = 1, mto%isize
+            mto%adbl1d(i) = mti%adbl1d(i)
+          end do
+        end if
+        !write(*,*) '# dbl n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%adbl1d)
       case default
         call store_error(errmsg)
         call ustop()
@@ -1368,6 +1637,7 @@ module MpiExchangeModule
         n = n + 1
         this%lmodelnames(n) = mname
         this%lnmodel = n
+      ! store local
       case default
         write(errmsg,'(a)') 'Program error in mpi_addmodel.'
         call store_error(errmsg)
@@ -1377,6 +1647,40 @@ module MpiExchangeModule
     ! -- return
     return
   end subroutine mpi_addmodel
+  
+  subroutine mpi_addhmodel(this, hmname, m1name, m2name)
+! ******************************************************************************
+! Add a model to my subdomain.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ArrayHandlersModule, only: ExpandArray
+    use SimModule, only: store_error, ustop
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    character(len=*), intent(in) :: hmname, m1name, m2name
+    ! -- local
+    integer(I4B) :: n
+! ------------------------------------------------------------------------------
+    if (serialrun) then
+      return
+    end if
+    !
+    call ExpandArray(this%hmodelnames)
+    call ExpandArray(this%hmodelm1names)
+    call ExpandArray(this%hmodelm2names)
+    n = this%hnmodel
+    n = n + 1
+    this%hmodelnames(n)   = hmname
+    this%hmodelm1names(n) = m1name
+    this%hmodelm2names(n) = m2name
+    this%hnmodel = n
+    !
+    ! -- return
+    return
+  end subroutine mpi_addhmodel
   
   subroutine mpi_getmodel(this, mname, lok)
 ! ******************************************************************************
@@ -1390,18 +1694,18 @@ module MpiExchangeModule
     ! -- modules
     use ArrayHandlersModule, only: ExpandArray
     use SimModule, only: store_error, ustop
-    use MpiExchangeGenModule, only: modelname_halo,                             &
-                                    mpi_create_modelname_halo
     ! -- dummy
     class(MpiExchangeType) :: this
     character(len=*), intent(inout) :: mname
     logical, intent(out) :: lok
     ! -- local
-    integer(I4B) :: m
+    type(ExchangeType), pointer :: ex
+    integer(I4B) :: m, ixp, iex
 ! ------------------------------------------------------------------------------
     !
-    lok = .true.
+    lok = .false.
     if (serialrun) then
+      lok = .true.
       return
     end if
     !
@@ -1413,12 +1717,19 @@ module MpiExchangeModule
     end if
     !
     m = ifind(this%lmodelnames, mname)
+      ! find the halo model
     if (m <= 0) then
-      call mpi_create_modelname_halo(1, mname)
-      m = ifind(modelname_halo, mname)
-      if (m <= 0) then
-        lok = .false.
-      end if
+      do ixp = 1, this%nrxp
+        do iex = 1, this%lxch(ixp)%nexchange
+          ex => this%lxch(ixp)%exchange(iex)
+          if (trim(ex%m2_name) == trim(mname)) then
+            mname = ex%halo_name
+            lok = .true.
+          end if
+        end do
+      end do
+    else
+      lok = .true.
     end if
     !
     ! -- return
@@ -1471,32 +1782,32 @@ module MpiExchangeModule
     return
   end subroutine mpi_addsub
       
-  subroutine mpi_add_halo_model(im, modelname)
-! ******************************************************************************
-! This subroutine sets the list of halo (m2) models
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    use MpiExchangeGenModule, only: nhalo, modelname_halo,                      &
-                                    mpi_create_modelname_halo
-    ! -- dummy
-    integer, intent(in) :: im
-    character(len=*), intent(inout) :: modelname
-    ! -- local
-    integer(I4B) :: m
-! ------------------------------------------------------------------------------
-    call mpi_create_modelname_halo(im, modelname)
-    m = ifind(modelname_halo, modelname)
-    if (m < 0) then
-      nhalo = nhalo + 1
-      call ExpandArray(modelname_halo)
-      modelname_halo(nhalo) = modelname
-    end if
-    !
-    ! -- return
-    return
-  end subroutine mpi_add_halo_model
+!  subroutine mpi_add_halo_model(im, modelname)
+!! ******************************************************************************
+!! This subroutine sets the list of halo (m2) models
+!! ******************************************************************************
+!!
+!!    SPECIFICATIONS:
+!! ------------------------------------------------------------------------------
+!    use MpiExchangeGenModule, only: nhalo, modelname_halo,                      &
+!                                    mpi_create_modelname_halo
+!    ! -- dummy
+!    integer, intent(in) :: im
+!    character(len=*), intent(inout) :: modelname
+!    ! -- local
+!    integer(I4B) :: m
+!! ------------------------------------------------------------------------------
+!    call mpi_create_modelname_halo(im, modelname)
+!    m = ifind(modelname_halo, modelname)
+!    if (m < 0) then
+!      nhalo = nhalo + 1
+!      call ExpandArray(modelname_halo)
+!      modelname_halo(nhalo) = modelname
+!    end if
+!    !
+!    ! -- return
+!    return
+!  end subroutine mpi_add_halo_model
   
   subroutine mpi_to_colmem(mt, is, cmt, iopt)
 ! ******************************************************************************
@@ -1622,8 +1933,10 @@ module MpiExchangeModule
       deallocate(this%gmodelnames)
     end if
     if(allocated(this%lmodelnames)) then
-
       deallocate(this%lmodelnames)
+    end if
+    if(allocated(this%hmodelnames)) then
+      deallocate(this%hmodelnames)
     end if
     if(allocated(this%gsubs)) then
       deallocate(this%gsubs)

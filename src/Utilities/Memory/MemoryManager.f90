@@ -750,6 +750,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(logicalsclr)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -772,6 +775,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(intsclr)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -794,6 +800,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(dblsclr)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -816,6 +825,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(aint1d)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -838,6 +850,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(aint2d)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -860,6 +875,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(adbl1d)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -882,6 +900,9 @@ contains
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
     logical :: found
+    if (.not.associated(adbl2d)) then
+      return
+    endif
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
@@ -1110,7 +1131,8 @@ subroutine setval_logical(logicalsclr, name, origin) !PAR
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin) then
+      if(mt%name == name .and. mt%origin == origin .and.                        &
+        associated(mt%logicalsclr)) then
         found = .true.
         exit
       endif
@@ -1146,7 +1168,8 @@ end subroutine setval_logical
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin) then
+      if(mt%name == name .and. mt%origin == origin .and.                        &
+        associated(mt%intsclr)) then
         found = .true.
         exit
       endif
@@ -1182,7 +1205,8 @@ end subroutine setval_logical
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin) then
+      if(mt%name == name .and. mt%origin == origin .and.                       &
+        associated(mt%dblsclr)) then
         found = .true.
         exit
       endif
@@ -1218,7 +1242,8 @@ end subroutine setval_logical
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin) then
+      if(mt%name == name .and. mt%origin == origin .and.                        &
+        associated(mt%aint1d)) then
         found = .true.
         exit
       endif
@@ -1235,9 +1260,9 @@ end subroutine setval_logical
     return
  end subroutine setval_int1d
 
- subroutine setval_mt(mti) !PAR
+ subroutine setval_mt(mti, offset_in) !PAR
 ! ******************************************************************************
-! Set the variabels base don the memory type
+! Set the variabels based on the memory type
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -1250,13 +1275,20 @@ end subroutine setval_logical
     
     ! -- dummy
     type(MemoryType), target, intent(in) :: mti
+    integer(I4B), intent(in), optional :: offset_in
     ! -- local
     character(len=LENORIGIN) :: origin
     character(len=LENMODELNAME) :: name
     character(len=LINELENGTH) :: errmsg
     type(MemoryType), pointer :: mt
-    integer(I4B) :: i, isizei, isize
+    integer(I4B) :: i, isizei, isize, offset
 ! ------------------------------------------------------------------------------
+    !
+    if (present(offset_in)) then
+      offset = offset_in
+    else
+      offset = 0
+    endif
     !
     name   = trim(mti%name)
     origin = mti%origin
@@ -1294,7 +1326,7 @@ end subroutine setval_logical
           call allocate_error(name, origin, 0, errmsg, 0)
         endif
         do i = 1, isizei
-          mt%aint1d(i) = mti%aint1d(i)
+          mt%aint1d(i+offset) = mti%aint1d(i)
         enddo
       case(iadbl1d)
         if (.not.associated(mt%adbl1d)) then
@@ -1303,7 +1335,7 @@ end subroutine setval_logical
           call allocate_error(name, origin, 0, errmsg, 0)
         endif
         do i = 1, isizei
-          mt%adbl1d(i) = mti%adbl1d(i)
+          mt%adbl1d(i+offset) = mti%adbl1d(i)
         enddo
       case default
         call allocate_error(name, origin, 0,                                    &
@@ -1350,6 +1382,7 @@ subroutine setval_mt_id(mti,id,nid) !PAR
     isize  = mt%isize
     mt%isize = isizei
     write(errmsg, '(a)') 'Program error setval_mt.' 
+    !
     select case(mt%memitype)
       case(iadbl1d)
         if (.not.associated(mt%adbl1d)) then
@@ -1359,7 +1392,6 @@ subroutine setval_mt_id(mti,id,nid) !PAR
         endif
         do i = 1, nid
           n = id(i)
-
           mt%adbl1d(n) = mti%adbl1d(i)
         enddo  
       case default

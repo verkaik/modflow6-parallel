@@ -9,7 +9,7 @@ module BaseModelModule
 
   private
   public :: BaseModelType, CastAsBaseModelClass, AddBaseModelToList, &
-            GetBaseModelFromList
+            GetBaseModelFromList, GetBaseModelFromListByName
 
   type :: BaseModelType
     character(len=LENMODELNAME), pointer :: name             => null()          ! name of the model
@@ -22,7 +22,7 @@ module BaseModelModule
     integer(I4B), pointer                :: iprflow          => null()          ! flag to print simulated flows
     integer(I4B), pointer                :: ipakcb           => null()          ! save_flows flag
     logical, pointer                     :: single_model_run => null()          ! indicate if it is a single model run
-    logical, pointer                     :: ishalo           => null()          ! indicate if the model is of type halo !PAR
+    logical, pointer                     :: ishalo           => null()          ! indicate if the model is a halo model !PAR
   contains
     procedure :: model_df
     procedure :: model_ar
@@ -222,5 +222,35 @@ module BaseModelModule
     !
     return
   end function GetBaseModelFromList
-
+  
+  function GetBaseModelFromListByName(list, name) result (res)
+    use SimModule, only: store_error, store_error_unit, ustop
+    implicit none
+    ! -- dummy
+    type(ListType),       intent(inout) :: list
+    character(len=*),     intent(in)    :: name
+    class(BaseModelType), pointer    :: res
+    ! -- local
+    integer(i4b) :: idx
+    logical :: lfound
+    class(*), pointer :: obj
+    !
+    lfound = .false.
+    do idx = 1, list%Count()
+      obj => list%GetItem(idx)
+      res => CastAsBaseModelClass(obj)
+      if (trim(res%name) == trim(name)) then
+        lfound = .true.
+        exit
+      end if
+     end do
+    !
+    if (.not.lfound) then
+      call store_error('GetBaseModelFromListByName')
+      call ustop()
+    endif
+    !
+    return
+  end function GetBaseModelFromListByName
+  
 end module BaseModelModule

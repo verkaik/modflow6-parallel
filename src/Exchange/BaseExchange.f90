@@ -26,9 +26,11 @@ module BaseExchangeModule
 
   abstract interface
 
-    subroutine exg_df(this)
+    subroutine exg_df(this, iopt)
+      use KindModule, only: I4B !PAR 
       import BaseExchangeType
       class(BaseExchangeType) :: this
+      integer(I4B), intent(in) :: iopt !PAR
     end subroutine
 
     subroutine exg_ar(this)

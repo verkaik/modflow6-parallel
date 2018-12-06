@@ -35,7 +35,7 @@ module NumericalExchangeModule
     character(len=16), allocatable, dimension(:)    :: auxname                   !array of auxiliary variable names
     real(DP), dimension(:, :), pointer, contiguous  :: auxvar    => null()       !array of auxiliary variable values
     type(BlockParserType)                           :: parser                    !block parser
-    logical, pointer                                :: m2_ishalo                   ! flag indicating that model 2 is of type halo !PAR 
+    logical, pointer                                :: m2_bympi                   ! flag indicating that model 2 is of type halo !PAR 
     logical, pointer                                :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
   contains
     procedure :: exg_df
@@ -58,12 +58,11 @@ module NumericalExchangeModule
     procedure :: read_options
     procedure :: read_dimensions
     procedure :: get_iasym
-    procedure :: get_m1m2 !PAR
   end type NumericalExchangeType
 
 contains
 
-  subroutine exg_df(this)
+  subroutine exg_df(this, iopt)
 ! ******************************************************************************
 ! exg_df -- define the exchange
 ! ******************************************************************************
@@ -75,6 +74,7 @@ contains
     use InputOutputModule, only: getunit, openfile
     ! -- dummy
     class(NumericalExchangeType) :: this
+    integer(I4B), intent(in) :: iopt
     ! -- local
 ! ------------------------------------------------------------------------------
     !
@@ -99,7 +99,7 @@ contains
     integer(I4B) :: n, iglo, jglo
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_ishalo) then !PAR
+    if (this%m2_bympi) then !PAR
       return !PAR
     endif !PAR
     !
@@ -133,7 +133,7 @@ contains
     integer(I4B) :: n, iglo, jglo, ipos
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_ishalo) then !PAR
+    if (this%m2_bympi) then !PAR
       return !PAR
     endif !PAR
     !
@@ -235,7 +235,7 @@ contains
     !
     if(this%implicit) then
       ! -- correct the diagonal
-      if (this%m2_ishalo) then !PAR
+      if (this%m2_bympi) then !PAR
         do i = 1, this%nexg !PAR
           nodem1sln = this%nodem1(i) + this%m1%moffset !PAR
           idiagsln = iasln(nodem1sln) !PAR
@@ -427,7 +427,7 @@ contains
     call mem_allocate(this%ipakcb, 'IPAKCB', this%name)
     call mem_allocate(this%nexg, 'NEXG', this%name)
     call mem_allocate(this%naux, 'NAUX', this%name)
-    call mem_allocate(this%m2_ishalo,'M2_ISHALO', this%name) !PAR
+    call mem_allocate(this%m2_bympi,'M2_BYMPI', this%name) !PAR
     call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%name) !PAR
     allocate(this%auxname(0))
     this%filename = ''
@@ -438,7 +438,7 @@ contains
     this%ipakcb = 0
     this%nexg = 0
     this%naux = 0
-    this%m2_ishalo = .false. !PAR
+    this%m2_bympi = .false. !PAR
     this%m1m2_swap = .false. !PAR
     !
     ! -- return
@@ -681,13 +681,4 @@ contains
     !
     return
   end function GetNumericalExchangeFromList
-
-  subroutine get_m1m2(this, m1, m2) !PAR
-    use GwfModule, only: GwfModelType
-    class(NumericalExchangeType) :: this !PAR
-    type(GwfModelType), pointer, intent(out) :: m1, m2 !PAR
-    !
-    return !PAR
-  end subroutine get_m1m2 !PAR
-  
 end module NumericalExchangeModule

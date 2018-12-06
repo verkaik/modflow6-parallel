@@ -23,8 +23,7 @@ program mf6
   use SolutionGroupModule,    only: SolutionGroupType, GetSolutionGroupFromList
   use ListsModule,            only: basesolutionlist, solutiongrouplist,       &
                                     basemodellist, baseexchangelist,           &
-                                    lists_da,                                  &
-                                    halomodellist !PAR
+                                    lists_da
   use SimVariablesModule,     only: iout, isimdd !PAR
   use SimModule,              only: converge_reset, converge_check,            &
                                     final_message
@@ -33,8 +32,10 @@ program mf6
   use MpiExchangeGenModule,   only: serialrun, writestd !PAR
   use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !PAR
                                     MpiWorld !PAR
-  use MpiExchangeGwfModule,   only: mpi_set_gwfhalo_world !PAR
+  use MpiExchangeGwfModule,   only: mpi_gwfhalo_world,                        &
+                                    mpi_set_gwfhalo_world_mvr !PAR
   use NumericalSolutionModule, only: NumericalSolutionType !PAR
+  use GwfGwfExchangeModule, only: gwf_mpi_halo_init
   implicit none
   ! -- local
   class(SolutionGroupType), pointer :: sgp => null()
@@ -87,12 +88,27 @@ program mf6
   enddo
   !
   ! -- Collective MPI communication scalars DIS
-  call mpi_set_gwfhalo_world() !PAR
+  if (isimdd == 1) then !PAR
+    call mpi_gwfhalo_world(2) !PAR
+    call mpi_set_gwfhalo_world_mvr() !PAR
+  endif !PAR
   !
-  ! -- Define each exchange
+  ! -- Define each exchange phase 1
   do ic = 1, baseexchangelist%Count()
     ep => GetBaseExchangeFromList(baseexchangelist, ic)
-    call ep%exg_df()
+    call ep%exg_df(1)
+  enddo
+  !
+  ! -- MPI local exchange 
+  if (isimdd == 1) then !PAR
+    call gwf_mpi_halo_init()
+    call MpiWorld%mpi_local_exchange('', 'HALO_INIT_DIS', .false.)
+  endif
+  !  
+  ! -- Define each exchange phase 2
+  do ic = 1, baseexchangelist%Count()
+    ep => GetBaseExchangeFromList(baseexchangelist, ic)
+    call ep%exg_df(2)
   enddo
   !
   ! -- Define each solution
@@ -108,21 +124,19 @@ program mf6
     mp => GetBaseModelFromList(basemodellist, im)
     call mp%model_ar()
   enddo
-  ! -- Allocate and read each halo model
-  do im = 1, halomodellist%Count() !PAR
-    mp => GetBaseModelFromList(halomodellist, im) !PAR
-    call mp%model_ar() !PAR
-  enddo !PAR
   !
-  ! -- Local exchange
   if (isimdd == 1) then !PAR
+    ! -- Local MPI exchange of NPF flags
+    call mpi_gwfhalo_world(3)
+    !-- Local MPI exchange of NPF arrays
+    call MpiWorld%mpi_local_exchange('', 'HALO_INIT_NPFIC', .false.) !PAR
     do is=1,basesolutionlist%Count() !PAR
       sp => GetBaseSolutionFromList(basesolutionlist, is) !PAR
       select type (sp) !PAR
       class is (NumericalSolutionType) !PAR
         nsp => sp !PAR
       end select !PAR
-      call nsp%MpiSol%mpi_local_exchange(nsp%name, 'INIT', .true.) !PAR
+      call nsp%MpiSol%mpi_local_exchange(nsp%name, 'X_IACTIVE', .false.) !PAR
     enddo !PAR
   endif !PAR
   !

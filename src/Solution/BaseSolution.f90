@@ -42,12 +42,11 @@ module BaseSolutionModule
       class(BaseSolutionType) :: this
     end subroutine
 
-    subroutine slnmpiaddgmodel(this, mname, idsoln) !PAR
+    subroutine slnmpiaddgmodel(this, mname) !PAR
       use KindModule, only: I4B !PAR 
       import BaseSolutionType !PAR
       class(BaseSolutionType) :: this !PAR
       character(len=*), intent(in) :: mname !PAR
-      integer(I4B), intent(in) :: idsoln !PAR
     end subroutine !PAR
     
     subroutine slnmpiinit(this, sname) !PAR

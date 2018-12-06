@@ -14,7 +14,7 @@ module PackageMoverModule
     character(len=LENORIGIN)                     :: origin
     integer, pointer                             :: nproviders
     integer, pointer                             :: nreceivers
-    logical, pointer                             :: ishalo !PAR
+    logical, pointer                 :: bympi !PAR
     real(DP), dimension(:), pointer, contiguous  :: qtformvr      => null()
     real(DP), dimension(:), pointer, contiguous  :: qformvr       => null()
     real(DP), dimension(:), pointer, contiguous  :: qtomvr        => null()
@@ -36,17 +36,17 @@ module PackageMoverModule
   
   contains
 
-  subroutine ar(this, nproviders, nreceivers, origin, ishalo) !PAR
+  subroutine ar(this, nproviders, nreceivers, origin, bympi) !PAR
     class(PackageMoverType) :: this
     integer, intent(in) :: nproviders
     integer, intent(in) :: nreceivers
     character(len=*), intent(in) :: origin
-    logical, intent(in) :: ishalo !PAR
+    logical, intent(in) :: bympi !PAR
     !
     call this%allocate_scalars(origin)
     this%nproviders = nproviders
     this%nreceivers = nreceivers
-    this%ishalo     = ishalo !PAR
+    this%bympi      = bympi !PAR
     !
     call this%allocate_arrays()
     !
@@ -121,12 +121,12 @@ module PackageMoverModule
     !
     call mem_allocate(this%nproviders, 'NPROVIDERS', origin)
     call mem_allocate(this%nreceivers, 'NRECEIVERS', origin)
-    call mem_allocate(this%ishalo, 'ISHALO', origin) !PAR
+    call mem_allocate(this%bympi, 'BYMPI', origin) !PAR
     !
     this%nproviders = 0
     this%nreceivers = 0
     this%origin = origin
-    this%ishalo = .false. !PAR
+    this%bympi = .false. !PAR
     !
     ! -- return
     return

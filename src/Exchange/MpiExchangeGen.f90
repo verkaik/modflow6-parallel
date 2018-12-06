@@ -13,8 +13,6 @@ module MpiExchangeGenModule
   public :: mpi_finalize
   public :: mpi_append_fname
   public :: mpi_is_halo
-  public :: mpi_create_modelname_halo
-  public :: mpi_destroy_modelname_halo
   ! -- Public variables
   public :: nhalo
   public :: modelname_halo
@@ -116,36 +114,7 @@ module MpiExchangeGenModule
     ! -- return
     return
   end subroutine mpi_create_modelname_halo
-  
-  subroutine mpi_destroy_modelname_halo(modelname)
-! ******************************************************************************
-! Destroy halo model name.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    character(len=*), intent(inout) :: modelname
-    ! -- local
-    integer(I4B) :: i, j, n
-! ------------------------------------------------------------------------------
-    !
-    if (serialrun) then
-      return
-    end if
-    !
-    n = len_trim(modelname)
-    i = index(modelname(1:n),' ',back=.true.)
-    j = index(modelname(1:n),'HALO')
-    if (i > 0 .and. j > 0) then
-      modelname = modelname(1:j-2)//modelname(i:n)
-    end if
-    !
-    ! -- return
-    return
-  end subroutine mpi_destroy_modelname_halo
-  
+
   function mpi_is_halo(modelname) result(flag_halo)
 ! ******************************************************************************
 ! Check if a model name is of type halo

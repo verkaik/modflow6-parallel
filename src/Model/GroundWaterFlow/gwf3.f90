@@ -24,7 +24,6 @@ module GwfModule
 
   private
   public :: gwf_cr
-  public :: gwf_cr_halo !PAR
   public :: GwfModelType
 
   type, extends(NumericalModelType) :: GwfModelType
@@ -306,97 +305,6 @@ module GwfModule
     return
   end subroutine gwf_cr
 
-  subroutine gwf_cr_halo(id, modelname, nexg) !PAR
-! ******************************************************************************
-! gwf_cr_halo -- Create a new groundwater flow model object for exchange
-! Subroutine: (1) creates model object and add to exchange modellist
-!             (2) assign values
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use ListsModule,                only: halomodellist
-    use BaseModelModule,            only: AddBaseModelToList
-    use SimModule,                  only: ustop, store_error, count_errors
-    use InputOutputModule,          only: write_centered
-    use VersionModule,              only: VERSION, MFVNAM, MFTITLE,            &
-                                          FMTDISCLAIMER, IDEVELOPMODE
-    use ConstantsModule,            only: LINELENGTH, LENPACKAGENAME
-    use CompilerVersion
-    use MemoryManagerModule,        only: mem_allocate
-    use GwfDisModule,               only: dis_cr
-    use GwfDisvModule,              only: disv_cr
-    use GwfDisuModule,              only: disu_cr
-    use GwfNpfModule,               only: npf_cr
-    use Xt3dModule,                 only: xt3d_cr
-    use GwfMvrModule,               only: mvr_cr
-    use GwfIcModule,                only: ic_cr !PAR
-    use ObsModule,                  only: obs_cr !PAR
-    use MpiExchangeColModule,       only: mpi_get_distype
-    ! -- dummy
-    integer(I4B), intent(in)      :: id
-    character(len=*), intent(in)  :: modelname
-    integer(I4B), intent(in)      :: nexg
-    ! -- local
-    logical                       :: ldis, ldisu, ldisv
-    type(GwfModelType), pointer   :: this
-    class(BaseModelType), pointer :: model
-    integer :: in_dum, iout_dum
-    ! -- format
-! ------------------------------------------------------------------------------
-    !
-    ! -- Allocate a new GWF Model (this) and add it to halomodellist
-    allocate(this)
-    call this%allocate_scalars(modelname)
-    model => this   
-    call AddBaseModelToList(halomodellist, model)
-    
-    ! -- Assign values
-    this%name = modelname
-    this%macronym = 'GWF'
-    this%id = id
-    !
-    ! -- TODO: to be replaced by optional arguments
-    in_dum = -1
-    iout_dum = -1
-    !
-    ! -- Get the discretization type
-    call mpi_get_distype(modelname, ldis, ldisu, ldisv)
-    !
-    ! -- Create discretization object
-    if(ldis) then
-      call dis_cr(this%dis, this%name, in_dum, iout_dum) 
-    elseif(ldisu) then
-      call disu_cr(this%dis, this%name, in_dum, iout_dum)
-    elseif(ldisv) then
-      call disv_cr(this%dis, this%name, in_dum, iout_dum)
-    endif
-    !
-    ! -- Set the number of nodes
-    this%dis%nodes     = nexg
-    this%dis%nodesuser = nexg
-    this%neq           = nexg
-    !
-    ! -- Allocate discretization variables
-    call this%dis%allocate_arrays()
-    
-    ! -- Allocate model arrays, now that neq and nja are assigned
-    call this%allocate_arrays()
-    !
-    ! -- Create packages that are tied directly to model
-    call npf_cr(this%npf, this%name, in_dum, iout_dum)
-    call xt3d_cr(this%xt3d, this%name, in_dum, iout_dum)
-    call gnc_cr(this%gnc, this%name, in_dum, iout_dum)
-    call ic_cr(this%ic, this%name, in_dum, iout_dum, this%dis)
-    call mvr_cr(this%mvr, this%name, in_dum, iout_dum)
-    !
-    ! -- create obs package
-    !call obs_cr(this%obs, in_dum)
-    !
-    ! -- return
-    return
-  end subroutine gwf_cr_halo
     
   subroutine gwf_df(this)
 ! ******************************************************************************
@@ -636,21 +544,19 @@ module GwfModule
       this%xold(n)=this%x(n)
     enddo
     !
-    if (this%ishalo) then !PAR
-      return !PAR
-    endif !PAR
-    !
     ! -- Advance
     if(this%innpf > 0) call this%npf%npf_ad(this%dis%nodes, this%xold)
     if(this%insto > 0) call this%sto%sto_ad()
     if(this%inmvr > 0) call this%mvr%mvr_ad()
-    do ip=1,this%bndlist%Count()
-      packobj => GetBndFromList(this%bndlist, ip)
-      call packobj%bnd_ad()
-      if (isimcheck > 0) then
-        call packobj%bnd_ck()
-      end if
-    enddo
+    if(.not.this%ishalo) then !PAR
+      do ip=1,this%bndlist%Count()
+        packobj => GetBndFromList(this%bndlist, ip)
+        call packobj%bnd_ad()
+        if (isimcheck > 0) then
+          call packobj%bnd_ck()
+        end if
+      enddo
+    endif !PAR
     !
     ! -- Push simulated values to preceding time/subtime step
     call this%obs%obs_ad()
@@ -675,7 +581,7 @@ module GwfModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Call package cf routines
-    if(this%innpf > 0 .and. .not.this%ishalo) then !PAR
+    if(this%innpf > 0) then
       call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
     endif !PAR
     do ip = 1, this%bndlist%Count()
@@ -1528,6 +1434,7 @@ module GwfModule
       ! -- Ensure TDIS6 is present
       call namefile_obj%get_unitnumber('TDIS6', iu, 1)
       if(iu == 0) then
+        write(*,*) '@@@iu=',iu
         call store_error('TDIS6 ftype not specified in name file.')
       endif
       !

@@ -568,18 +568,21 @@
       ! -- add variables for MPI point-to-point
       if (parallelrun) then !PAR
         call this%MpiSol%mpi_add_vg('IMS-X') !PAR
-        call this%MpiSol%mpi_add_vmt('IMS-X','','X','','SOL') !PAR
+        call this%MpiSol%mpi_add_vmt('IMS-X','X','', 'SOL', 'MM1', 'SOL', 'MEM') !PAR
         call this%MpiSol%mpi_init_vg('IMS-X') !PAR
         IF (THIS%ILINMETH.EQ.1) THEN !PAR
           call this%MpiSol%mpi_add_vg('IMS-P') !PAR
-          call this%MpiSol%mpi_add_vmt('IMS-P','','P','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-P','P','IMSLINEAR', &
+            'SOL', 'MM1', 'SOL', 'MEM') !PAR
           call this%MpiSol%mpi_init_vg('IMS-P') !PAR
         ELSEIF (THIS%ILINMETH.EQ.2) THEN !PAR
           call this%MpiSol%mpi_add_vg('IMS-PHAT') !PAR
-          call this%MpiSol%mpi_add_vmt('IMS-PHAT','','PHAT','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-PHAT', 'PHAT','IMSLINEAR', &
+            'SOL', 'MM1', 'SOL', 'MEM') !PAR
           call this%MpiSol%mpi_init_vg('IMS-PHAT') !PAR
           call this%MpiSol%mpi_add_vg('IMS-QHAT') !PAR
-          call this%MpiSol%mpi_add_vmt('IMS-QHAT','','QHAT','IMSLINEAR','SOL') !PAR
+          call this%MpiSol%mpi_add_vmt('IMS-QHAT','QHAT','IMSLINEAR', &
+            'SOL', 'MM1', 'SOL', 'MEM') !PAR
           call this%MpiSol%mpi_init_vg('IMS-QHAT') !PAR
         END IF !PAR
       end if !PAR
@@ -1062,7 +1065,7 @@
       IN_ITER = innerit
 !
 !     -- MPI parallel: update the solution for the halo models
-      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .true.) !PAR
+      call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-X', .false.) !PAR
 !
 !-------RETURN
       RETURN

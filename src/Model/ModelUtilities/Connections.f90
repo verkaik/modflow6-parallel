@@ -8,6 +8,8 @@ module ConnectionsModule
   implicit none
   private
   public :: ConnectionsType
+  public :: fillisym
+  public :: filljas
 
   type ConnectionsType
     character(len=LENMODELNAME), pointer            :: name_model => null()      !name of the model

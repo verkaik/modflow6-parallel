@@ -278,8 +278,10 @@ module BaseDisModule
     call mem_deallocate(this%ibuff)
     !
     ! -- Connections
+    if (associated(this%con)) then
     call this%con%con_da()
     deallocate(this%con)
+    endif
     !
     ! -- Return
     return

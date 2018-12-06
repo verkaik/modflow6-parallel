@@ -238,7 +238,6 @@ module GwfMvrModule
     use TdisModule, only: kper, nper
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
     use ArrayHandlersModule, only: ifind
-    use MpiExchangeGenModule, only: mpi_destroy_modelname_halo !PAR
     ! -- dummy
     class(GwfMvrType),intent(inout) :: this
     ! -- local
@@ -350,16 +349,14 @@ module GwfMvrModule
       !
       ! -- Check to make sure all providers and receivers are in pakorigins
       do i = 1, this%nmvr
-        pname1 = this%mvr(i)%pname1 !PAR
-        call mpi_destroy_modelname_halo(pname1) !PAR
+        pname1 = this%mvr(i)%pname1_read !PAR
         ipos = ifind(this%pakorigins, pname1) !PAR
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. PROVIDER ',                       &
             trim(pname1), ' NOT LISTED IN PACKAGES BLOCK.' !PAR
           call store_error(errmsg)
         endif
-        pname2 = this%mvr(i)%pname2 !PAR
-        call mpi_destroy_modelname_halo(pname2) !PAR
+        pname2 = this%mvr(i)%pname2_read !PAR
         ipos = ifind(this%pakorigins, pname2) !PAR
         if(ipos < 1) then
           write(errmsg,'(4x,a,a,a)') 'ERROR. RECEIVER ',                       &
@@ -379,10 +376,8 @@ module GwfMvrModule
       !
       ! --
       do i = 1, this%nmvr
-        pname1 = this%mvr(i)%pname1 !PAR
-        pname2 = this%mvr(i)%pname2 !PAR
-        call mpi_destroy_modelname_halo(pname1) !PAR
-        call mpi_destroy_modelname_halo(pname2) !PAR
+        pname1 = this%mvr(i)%pname1_read !PAR
+        pname2 = this%mvr(i)%pname2_read !PAR
         ii = ifind(this%pakorigins, pname1) !PAR
         jj = ifind(this%pakorigins, pname2) !PAR
         ipos = (ii - 1) * this%maxpackages + jj

@@ -400,10 +400,8 @@ module SimulationCreateModule
                 call ustop()
               endif
               call MpiWorld%mpi_is_iproc(isub, add) !PAR
-            end if !PAR
-            ! -- Store global subdomain information !PAR
-            if (isimdd == 1) then !PAR
-              call add_model_dd(imdd, isub,'GWF6', mname) !PAR
+              ! -- Store global subdomain information !PAR
+              call add_model_dd(imdd, isub, mname) !PAR
               call MpiWorld%mpi_addmodel(1, mname) !PAR
               call MpiWorld%mpi_addsub(1, isub) !PAR
               if (add) then
@@ -413,6 +411,7 @@ module SimulationCreateModule
               endif
             else !PAR
               call add_model(im, 'GWF6', mname)
+              call add_model_dd(imdd, 1, mname) !PAR
               call gwf_cr(fname, im, modelname(im))
             endif !PAR
           case default
@@ -445,7 +444,7 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use GwfGwfExchangeModule,    only: gwfexchange_create
-    use GwfpGwfpExchangeModule,  only: gwfpexchange_create !PAR
+!    use GwfpGwfpExchangeModule,  only: gwfpexchange_create !PAR
     ! -- dummy
     ! -- local
     integer(I4B) :: ierr
@@ -458,8 +457,7 @@ module SimulationCreateModule
     character(len=LINELENGTH) :: keyword
     character(len=LINELENGTH) :: fname, name1, name2
     integer(I4B) :: im = 0 !PAR
-    logical :: createhalo !PAR
-    integer(I4B) :: nexg !PAR
+    logical :: m2_bympi !PAR
     ! -- formats
     character(len=*), parameter :: fmtmerr = "('Error in simulation control ', &
       &'file.  Could not find model: ', a)"
@@ -480,9 +478,13 @@ module SimulationCreateModule
             ! -- get filename
             call parser%GetString(fname)
             !
-            ! -- get first modelname and then model id
+            ! -- get first modelname
             call parser%GetStringCaps(name1)
-            m1 = ifind(modelname, name1)
+            call parser%GetStringCaps(name2)
+            !
+            m1 = ifind(modelname_all, name1)
+            m2 = ifind(modelname_all, name2)
+            !
             if(m1 < 0) then
               write(errmsg, fmtmerr) trim(name1)
               call store_error(errmsg)
@@ -491,8 +493,6 @@ module SimulationCreateModule
             endif
             !
             ! -- get second modelname and then model id
-            call parser%GetStringCaps(name2)
-            m2 = ifind(modelname, name2)
             if(m2 < 0) then
               write(errmsg, fmtmerr) trim(name2)
               call store_error(errmsg)
@@ -500,46 +500,58 @@ module SimulationCreateModule
               call ustop()
             endif
             !
-            ! -- Create the exchange object.
-            write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWF6 exchange ', id,      &
-              ' will be created to connect model ', m1, ' with model ', m2
-            call gwfexchange_create(fname, id, m1, m2)
-          case ('GWF6P-GWF6P') !PAR
-            id = id + 1
-            !
-            ! -- get filename
-            call parser%GetString(fname)
-            !
-            ! -- get modelname
-            call parser%GetStringCaps(name1)
-            call parser%GetStringCaps(name2)
-            !
-            ! -- get nexg
-            ! -- PAR-TODO: read nexg earlier?
-            nexg = parser%GetInteger()
-            !
-            ! -- Determine wether to create halo or not
-            m1 = ifind(modelname_all, name1)
-            m2 = ifind(modelname_all, name2)
             s1 = model_sub(m1)
             s2 = model_sub(m2)
             if (s1 /= s2) then
-              createhalo = .true.
+              m2_bympi = .true.
             else
-              createhalo = .false.
+              m2_bympi = .false.
             endif
             !
             ! -- get model id
             m1 = ifind(modelname, name1)
             m2 = ifind(modelname, name2)
             !
-            ! -- PAR-TODO: add check for model existence
-            !
             ! -- Create the exchange object.
-            write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWFP6-GWFP6 exchange ', id,    &
+            write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWF6 exchange ', id,      &
               ' will be created to connect model ', m1, ' with model ', m2
-            call gwfpexchange_create(fname, id, m1, m2, name1, name2, im,      &
-                                     createhalo, nexg)
+            call gwfexchange_create(fname, id, m1, m2, name1, name2, m2_bympi)
+          !case ('GWF6P-GWF6P') !PAR
+          !  id = id + 1
+          !  !
+          !  ! -- get filename
+          !  call parser%GetString(fname)
+          !  !
+          !  ! -- get modelname
+          !  call parser%GetStringCaps(name1)
+          !  call parser%GetStringCaps(name2)
+          !  !
+          !  ! -- get nexg
+          !  ! -- PAR-TODO: read nexg earlier?
+          !  nexg = parser%GetInteger()
+          !  !
+          !  ! -- Determine wether to create halo or not
+          !  m1 = ifind(modelname_all, name1)
+          !  m2 = ifind(modelname_all, name2)
+          !  s1 = model_sub(m1)
+          !  s2 = model_sub(m2)
+          !  if (s1 /= s2) then
+          !    createhalo = .true.
+          !  else
+          !    createhalo = .false.
+          !  endif
+          !  !
+          !  ! -- get model id
+          !  m1 = ifind(modelname, name1)
+          !  m2 = ifind(modelname, name2)
+          !  !
+          !  ! -- PAR-TODO: add check for model existence
+          !  !
+          !  ! -- Create the exchange object.
+          !  write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWFP6-GWFP6 exchange ', id,    &
+          !    ' will be created to connect model ', m1, ' with model ', m2
+          !  call gwfpexchange_create(fname, id, m1, m2, name1, name2, im,      &
+          !                           createhalo, nexg)
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SIMULATION EXCHANGES: ',                 &
@@ -574,9 +586,6 @@ module SimulationCreateModule
     use BaseModelModule,            only: BaseModelType
     use BaseExchangeModule,         only: BaseExchangeType
     use NumericalSolutionModule,    only: solution_create
-    use MpiExchangeGenModule,       only: nhalo, modelname_halo,               & !PAR
-                                          mpi_create_modelname_halo              !PAR
-    use ListsModule,                only: halomodellist !PAR
     use SimVariablesModule,         only: isimdd !PAR
     ! -- dummy
     ! -- local
@@ -593,9 +602,7 @@ module SimulationCreateModule
     character(len=LINELENGTH) :: errmsg
     character(len=LENBIGLINE) :: keyword
     character(len=LINELENGTH) :: fname, mname
-    character(len=LINELENGTH) :: hmname !PAR
     logical :: add !PAR
-    integer(I4B) :: ih !PAR
     type(BlockParserType) :: filein_parser !PAR
     logical :: filein, first !PAR
     logical :: filein_endOfBlock !PAR
@@ -700,7 +707,7 @@ module SimulationCreateModule
               ! -- Find the model id, and then get model
               if (isimdd ==1) then !PAR
                 mid = ifind(modelname_all, mname) !PAR
-                call sp%slnmpiaddgmodel(mname, isoln) !PAR
+                call sp%slnmpiaddgmodel(mname) !PAR
                 if(mid <= 0) then
                   write(errmsg, '(a,a)') 'Error.  Invalid modelname: ', &
                     trim(mname)
@@ -721,22 +728,22 @@ module SimulationCreateModule
                 call sp%addmodel(mp)
                 mp%idsoln = isoln
               endif !PAR
-              do ih = 1, nhalo !PAR
-                hmname = mname !PAR
-                call mpi_create_modelname_halo(ih, hmname)
-                mid = ifind(modelname_halo, hmname) !PAR
-                if (mid > 0) then !PAR
-                  mp => GetBaseModelFromList(halomodellist, mid)
-                  add = .true. !PAR
-                else !PAR
-                  add = .false. !PAR
-                endif !PAR
-                if (add) then !PAR
-                  ! -- Add the model to the solution
-                  call sp%addmodel(mp)
-                  mp%idsoln = isoln
-                endif !PAR
-              enddo !PAR
+              !do ih = 1, nhalo !PAR
+              !  hmname = mname !PAR
+              !  call mpi_create_modelname_halo(ih, hmname)
+              !  mid = ifind(modelname_halo, hmname) !PAR
+              !  if (mid > 0) then !PAR
+              !    mp => GetBaseModelFromList(halomodellist, mid)
+              !    add = .true. !PAR
+              !  else !PAR
+              !    add = .false. !PAR
+              !  endif !PAR
+              !  if (add) then !PAR
+              !    ! -- Add the model to the solution
+              !    call sp%addmodel(mp)
+              !    mp%idsoln = isoln
+              !  endif !PAR
+              !enddo !PAR
             enddo
           case default
             write(errmsg, '(4x,a,a)') &
@@ -856,7 +863,7 @@ module SimulationCreateModule
     return
   end subroutine read_modelname
   
-  subroutine add_model_dd(im, isub, mtype, mname) !PAR
+  subroutine add_model_dd(im, isub, mname) !PAR
 ! ******************************************************************************
 ! Add the model to the list of modelnames, check that the model name is valid.
 ! ******************************************************************************
@@ -866,12 +873,8 @@ module SimulationCreateModule
     ! -- dummy
     integer, intent(inout) :: im
     integer, intent(in) :: isub
-    character(len=*), intent(in) :: mtype
     character(len=*), intent(inout) :: mname
     ! -- local
-    integer :: ilen
-    integer :: i
-    character(len=LINELENGTH) :: errmsg
 ! ------------------------------------------------------------------------------
     !
     im = im + 1
