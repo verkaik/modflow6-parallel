@@ -561,12 +561,15 @@ contains
     ! -- local
 ! ------------------------------------------------------------------------------
     !
+    ! -- Set x and ibound for halo model
+    call this%gwfhalo%gwfhalo_cf1(kiter)
+    !
     ! -- Rewet cells across models using the wetdry parameters in each model's
     !    npf package, and the head in the connected model.
     call this%rewet(kiter)
     !
     ! -- handle cf routines for halo model
-    call this%gwfhalo%gwfhalo_cf(kiter)
+    call this%gwfhalo%gwfhalo_cf2(kiter)
     !
     ! -- Return
     return
@@ -1686,6 +1689,9 @@ contains
         nn = this%gwfhalo%nodem1(iexg)
         this%gwfhalo%gwf1%ibound(nn) = this%gwfhalo%ibound(n)
         this%gwfhalo%gwf1%x(nn) = this%gwfhalo%x(n)
+        if(this%gwfhalo%ibound(n)==30000) then
+          this%gwfhalo%ibound(n)=1
+        endif
         call this%gwfhalo%dis%noder_to_string(n, nodestrn)
         call this%gwfhalo%dis%noder_to_string(m, nodestrm)
         !TODO write(this%gwfmodel1%iout, fmtrwt) trim(nodestrn),                     &
@@ -1699,6 +1705,9 @@ contains
           mm = this%gwfhalo%nodem2(iexg)
           this%gwfhalo%gwf2%ibound(mm) = this%gwfhalo%ibound(m)
           this%gwfhalo%gwf2%x(mm) = this%gwfhalo%x(m)
+          if(this%gwfhalo%ibound(m)==30000) then
+            this%gwfhalo%ibound(m)=1
+          endif
         endif
         call this%gwfhalo%dis%noder_to_string(n, nodestrm)
         call this%gwfhalo%dis%noder_to_string(m, nodestrn)

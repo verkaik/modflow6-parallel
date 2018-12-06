@@ -44,8 +44,8 @@ module GwfHaloModule
     procedure :: gwfhalo_df2
     procedure :: gwfhalo_df3
     procedure :: gwfhalo_ar
-    procedure :: gwfhalo_cf
-    !procedure :: gwfhalo_fc
+    procedure :: gwfhalo_cf1
+    procedure :: gwfhalo_cf2
     procedure :: gwfhalo_fc_calc
     procedure :: gwfhalo_fn_calc
     
@@ -890,9 +890,9 @@ module GwfHaloModule
     return
   end subroutine gwfhalo_ar
 
-  subroutine gwfhalo_cf(this, kiter)
+  subroutine gwfhalo_cf1(this, kiter)
 ! ******************************************************************************
-! gwfhalo_cf -- update heads in halo model and make rewetting calculations
+! gwfhalo_cf1 -- update heads and ibound in halo model
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -924,12 +924,35 @@ module GwfHaloModule
         this%ibound, this%offset)
     endif
     !
+    ! -- return
+    return
+  end subroutine gwfhalo_cf1
+  
+  subroutine gwfhalo_cf2(this, kiter)
+! ******************************************************************************
+! gwfhalo_cf2 -- rewetting calculations
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeModule, only: MpiExchangeType
+    use BndModule, only: BndType,  GetBndFromList
+    ! -- dummy
+    class(GwfHaloModelType) :: this
+    integer(I4B), intent(in) :: kiter
+    ! -- local
+    type(MpiExchangeType), pointer :: mpi
+    class(BndType), pointer :: packobj
+    integer(I4B) :: ip
+! ------------------------------------------------------------------------------
+    !
     ! -- rewet
     ! -- TODO: this is a problem.  Wetting and drying prints messages, which
     !    doesn't make sense for the halo model.  And the halo model should 
     !    only check for wetting for the n-m connection, and not recheck for
     !    all the cells in the halo model.  This is not good.
-    ! call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
+    !call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
     !
     ! -- Calculate saturation for convertible cells
     call this%npf%sat_calc(this%x)
@@ -944,7 +967,7 @@ module GwfHaloModule
     !
     ! -- return
     return
-  end subroutine gwfhalo_cf
+  end subroutine gwfhalo_cf2
 
 !  subroutine gwfhalo_fc(this, kiter, cond)
 !! ******************************************************************************
