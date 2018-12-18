@@ -1,5 +1,5 @@
 module MpiExchangeModule
-  
+  use TimerModule, only: code_timer
   use KindModule, only: DP, I4B  
   use SimModule, only: ustop, store_error
   use ConstantsModule, only: LENPACKAGENAME, LENMODELNAME, LENORIGIN,          &
@@ -136,6 +136,12 @@ module MpiExchangeModule
     integer(I4B), pointer                                :: npdigits  => null() ! Number of digits for nrproc
     character(len=50), pointer                           :: partstr   => null() ! Partition string
     logical                                              :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
+    real(DP)                                             :: ttgsum = 0.d0
+    real(DP)                                             :: ttgmax = 0.d0
+    real(DP)                                             :: ttgmin = 0.d0
+    real(DP)                                             :: ttbarr = 0.d0
+    real(DP)                                             :: ttpack = 0.d0
+    real(DP)                                             :: ttupck = 0.d0
   contains
     procedure :: mpi_barrier
     procedure :: mpi_create_output_str
@@ -177,6 +183,8 @@ module MpiExchangeModule
   type(MpiExchangeType), pointer :: MpiWorld => null()
 
   character(len=LINELENGTH) :: errmsg
+  
+  real(DP) :: t
   
   save
   
@@ -285,7 +293,13 @@ module MpiExchangeModule
       return
     end if
     !
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttbarr)
+#endif
     call mpiwrpbarrier(this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttbarr)
+#endif
     !
     ! -- return
     return
@@ -641,7 +655,7 @@ module MpiExchangeModule
     ! -- modules
     use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d !@@@@DEBUG
     use MemoryManagerModule, only: mem_get_ptr, mem_setptr, mem_setval,        &
-                                   mem_setval_id, mem_check_by_name !@@@@
+                                   mem_setval_id
     use MpiWrapper, only: mpiwrpstats
     ! -- dummy
     class(MpiExchangeType) :: this
@@ -695,7 +709,10 @@ module MpiExchangeModule
       call ustop()
     end if
     !
-    ! --- 
+    ! ---
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttpack)
+#endif
     if (lpack) then
       ! -- Loop over the exchange partners
       do ixp = 1, this%nrxp
@@ -766,7 +783,7 @@ module MpiExchangeModule
                 case(ipckmvr)
                   nexg = 1
                   nodem1 => var%id
-                  call mpi_pack_mt(src_origin,  mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckall)
                   call mpi_pack_mt(tgt_origin, mt, vgbuf%sndmt(is))
                   !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank
@@ -778,6 +795,9 @@ module MpiExchangeModule
       end do
     end if
     !
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttpack)
+#endif
     !-- Pack the meta data
     if (lpackmeta) then
       ! -- Loop over the exchange partners
@@ -941,6 +961,9 @@ module MpiExchangeModule
     end if
     !
     ! -- Set the received data for the halo (m2) models
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttupck)
+#endif
     if (lunpack) then
       do ixp = 1, this%nrxp
         vgbuf => this%lxch(ixp)%vgbuf(ivg)
@@ -1013,8 +1036,11 @@ module MpiExchangeModule
             end if
           end do
         end do
-      end do   
+      end do
     end if
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttupck)
+#endif
     !
     ! -- return
     return
@@ -1277,7 +1303,13 @@ module MpiExchangeModule
     end if
     !
     dwrk(1) = dval
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgsum)
+#endif
     call mpiwrpallreduce(dwrk, 1, 'mpi_sum', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgsum)
+#endif
     dval = dwrk(1)
     !
     ! -- return
@@ -1305,7 +1337,13 @@ module MpiExchangeModule
     !
     dwrk(1) = dval1
     dwrk(2) = dval2
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgsum)
+#endif
     call mpiwrpallreduce(dwrk, 2, 'mpi_sum', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgsum)
+#endif
     dval1 = dwrk(1)
     dval2 = dwrk(2)
     !
@@ -1333,7 +1371,13 @@ module MpiExchangeModule
     end if
     !
     dwrk(1) = abs(dval)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
     call mpiwrpallreduce(dwrk, 1, 'mpi_max', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
     dval = dwrk(1)
     !
     ! -- return
@@ -1361,7 +1405,13 @@ module MpiExchangeModule
     !
     dwrk(1) = abs(dval1)
     dwrk(2) = abs(dval2)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
     call mpiwrpallreduce(dwrk, 2, 'mpi_max', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgmax)
+#endif
     dval1 = dwrk(1)
     dval2 = dwrk(2)
     !
@@ -1389,7 +1439,13 @@ module MpiExchangeModule
     end if
     !
     iwrk(1) = ival
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
     call mpiwrpallreduce(iwrk, 1, 'mpi_max', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgmax)
+#endif
     ival = iwrk(1)
     !
     ! -- return
@@ -1416,7 +1472,13 @@ module MpiExchangeModule
     end if
     !
     dwrk(1) = abs(dval)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmin)
+#endif
     call mpiwrpallreduce(dwrk, 1, 'mpi_min', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgmin)
+#endif
     dval = dwrk(1)
     !
     ! -- return
@@ -1444,7 +1506,13 @@ module MpiExchangeModule
     !
     dwrk(1) = abs(dval1)
     dwrk(2) = abs(dval2)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmin)
+#endif
     call mpiwrpallreduce(dwrk, 2, 'mpi_min', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgmin)
+#endif
     dval1 = dwrk(1)
     dval2 = dwrk(2)
     !

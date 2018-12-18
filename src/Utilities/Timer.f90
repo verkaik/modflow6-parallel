@@ -11,15 +11,15 @@ module TimerModule
   
   contains
   
-  subroutine start_time()
+  subroutine start_time(writestd)
 ! ******************************************************************************
 !  Start simulation timer
 ! ******************************************************************************
+    ! -- dummy
+    logical, intent(in) :: writestd !PAR
 !
 !        SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
-    use MpiExchangeGenModule, only: writestd !PAR
-    use MpiExchangeModule, only: MpiWorld !PAR
     integer(I4B) :: i
     character(len=*), parameter :: fmtdt =                                     &
       "(1X,'Run start date and time (yyyy/mm/dd hh:mm:ss): ',                  &
@@ -27,17 +27,16 @@ module TimerModule
 ! ------------------------------------------------------------------------------
     !    
     ! -- Get current date and time, assign to IBDT, and write to screen
-    call MpiWorld%mpi_barrier() !PAR 
     call date_and_time(values=ibdt)
     if (writestd) then !PAR
       write(*, fmtdt) (ibdt(i), i = 1, 3), (ibdt(i), i = 5, 7)
-    endif !PAR
+    end if
     !
     ! -- return
     return
   end subroutine start_time
   
-  SUBROUTINE elapsed_time(iout, iprtim)
+  SUBROUTINE elapsed_time(iout, iprtim, writestd) !PAR
 ! ******************************************************************************
 !     Get end time and calculate elapsed time
 ! ******************************************************************************
@@ -45,10 +44,10 @@ module TimerModule
 !        SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules 
-    use MpiExchangeGenModule, only: writestd !PAR
     ! -- dummy
     integer(i4b), intent(in) :: iout
     integer(I4B), intent(in) :: iprtim
+    logical, intent(in) :: writestd !PAR
     ! -- local
     INTEGER(I4B) :: IEDT(8), IDPM(12)
     integer(I4B) :: NSPD
@@ -62,13 +61,12 @@ module TimerModule
 !
 !     Get current date and time, assign to IEDT, and write.
       CALL DATE_AND_TIME(VALUES=IEDT)
-      if (.not.writestd) then !PAR
-        return !PAR
-      endif !PAR
-      WRITE(*,1000) (IEDT(I),I=1,3),(IEDT(I),I=5,7)
+      IF(WRITESTD) THEN !PAR
+        WRITE(*,1000) (IEDT(I),I=1,3),(IEDT(I),I=5,7) !PAR
+      END IF !PAR
  1000 FORMAT(1X,'Run end date and time (yyyy/mm/dd hh:mm:ss): ',               &
              I4,'/',I2.2,'/',I2.2,1X,I2,':',I2.2,':',I2.2)
-      IF(IPRTIM.GT.0) THEN
+      IF(IPRTIM.GT.0) THEN !PAR
         WRITE(IOUT,'(1X)')
         WRITE(IOUT,1000) (IEDT(I),I=1,3),(IEDT(I),I=5,7)
       END IF
@@ -126,6 +124,7 @@ module TimerModule
       IF (RSECS.GE.0.5) NRSECS=NRSECS+1
 !
 !     Write elapsed time to screen
+      IF(WRITESTD) THEN !PAR
         IF (NDAYS.GT.0) THEN
           WRITE(*,1010) NDAYS,NHOURS,NMINS,NRSECS
  1010     FORMAT(1X,'Elapsed run time: ',I3,' Days, ',I2,' Hours, ',I2,        &
@@ -142,9 +141,9 @@ module TimerModule
           WRITE(*,1040) NSECS,MSECS
  1040     FORMAT(1X,'Elapsed run time: ',I2,'.',I3.3,' Seconds',/)
         ENDIF
-!
+      END IF !PAR
 !     Write times to file if requested
-      IF(IPRTIM.GT.0) THEN
+      IF(IPRTIM.GT.0) THEN !PAR
         IF (NDAYS.GT.0) THEN
           WRITE(IOUT,1010) NDAYS,NHOURS,NMINS,NRSECS
         ELSEIF (NHOURS.GT.0) THEN
@@ -158,7 +157,6 @@ module TimerModule
 !
       RETURN
   END SUBROUTINE elapsed_time
-
 !
 !-------TIMER FOR SUBROUTINES
   SUBROUTINE code_timer(it, t1, ts)

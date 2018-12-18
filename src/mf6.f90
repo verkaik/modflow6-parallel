@@ -43,7 +43,7 @@ program mf6
   class(NumericalSolutionType), pointer :: nsp !PAR
   class(BaseModelType),     pointer :: mp => null()
   class(BaseExchangeType),  pointer :: ep => null()
-  integer(I4B) :: im, ic, is, isg
+  integer(I4B) :: im, ic, is, isg, iprtim
   logical :: exit_tsloop
   character(len=80) :: compiler
   ! -- formats
@@ -73,7 +73,8 @@ program mf6
   ! -- Write disclaimer
   if (writestd) write(ISTDOUT, FMTDISCLAIMER) !PAR
   ! -- get start time
-  call start_time()
+  call MpiWorld%mpi_barrier() !PAR 
+  call start_time(writestd) !PAR
   !
   !
   ! -- CREATE (CR)
@@ -281,12 +282,13 @@ program mf6
   call lists_da()
   !
   ! -- Deallocate MPI world
+  call MpiWorld%mpi_barrier() !PAR
   call mpi_world_da() !PAR
   !
   ! -- Calculate memory usage, elapsed time and terminate
   call mem_usage(iout)
   call mem_da()
-  call elapsed_time(iout, 1)
+  call elapsed_time(iout, 1, writestd)
   call final_message()
   !
 end program mf6

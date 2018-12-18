@@ -23,7 +23,6 @@ module MemoryManagerModule
   public :: mem_get_ptr !PAR
   public :: mem_setval !PAR
   public :: mem_setval_id !PAR
-  public :: mem_check_by_name !PAR
     
   type(MemoryListType) :: memorylist
   integer(I8B) :: nvalues_alogical = 0
@@ -72,6 +71,9 @@ module MemoryManagerModule
     module procedure setval_mt_id !PAR
   end interface mem_setval_id !PAR
   
+  integer(I4B), save :: nipos = 0 !PAR
+  integer(I4B), dimension(:), allocatable, save :: iposarr !PAR
+  integer(I4B), dimension(:), allocatable, save :: iposidx !PAR
 contains
   
   subroutine allocate_error(varname, origin, istat, errmsg, isize)
@@ -1073,37 +1075,113 @@ contains
     enddo
     return
   end subroutine mem_unique_origins
-  
 
- subroutine mem_get_ptr(name, origin, mt) !PAR
+  subroutine mem_get_ptr(name, origin, mt) !PAR
 ! ******************************************************************************
 ! Get information for a variable.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    !--  modules
+    use SortModule, only: qsort
     ! -- dummy
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: origin
     type(MemoryType), pointer, intent(out) :: mt
     ! -- local
     logical :: found
-    integer(I4B) :: ipos
+    integer(I4B) :: i, ipos, n
 ! ------------------------------------------------------------------------------
-    
-    ! -- Find and assign mt
+    !
+    ! -- Try 1: first check the cached and sorted indices
+    mt => null()
+    found = .false.
+    do i = 1, nipos
+      ipos = iposarr(i)
+      mt => memorylist%Get(ipos)
+      if(trim(mt%name) == trim(name)) then
+        if(trim(mt%origin) == trim(origin)) then
+          select case(mt%memitype)
+            case(ilogicalsclr)
+              if(associated(mt%logicalsclr)) found = .true.
+            case(iintsclr)
+              if(associated(mt%intsclr)) found = .true.
+            case(idblsclr)
+              if(associated(mt%dblsclr)) found = .true.
+            case(iaint1d)
+              if(associated(mt%aint1d)) found = .true.
+            case(iaint2d)
+              if(associated(mt%aint2d)) found = .true.
+            case(iadbl1d)
+              if(associated(mt%adbl1d)) found = .true.
+            case(iadbl2d)
+              if(associated(mt%adbl2d)) found = .true.
+            case(iats1d)
+              if(associated(mt%ats1d)) found = .true.
+          end select
+          if(found) exit
+        endif
+      endif
+    enddo
+    !
+    if (found) then
+      return
+    end if
+    !
+    ! -- Try 2: Find doing a full loop, which is slow
     mt => null()
     found = .false.
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin) then
-        found = .true.
-        exit
+      if(mt%name == name) then
+        if(mt%origin == origin) then
+          select case(mt%memitype)
+            case(ilogicalsclr)
+              if(associated(mt%logicalsclr)) found = .true.
+            case(iintsclr)
+              if(associated(mt%intsclr)) found = .true.
+            case(idblsclr)
+              if(associated(mt%dblsclr)) found = .true.
+            case(iaint1d)
+              if(associated(mt%aint1d)) found = .true.
+            case(iaint2d)
+              if(associated(mt%aint2d)) found = .true.
+            case(iadbl1d)
+              if(associated(mt%adbl1d)) found = .true.
+            case(iadbl2d)
+              if(associated(mt%adbl2d)) found = .true.
+            case(iats1d)
+              if(associated(mt%ats1d)) found = .true.
+          end select
+          if(found) exit
+        endif
       endif
     enddo
     !
-    if(.not. found) call allocate_error(name, origin, 0,                       &
-      'Variable not found in MemoryManager', 0)
+    if(.not.found) then
+      call store_error('Program error mem_get_ptr')
+      call ustop()
+    end if
+    !
+    ! -- Store ipos for caching and sort
+    n = max(1,memorylist%count())
+    nipos = nipos + 1
+    if(nipos > n) then
+      call store_error('Program error mem_get_ptr')
+      call ustop()
+    endif
+    if(.not.allocated(iposarr)) then
+      allocate(iposarr(n))
+    endif
+    iposarr(nipos) = ipos
+    if(.not.allocated(iposidx)) then
+      allocate(iposidx(n))
+    endif
+    do i = 1, nipos
+      iposidx(i) = i
+    enddo
+    call qsort(iposidx(1:nipos), iposarr(1:nipos))
     !
     ! -- return
     return
@@ -1121,27 +1199,14 @@ subroutine setval_logical(logicalsclr, name, origin) !PAR
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: origin
     ! -- local
-    logical :: found
-    integer(I4B) :: ipos
     type(MemoryType), pointer :: mt
 ! ------------------------------------------------------------------------------
- 
-    ! -- Find and assign mt
-    mt => null()
-    found = .false.
-    do ipos = 1, memorylist%count()
-      mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin .and.                        &
-        associated(mt%logicalsclr)) then
-        found = .true.
-        exit
-      endif
-    enddo
     !
-    if(.not. found) call allocate_error(name, origin, 0,                       &
-      'Variable not found in MemoryManager', 0)
+    ! -- Find and assign mt
+    call mem_get_ptr(name, origin, mt)
+    !
     mt%logicalsclr = logicalsclr
-    
+    !
     ! -- return
     return
 end subroutine setval_logical
@@ -1158,27 +1223,14 @@ end subroutine setval_logical
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: origin
     ! -- local
-    logical :: found
-    integer(I4B) :: ipos
     type(MemoryType), pointer :: mt
 ! ------------------------------------------------------------------------------
- 
-    ! -- Find and assign mt
-    mt => null()
-    found = .false.
-    do ipos = 1, memorylist%count()
-      mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin .and.                        &
-        associated(mt%intsclr)) then
-        found = .true.
-        exit
-      endif
-    enddo
     !
-    if(.not. found) call allocate_error(name, origin, 0,                       &
-      'Variable not found in MemoryManager', 0)
+    ! -- Find and assign mt
+    call mem_get_ptr(name, origin, mt)
+    !
     mt%intsclr = intsclr
-    
+    !
     ! -- return
     return
  end subroutine setval_int
@@ -1195,27 +1247,14 @@ end subroutine setval_logical
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: origin
     ! -- local
-    logical :: found
-    integer(I4B) :: ipos
     type(MemoryType), pointer :: mt
 ! ------------------------------------------------------------------------------
- 
-    ! -- Find and assign mt
-    mt => null()
-    found = .false.
-    do ipos = 1, memorylist%count()
-      mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin .and.                       &
-        associated(mt%dblsclr)) then
-        found = .true.
-        exit
-      endif
-    enddo
     !
-    if(.not. found) call allocate_error(name, origin, 0,                       &
-      'Variable not found in MemoryManager', 0)
+    ! -- Find and assign mt
+    call mem_get_ptr(name, origin, mt)
+    !
     mt%dblsclr = dblsclr
-    
+    !
     ! -- return
     return
  end subroutine setval_dbl
@@ -1232,26 +1271,13 @@ end subroutine setval_logical
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: origin
     ! -- local
-    logical :: found
-    integer(I4B) :: ipos, i
+    integer(I4B) :: i
     type(MemoryType), pointer :: mt
 ! ------------------------------------------------------------------------------
- 
-    ! -- Find and assign mt
-    mt => null()
-    found = .false.
-    do ipos = 1, memorylist%count()
-      mt => memorylist%Get(ipos)
-      if(mt%name == name .and. mt%origin == origin .and.                        &
-        associated(mt%aint1d)) then
-        found = .true.
-        exit
-      endif
-    enddo
     !
-    if(.not. found) call allocate_error(name, origin, 0,                       &
-      'Variable not found in MemoryManager', 0)
-    
+    ! -- Find and assign mt
+    call mem_get_ptr(name, origin, mt)
+    !
     do i = 1, size(mt%aint1d)
       mt%aint1d(i) = aint(i)
     enddo
@@ -1269,10 +1295,9 @@ end subroutine setval_logical
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ConstantsModule, only: LENMODELNAME, LINELENGTH
-    use MemoryTypeModule, only: ilogicalsclr, iintsclr, idblsclr,               &
-                                iaint1d, iaint2d,                               &
+    use MemoryTypeModule, only: ilogicalsclr, iintsclr, idblsclr,              &
+                                iaint1d, iaint2d,                              &
                                 iadbl1d, iadbl2d
-    
     ! -- dummy
     type(MemoryType), target, intent(in) :: mti
     integer(I4B), intent(in), optional :: offset_in
@@ -1305,33 +1330,20 @@ end subroutine setval_logical
     write(errmsg, '(a)') 'Program error setval_mt.' 
     select case(mti%memitype)
       case(ilogicalsclr)
-        if (.not.associated(mt%logicalsclr)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        endif
         mt%logicalsclr = mti%logicalsclr
       case(iintsclr)
-        if (.not.associated(mt%intsclr)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        endif
         mt%intsclr = mti%intsclr
       case(idblsclr)
-        if (.not.associated(mt%dblsclr)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        endif
         mt%dblsclr = mti%dblsclr
       case(iaint1d)
-        if (.not.associated(mt%aint1d)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        elseif (isize < isizei) then
+        if (isize < isizei) then
           call allocate_error(name, origin, 0, errmsg, 0)
         endif
         do i = 1, isizei
           mt%aint1d(i+offset) = mti%aint1d(i)
         enddo
       case(iadbl1d)
-        if (.not.associated(mt%adbl1d)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        elseif (isize < isizei) then
+        if (isize < isizei) then
           call allocate_error(name, origin, 0, errmsg, 0)
         endif
         do i = 1, isizei
@@ -1371,7 +1383,6 @@ subroutine setval_mt_id(mti,id,nid) !PAR
     name   = mti%name
     origin = mti%origin
     !
-
     call mem_get_ptr(name, origin, mt)
     !
     if (mti%memitype /= mt%memitype) then
@@ -1385,9 +1396,7 @@ subroutine setval_mt_id(mti,id,nid) !PAR
     !
     select case(mt%memitype)
       case(iadbl1d)
-        if (.not.associated(mt%adbl1d)) then
-          call allocate_error(name, origin, 0, errmsg, 0)
-        elseif (isize < isizei) then
+        if (isize < isizei) then
           call allocate_error(name, origin, 0, errmsg, 0)
         endif
         do i = 1, nid
@@ -1402,44 +1411,5 @@ subroutine setval_mt_id(mti,id,nid) !PAR
     ! -- return
     return
  end subroutine setval_mt_id
-
- subroutine mem_check_by_name(name,mes,n) !PAR
-! ******************************************************************************
-! Check if a variable exists.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- dummy
-    use ConstantsModule, only: LINELENGTH
-    character(len=*), intent(in) :: name
-    character(len=*), intent(in) :: mes
-    integer, intent(in) :: n
-    ! -- local
-    character(len=LINELENGTH) :: errmsg
-    character(len=LENORIGIN) :: origin
-    type(MemoryType), pointer :: mt
-    logical :: found
-    integer(I4B) :: ipos
-! ------------------------------------------------------------------------------
-    !
-    ! -- Find and assign mt
-    mt => null()
-    found = .false.
-    do ipos = 1, memorylist%count()
-      mt => memorylist%Get(ipos)
-      if(mt%name == name) then
-        write(*,*) trim(mes),': "',trim(mt%origin),'"', n
-        found = .true.
-      endif
-    enddo
-    ! 
-    if(.not. found) then
-      write(errmsg, '(3a)') 'Name ',trim(name),' not found!'
-      call store_error(errmsg)
-      call ustop()
-    endif
-    !
- end subroutine mem_check_by_name
  
 end module MemoryManagerModule
