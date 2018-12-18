@@ -9,6 +9,7 @@ module MemoryManagerModule
                                     iadbl1d, iadbl2d,                          & !PAR
                                     iats1d                                       !PAR
   use MemoryListModule,       only: MemoryListType
+  use TimerModule,            only: code_timer !TIM
   
   implicit none
   private
@@ -18,6 +19,7 @@ module MemoryManagerModule
   public :: mem_copyptr
   public :: mem_deallocate
   public :: mem_usage
+  public :: mem_timing !TIM
   public :: mem_da
   public :: mem_set_print_option
   public :: mem_get_ptr !PAR
@@ -74,6 +76,9 @@ module MemoryManagerModule
   integer(I4B), save :: nipos = 0 !PAR
   integer(I4B), dimension(:), allocatable, save :: iposarr !PAR
   integer(I4B), dimension(:), allocatable, save :: iposidx !PAR
+  !
+  real(DP), pointer, save :: ttgetptr => null() !TIM
+  public :: ttgetptr !TIM
 contains
   
   subroutine allocate_error(varname, origin, istat, errmsg, isize)
@@ -1044,6 +1049,23 @@ contains
     write(iout, *)
   end subroutine mem_usage
   
+ subroutine mem_timing(iout) !TIM
+    use VersionModule, only: IDEVELOPMODE 
+    integer(I4B), intent(in) :: iout
+    !
+    if (IDEVELOPMODE == 1) then
+      write(iout, '(//1x,a)') 'Memory timing summary'
+      write(iout, "(1x,70('-'))")
+      if(associated(ttgetptr)) then
+        write(iout, '(1x,a,1x,g0,1x,a)')                                       &
+          'Total get pointer time: ', ttgetptr, 'seconds'
+      end if
+    end if
+    !
+    ! -- return
+    return
+  end subroutine mem_timing  
+  
   subroutine mem_da()
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
@@ -1092,7 +1114,14 @@ contains
     ! -- local
     logical :: found
     integer(I4B) :: i, ipos, n
+    real(DP) :: t !TIM
 ! ------------------------------------------------------------------------------
+    !
+    if(.not.associated(ttgetptr)) then
+      call mem_allocate(ttgetptr, 'TTGETPTR', 'MEMORY_MANAGER')
+      ttgetptr = DZERO
+    endif
+    call code_timer(0, t, ttgetptr) !TIM
     !
     ! -- Try 1: first check the cached and sorted indices
     mt => null()
@@ -1126,6 +1155,7 @@ contains
     enddo
     !
     if (found) then
+      call code_timer(1, t, ttgetptr) !TIM
       return
     end if
     !
@@ -1182,6 +1212,8 @@ contains
       iposidx(i) = i
     enddo
     call qsort(iposidx(1:nipos), iposarr(1:nipos))
+    !
+    call code_timer(1, t, ttgetptr) !TIM
     !
     ! -- return
     return

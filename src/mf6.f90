@@ -16,7 +16,8 @@ program mf6
   use InputOutputModule,      only: write_centered
   use SimulationCreateModule, only: simulation_cr, simulation_da
   use TimerModule,            only: start_time, elapsed_time
-  use MemoryManagerModule,    only: mem_usage, mem_da
+  use MemoryManagerModule,    only: mem_usage, mem_da, &
+                                    mem_timing !TIM
   use BaseModelModule,        only: BaseModelType, GetBaseModelFromList
   use BaseExchangeModule,     only: BaseExchangeType, GetBaseExchangeFromList
   use BaseSolutionModule,     only: BaseSolutionType, GetBaseSolutionFromList
@@ -287,6 +288,7 @@ program mf6
   !
   ! -- Calculate memory usage, elapsed time and terminate
   call mem_usage(iout)
+  call mem_timing(iout) !TIM
   call mem_da()
   call elapsed_time(iout, 1, writestd)
   call final_message()

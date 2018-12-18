@@ -954,7 +954,7 @@ contains
     ! -- Nothing to do here
     if (IDEVELOPMODE == 1) then
       write(this%imslinear%iout, '(//1x,a,1x,a,1x,a)')                         &
-        'Solution', trim(adjustl(this%name)), 'summary'
+        'Solution', trim(adjustl(this%name)), 'timing summary'
       write(this%imslinear%iout, "(1x,70('-'))")
       write(this%imslinear%iout, '(1x,a,1x,g0,1x,a)')                          &
         'Total formulate time: ', this%ttform, 'seconds'
