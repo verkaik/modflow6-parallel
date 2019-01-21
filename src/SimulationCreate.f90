@@ -378,7 +378,7 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Process MODELS block
-    call parser%GetBlock('MODELS', isfound, ierr)
+    call parser%GetBlock('MODELS', isfound, ierr, supportOpenClose=.true.) !IO
     if (isfound) then
       write(iout,'(/1x,a)')'READING SIMULATION MODELS'
       im = 0
@@ -462,7 +462,7 @@ module SimulationCreateModule
     character(len=*), parameter :: fmtmerr = "('Error in simulation control ', &
       &'file.  Could not find model: ', a)"
 ! ------------------------------------------------------------------------------
-    call parser%GetBlock('EXCHANGES', isfound, ierr)
+    call parser%GetBlock('EXCHANGES', isfound, ierr, supportOpenClose=.true.) !IO
     if (isfound) then
       write(iout,'(/1x,a)')'READING SIMULATION EXCHANGES'
       id = 0
@@ -695,7 +695,7 @@ module SimulationCreateModule
                 end if
                 call openfile(iu, iout, fname, 'MODEL NAMES') !PAR
                 call filein_parser%Initialize(iu, iout) !PAR
-                call filein_parser%GetBlock('MODELS', isfound, ierr) !PAR
+                call filein_parser%GetBlock('MODELS', isfound, ierr, supportOpenClose=.true.) !IO
                 call filein_parser%GetNextLine(filein_endOfBlock) !PAR
                 call filein_parser%GetStringCaps(mname) !PAR
                 first = .false. !PAR
