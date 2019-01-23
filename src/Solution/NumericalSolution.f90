@@ -6,7 +6,8 @@ module NumericalSolutionModule
   use ConstantsModule,         only: LINELENGTH, LENSOLUTIONNAME,              &
                                      DPREC, DZERO, DEM20, DEM15, DEM6,         &
                                      DEM4, DEM3, DEM2, DEM1, DHALF,            &
-                                     DONE, DTHREE, DEP6, DEP20
+                                     DONE, DTHREE, DEP6, DEP20,                &
+                                     IZERO !BJ
   use GenericUtilities,        only: IS_SAME
   use VersionModule,           only: IDEVELOPMODE
   use BaseModelModule,         only: BaseModelType
@@ -47,6 +48,8 @@ module NumericalSolutionModule
     real(DP), dimension(:), pointer, contiguous          :: x => NULL()
     integer(I4B), dimension(:), pointer, contiguous      :: active => NULL()
     real(DP), dimension(:), pointer, contiguous          :: xtemp => NULL()
+    integer(I4B), pointer                                :: ibjflag => NULL() !BJ
+    integer(I4B), dimension(:), pointer, contiguous      :: offdiagflag => NULL() !BJ
     type(BlockParserType) :: parser
     !
     ! -- sparse matrix data
@@ -279,6 +282,7 @@ contains
     call mem_allocate (this%ptcexp, 'PTCEXP', solutionname)
     call mem_allocate (this%ptcthresh, 'PTCTHRESH', solutionname)
     call mem_allocate (this%ptcrat, 'PTCRAT', solutionname)
+    call mem_allocate (this%ibjflag, 'IBJFLAG', solutionname) !BJ
     !
     ! -- initialize
     this%id = 0
@@ -324,6 +328,7 @@ contains
     this%ptcexp = done
     this%ptcthresh = DEM3
     this%ptcrat = DZERO
+    this%ibjflag = 0 !BJ
     !
     ! -- return
     return
@@ -471,7 +476,8 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MemoryManagerModule, only: mem_reallocate
+    use MemoryManagerModule, only: mem_reallocate,                              &
+      mem_allocate !BJ
     use SimVariablesModule, only: iout
     use SimModule, only: ustop, store_error, count_errors
     use InputOutputModule, only: getunit, openfile
@@ -707,6 +713,10 @@ contains
             call store_error(errmsg)
           end if
           this%linmeth = ival
+        case ('LINEAR_SOLVER_BJPC') !BJ
+         this%ibjflag = 1 !BJ
+         call mem_allocate(this%offdiagflag, this%nja, 'OFFDIAGFLAG', this%name) !BJ
+         this%offdiagflag = IZERO !BJ
         case ('UNDER_RELAXATION_THETA')
           this%theta = this%parser%GetDouble()
         case ('UNDER_RELAXATION_KAPPA')
@@ -802,7 +812,8 @@ contains
                                              ifdparam, imslinear,              &
                                              this%neq, this%nja, this%ia,      &
                                              this%ja, this%amat, this%rhs,     &
-                                             this%x, this%nitermax)
+                                             this%x, this%nitermax,            &
+                                             this%ibjflag, this%offdiagflag) !BJ
       WRITE(IOUT,*)
       isymflg = 0
       if ( imslinear.eq.1 ) isymflg = 1
@@ -1015,6 +1026,7 @@ contains
     call mem_deallocate(this%drmax)
     call mem_deallocate(this%convdvmax)
     call mem_deallocate(this%convdrmax)
+    call mem_deallocate(this%offdiagflag) !BJ
     !
     ! -- Scalars
     call mem_deallocate(this%id)
@@ -1061,6 +1073,7 @@ contains
     call mem_deallocate(this%ptcexp)
     call mem_deallocate(this%ptcthresh)
     call mem_deallocate(this%ptcrat)
+    call mem_deallocate(this%ibjflag) !BJ
     !
     if (associated(this%MpiSol)) then !PAR
       call this%MpiSol%mpi_da() !PAR
@@ -1264,7 +1277,9 @@ contains
         ! -- Add exchange coefficients to the solution
         do ic=1,this%exchangelist%Count()
           cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-          call cp%exg_fc(kiter, this%ia, this%amat, 1)
+          call cp%exg_fc(kiter, this%ia, this%amat, &
+            this%ibjflag, this%offdiagflag, &  !BJ
+            1)
         enddo
         !
         ! -- Add model coefficients to the solution
@@ -2793,7 +2808,9 @@ contains
     ! -- Fill coefficients (FC) for each exchange
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      call cp%exg_fc(kiter, this%ia, this%amat, 0)
+      call cp%exg_fc(kiter, this%ia, this%amat, &
+        this%ibjflag, this%offdiagflag, & !BJ
+        0)
     end do
     !
     ! -- Fill coefficients (FC) for each model
@@ -2849,7 +2866,9 @@ contains
           ! -- Fill coefficients (FC) for each exchange
           do ic=1,this%exchangelist%Count()
             cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-            call cp%exg_fc(kiter, this%ia, this%amat, 0)
+            call cp%exg_fc(kiter, this%ia, this%amat, &
+              this%ibjflag, this%offdiagflag, & !BJ
+              0)
           end do
           !
           ! -- Fill coefficients (FC) for each model

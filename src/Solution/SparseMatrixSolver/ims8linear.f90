@@ -52,6 +52,8 @@
     real(DP), DIMENSION(:), POINTER, CONTIGUOUS :: AMAT => NULL()
     real(DP), dimension(:), pointer, contiguous :: RHS => NULL()
     real(DP), dimension(:), pointer, contiguous :: X => NULL()
+    integer(I4B), pointer :: IBJFLAG => NULL() !BJ
+    integer(I4B), dimension(:), pointer, contiguous :: OFFDIAGFLAG => NULL() !BJ
     ! VECTORS
     real(DP), POINTER, DIMENSION(:), CONTIGUOUS :: DSCALE => NULL()
     real(DP), POINTER, DIMENSION(:), CONTIGUOUS :: DSCALE2 => NULL()
@@ -103,7 +105,9 @@
   CONTAINS
     SUBROUTINE IMSLINEAR_AR(THIS, NAME, IN, IOUT, IPRIMS, MXITER, IFDPARAM, &
                             IMSLINEARM, NEQ, NJA, IA, JA, AMAT, RHS, X,     &
-                            NINNER, LFINDBLOCK)
+                            NINNER, &
+                            IBJFLAG, OFFDIAGFLAG, & !BJ
+                            LFINDBLOCK)
 !     ******************************************************************
 !     ALLOCATE STORAGE FOR PCG ARRAYS AND READ IMSLINEAR DATA
 !     ******************************************************************
@@ -131,6 +135,8 @@
       real(DP), DIMENSION(NEQ), TARGET, INTENT(INOUT) :: RHS
       real(DP), DIMENSION(NEQ), TARGET, INTENT(INOUT) :: X
       integer(I4B), TARGET, INTENT(INOUT) :: NINNER
+      integer(I4B), INTENT(IN), TARGET :: IBJFLAG !BJ
+      integer(I4B), DIMENSION(:), TARGET, INTENT(IN) :: OFFDIAGFLAG !BJ
       integer(I4B), INTENT(IN), OPTIONAL :: LFINDBLOCK
 !     + + + LOCAL VARIABLES + + +
       LOGICAL :: lreaddata
@@ -230,6 +236,8 @@
       THIS%AMAT => AMAT
       THIS%RHS => RHS
       THIS%X => X
+      THIS%OFFDIAGFLAG => OFFDIAGFLAG !BJ
+      THIS%IBJFLAG => IBJFLAG !BJ
 !-------ALLOCATE SCALAR VARIABLES
       call this%allocate_scalars()
 !
@@ -460,7 +468,14 @@
         WRITE( errmsg,'(A)' ) 'IMSLINEAR7AR: RELAX MUST BE .LE. 1.0'
         call store_error(errmsg)
       END IF
-
+      IF (THIS%IBJFLAG.EQ.1) THEN !BJ
+        IF (THIS%IPC > 2) THEN !BJ
+          WRITE( errmsg,'(A)' ) 'IMSLINEAR7AR: BLOCK JACOBI '//     & !BJ
+          'OPTION NOT YET SUPPORTED FOR USED PRECONDITIONER' !BJ
+          call store_error(errmsg) !BJ
+        END IF !BJ
+      END IF !BJ
+!
       if (count_errors() > 0) then
         call parser%StoreErrorUnit()
         call ustop()
@@ -1007,7 +1022,8 @@
                             THIS%IPC, THIS%RELAX, THIS%A0, THIS%IA0, THIS%JA0,  & !SOL
                             THIS%APC,THIS%IAPC,THIS%JAPC,THIS%IW,THIS%W,        & !SOL
                             THIS%LEVEL, THIS%DROPTOL, THIS%NJLU, THIS%NJW,      & !SOL
-                            THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU) !SOL
+                            THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU,             & !SOL
+                            THIS%IBJFLAG, THIS%OFFDIAGFLAG) !BJ
 !-------SOLUTION BY THE CONJUGATE GRADIENT METHOD
       IF (THIS%ILINMETH ==  1) THEN
         CALL IMSLINEARSUB_CG(ICNVG, itmax, innerit,                             &
@@ -1295,7 +1311,9 @@
 !-------ROUTINE TO UPDATE THE PRECONDITIONER                            
       SUBROUTINE IMSLINEARSUB_PCU(IOUT, NJA, NEQ, NIAPC, NJAPC, IPC, RELAX,     &
                                   AMAT, IA, JA, APC, IAPC, JAPC, IW, W,         &
-                                  LEVEL, DROPTOL, NJLU, NJW, NWLU, JLU, JW, WLU)               
+                                  LEVEL, DROPTOL, NJLU, NJW, NWLU, JLU, JW, WLU,&
+                                  IBJFLAG,                                      & !BJ
+                                  OFFDIAGFLAG) !BJ
       use SimModule, only: ustop, store_error, count_errors
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(IN) :: IOUT 
@@ -1322,6 +1340,8 @@
         integer(I4B), DIMENSION(NJLU), INTENT(INOUT) :: JLU
         integer(I4B), DIMENSION(NJW),  INTENT(INOUT) :: JW
         real(DP), DIMENSION(NWLU),  INTENT(INOUT) :: WLU
+        integer(I4B), INTENT(IN) :: IBJFLAG !BJ
+        integer(I4B), DIMENSION(:),  INTENT(IN) :: OFFDIAGFLAG !BJ
 !       + + + LOCAL DEFINITIONS + + +                                     
         character(len=LINELENGTH) :: errmsg
         character(len=80), dimension(3) :: cerr
@@ -1346,7 +1366,9 @@
             CASE (1,2) 
               CALL IMSLINEARSUB_PCILU0(NJA, NEQ, AMAT, IA, JA,                   &
                                        APC, IAPC, JAPC, IW, W,                   &
-                                       RELAX, izero, delta)                    
+                                       RELAX, izero, delta,                      &
+                                       IBJFLAG,                                  & !BJ
+                                       OFFDIAGFLAG) !BJ
 !             ILUT AND MILUT                                             
             CASE (3,4) 
               ierr = 0
@@ -1438,7 +1460,9 @@
                                                                         
       SUBROUTINE IMSLINEARSUB_PCILU0(NJA, NEQ, AMAT, IA, JA,                    &
                                      APC, IAPC, JAPC, IW, W,                    &
-                                     RELAX, IZERO, DELTA)                        
+                                     RELAX, IZERO, DELTA,                       &
+                                     IBJFLAG,                                   & !BJ
+                                     OFFDIAGFLAG) !BJ
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(IN) :: NJA 
@@ -1454,6 +1478,8 @@
         real(DP), INTENT(IN) :: RELAX 
         integer(I4B), INTENT(INOUT) :: IZERO 
         real(DP), INTENT(IN) :: DELTA 
+        integer(I4B), INTENT(IN) :: IBJFLAG !BJ
+        integer(I4B), DIMENSION(:),  INTENT(IN) :: OFFDIAGFLAG !BJ
 !       + + + LOCAL DEFINITIONS + + +                                     
         integer(I4B) :: ic0, ic1 
         integer(I4B) :: iic0, iic1 
@@ -1480,9 +1506,16 @@
           ic1 = IA(n+1) - 1 
           DO j = ic0, ic1 
             jcol      = JA(j) 
-            IW(jcol) = 1 
-            W(jcol) = W(jcol) + AMAT(j) 
-          END DO 
+            IF (IBJFLAG.EQ.1) THEN !BJ
+              IF (OFFDIAGFLAG(j).EQ.0) THEN !BJ
+                IW(jcol) = 1  !BJ
+                W(jcol) = W(jcol) + AMAT(j) !BJ
+              END IF !BJ
+            ELSE !BJ
+              IW(jcol) = 1 
+              W(jcol) = W(jcol) + AMAT(j) 
+            END IF
+          END DO !BJ
           ic0 = IAPC(n) 
           ic1 = IAPC(n+1) - 1 
           iu  = JAPC(n) 
