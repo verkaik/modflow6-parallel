@@ -96,6 +96,8 @@ module MpiExchangeModule
     character(len=4)                          :: m1_dis
     character(len=4)                          :: m2_dis
     integer(I4B)                              :: halo_offset
+    integer(I4B)                              :: m1_id !CGC
+    integer(I4B)                              :: m2_id !CGC
   end type ExchangeType
   
   ! -- Local types
@@ -169,6 +171,7 @@ module MpiExchangeModule
     generic   :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1,    &
                                                mpi_global_exchange_absmax2
     procedure :: mpi_global_exchange_max => mpi_global_exchange_max_int
+    procedure :: mpi_global_exchange_cgc !CGC
     procedure :: mpi_debug
     procedure :: mpi_da
     procedure :: mpi_not_supported
@@ -1046,7 +1049,7 @@ module MpiExchangeModule
     return
   end subroutine mpi_local_exchange
   
-  subroutine mpi_mv_halo(this, solname, vgname, x)
+  subroutine mpi_mv_halo(this, solname, vgname, x, m2_id) !CGC
 ! ******************************************************************************
 ! Add terms for halo matrix-vector product.
 ! ******************************************************************************
@@ -1062,6 +1065,7 @@ module MpiExchangeModule
     character(len=*), intent(in) :: solname
     character(len=*), intent(in) :: vgname
     real(DP), dimension(*), intent(inout) :: x
+    integer(I4B), intent(in), optional :: m2_id !CGC
     ! -- local
     type(MpiGwfBuf), pointer :: vgbuf
     character(len=LENORIGIN) :: sol_origin
@@ -1073,11 +1077,18 @@ module MpiExchangeModule
     real(DP), dimension(:), pointer :: cond
     real(DP), dimension(:), pointer :: newtonterm
     real(DP) :: v
+    logical :: lm2_id !CGC
 ! ------------------------------------------------------------------------------
     !
     if (serialrun) then
       return
     end if
+    !
+    if (present(m2_id)) then !CGC
+      lm2_id = .true. !CGC
+    else !CGC
+      lm2_id = .false. !CG
+    end if !CGC
     !
     ! -- find the variable group name
     ivg = ifind(this%vg, trim(vgname))
@@ -1092,6 +1103,13 @@ module MpiExchangeModule
     do ixp = 1, this%nrxp
       vgbuf => this%lxch(ixp)%vgbuf(ivg)
       do ix = 1, this%lxch(ixp)%nexchange
+        ! -- cycle in case global model 2 ID does not match the optional argument
+        if (lm2_id) then !CGC
+          if (this%lxch(ixp)%exchange(ix)%m2_id /= m2_id) then !CGC
+            cycle !CGC
+          end if !CGC
+        end if !CGC
+        ! 
         ! -- get exchange nodes and conductance
         call mem_setptr(nexg, 'NEXG', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(nodem1, 'NODEM1',                                      &
@@ -1519,7 +1537,104 @@ module MpiExchangeModule
     ! -- return
     return
   end subroutine mpi_global_exchange_absmin2
-  
+
+  subroutine mpi_global_exchange_cgc(this, nla1d, nga1d, la1d, ga1d,            &
+    gnia, gnja, gia, gja, iopt) !CGC
+! ******************************************************************************
+! Collective gather over all processes for coarse grid matrix
+! coefficients.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    integer(I4B), intent(in) :: nla1d
+    integer(I4B), intent(in) :: nga1d
+    real(DP), intent(in), dimension(nla1d)  :: la1d
+    real(DP), intent(out), dimension(nga1d) :: ga1d
+    integer(I4B), intent(in) :: gnia
+    integer(I4B), intent(in) :: gnja
+    integer(I4B), dimension(gnia), intent(in) :: gia
+    integer(I4B), dimension(gnja), intent(in) :: gja
+    integer(I4B), intent(in) :: iopt
+    ! -- local
+    integer(I4B) :: i, j, k, ip, im, ic0, ic1, m
+    integer(I4B), dimension(:), allocatable :: recvcounts, displs
+    real(I4B), dimension(:), allocatable :: iwrk
+    real(DP), dimension(:), allocatable :: rbuf
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      do i = 1, nga1d
+        ga1d(i) = la1d(i)
+      end do
+      return
+    end if
+    !
+    ! -- allocate work arrays
+    allocate(recvcounts(this%nrproc), displs(this%nrproc), iwrk(this%nrproc), rbuf(nga1d))
+    !
+    ! -- loop over global topology and determine number of coeffients to send
+    do ip = 1, this%nrproc
+      recvcounts(ip) = 0
+    end do
+    do i = 1, gnia-1 ! loop over all models
+      ic0 = gia(i)
+      if (iopt == 1) then
+        ic1 = gia(i+1) - 1
+      else
+        ic1 = ic0
+      end if  
+      do j = ic0, ic1
+        im = gja(j) ! global model
+        ip = MpiWorld%gsubs(im) ! processor ID
+        recvcounts(ip) = recvcounts(ip) + 1
+      end do
+    end do
+    !
+    ! -- determine displacements
+    displs(1) = 0
+    do i = 2, this%nrproc
+      displs(i) = displs(i-1) + recvcounts(i-1)
+    end do
+    !
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
+    ! - gather all matrix coefficients
+    call mpiwrpallgatherv(this%comm, la1d, nla1d, rbuf, recvcounts, displs)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgmax)
+#endif
+    !
+    iwrk = 0
+    m = 0
+    do i = 1, gnia-1 ! loop over all models
+      ic0 = gia(i)
+      if (iopt == 1) then
+        ic1 = gia(i+1) - 1
+      else
+        ic1 = ic0
+      end if
+      im = gja(ic0) ! global model
+      ip = MpiWorld%gsubs(im) ! processor ID
+      do j = ic0, ic1
+        iwrk(ip) = iwrk(ip) + 1
+        k = displs(ip) + iwrk(ip) ! receive buffer index
+        m = m + 1
+        ga1d(m) = rbuf(k)
+      end do
+    end do
+    !
+    ! -- cleanup
+    deallocate(recvcounts, displs, rbuf, iwrk)
+    !
+    ! -- return
+    return
+  end subroutine mpi_global_exchange_cgc
+    
   subroutine mpi_pack_mt(origin, mti, mto, node, nexg, moffset)
 ! ******************************************************************************
 ! Pack memory type for point-to-point communication.

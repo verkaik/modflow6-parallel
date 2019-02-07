@@ -216,9 +216,7 @@ contains
     return
   end subroutine exg_cf
 
-  subroutine exg_fc(this, kiter, iasln, amatsln, &
-    ibjflag, offdiagflag, & !BJ
-    inwtflag)
+  subroutine exg_fc(this, kiter, iasln, amatsln, inwtflag)
 ! ******************************************************************************
 ! exg_fc -- Fill the matrix
 ! ******************************************************************************
@@ -230,8 +228,6 @@ contains
     integer(I4B), intent(in) :: kiter
     integer(I4B), dimension(:), intent(in) :: iasln
     real(DP), dimension(:), intent(inout) :: amatsln
-    integer(I4B), intent(in) :: ibjflag !BJ
-    integer(I4B), dimension(:), intent(inout) :: offdiagflag !BJ
     integer(I4B), optional, intent(in) :: inwtflag
     ! -- local
     integer(I4B) :: i, nodem1sln, nodem2sln, idiagsln
@@ -256,16 +252,6 @@ contains
           idiagsln = iasln(nodem2sln)
           amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
         enddo
-        if (ibjflag == 1) then !BJ
-          do i = 1, this%nexg !BJ
-            nodem1sln = this%nodem1(i) + this%m1%moffset !BJ
-            nodem2sln = this%nodem2(i) + this%m2%moffset !BJ
-            idiagsln = iasln(nodem1sln) !BJ
-            offdiagflag(idiagsln) = 1 !BJ
-            idiagsln = iasln(nodem2sln) !BJ
-            offdiagflag(idiagsln) = 1 !BJ
-          enddo !BJ
-        endif !BJ
       endif !PAR
     else
       ! -- nothing to do here

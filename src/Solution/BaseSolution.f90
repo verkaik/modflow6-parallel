@@ -28,6 +28,7 @@ module BaseSolutionModule
     procedure (slnmpiaddgmodel), deferred :: slnmpiaddgmodel !PAR
     procedure (slnmpiinit), deferred :: slnmpiinit !PAR
     procedure (slnmpimvrinit), deferred :: slnmpimvrinit !PAR
+    procedure (slnaddmodelid), deferred :: slnaddmodelid !CGC
   end type BaseSolutionType
 
   abstract interface
@@ -60,6 +61,15 @@ module BaseSolutionModule
       class(BaseSolutionType) :: this !PAR
       character(len=*), intent(in) :: sname !PAR
     end subroutine !PAR
+
+    subroutine slnaddmodelid(this, mid, izc, topol_m1, topol_m2) !CGC
+      use KindModule, only: I4B
+      import BaseSolutionType
+      class(BaseSolutionType) :: this
+      integer(I4B), intent(in) :: mid
+      integer(I4B), intent(in) :: izc
+      integer(I4B), dimension(:), intent(inout) :: topol_m1, topol_m2
+    end subroutine
     
     subroutine sln_ar(this)
       import BaseSolutionType

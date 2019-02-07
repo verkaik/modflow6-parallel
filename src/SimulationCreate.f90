@@ -27,6 +27,8 @@ module SimulationCreateModule
   character(len=LENMODELNAME), allocatable, dimension(:) :: modelname
   character(len=LENMODELNAME), allocatable, dimension(:), save :: modelname_all !PAR
   integer, allocatable, dimension(:), save                     :: model_sub !PAR
+  integer, allocatable, dimension(:), save :: model_topol_m1 !CGC
+  integer, allocatable, dimension(:), save :: model_topol_m2 !CGC
   type(BlockParserType) :: parser
 
   contains
@@ -484,6 +486,7 @@ module SimulationCreateModule
             !
             m1 = ifind(modelname_all, name1)
             m2 = ifind(modelname_all, name2)
+            call store_model_topol(m1, m2) !CGC
             !
             if(m1 < 0) then
               write(errmsg, fmtmerr) trim(name1)
@@ -607,6 +610,8 @@ module SimulationCreateModule
     logical :: filein, first !PAR
     logical :: filein_endOfBlock !PAR
     integer(I4B) :: iu !PAR
+    logical :: lcgc !CGC
+    integer(I4B) :: izc !CGC
     ! -- formats
     character(len=*), parameter :: fmterrmxiter = &
       "('ERROR. MXITER IS SET TO ', i0, ' BUT THERE IS ONLY ONE SOLUTION',     &
@@ -649,6 +654,7 @@ module SimulationCreateModule
       !    particular solution group.  It goes from 1 to the number of solutions
       !    in this group.
       isgpsoln = 0
+      lcgc = .false. !CGC
       do
         call parser%GetNextLine(endOfBlock)
         if (endOfBlock) exit
@@ -658,7 +664,10 @@ module SimulationCreateModule
           case ('MXITER')
             sgp%mxiter = parser%GetInteger()
           !
-          case ('IMS6')
+          case ('IMS6','IMS6_CGC') !CGC
+            if (keyword == 'IMS6_CGC') then !CGC
+              lcgc = .true. !CGC
+            end if !CGC
             !
             ! -- Initialize and increment counters
             isoln = isoln + 1
@@ -684,6 +693,9 @@ module SimulationCreateModule
                  call filein_parser%GetNextLine(filein_endOfBlock) !PAR
                  call filein_parser%GetStringCaps(mname) !PAR
               end if !PAR
+              !
+              if (mname == '') exit
+              !
               if ((trim(adjustl(mname)) == 'FILEIN') .and. first) then !PAR
                 call parser%GetString(fname) !PAR
                 if (fname == '') then !PAR
@@ -702,7 +714,15 @@ module SimulationCreateModule
                 filein = .true. !PAR
               end if !PAR
               !
-              if (mname == '') exit
+              if (lcgc) then !CGC
+                if (filein) then !CGC
+                  izc = filein_parser%GetInteger() !CGC
+                else !CGC
+                  izc = parser%GetInteger() !CGC
+                end if !CGC
+                mid = ifind(modelname_all, mname) !CGC
+                call sp%slnaddmodelid(mid, izc, model_topol_m1, model_topol_m2) !CGC
+              end if !CGC
               !
               ! -- Find the model id, and then get model
               if (isimdd ==1) then !PAR
@@ -728,22 +748,6 @@ module SimulationCreateModule
                 call sp%addmodel(mp)
                 mp%idsoln = isoln
               endif !PAR
-              !do ih = 1, nhalo !PAR
-              !  hmname = mname !PAR
-              !  call mpi_create_modelname_halo(ih, hmname)
-              !  mid = ifind(modelname_halo, hmname) !PAR
-              !  if (mid > 0) then !PAR
-              !    mp => GetBaseModelFromList(halomodellist, mid)
-              !    add = .true. !PAR
-              !  else !PAR
-              !    add = .false. !PAR
-              !  endif !PAR
-              !  if (add) then !PAR
-              !    ! -- Add the model to the solution
-              !    call sp%addmodel(mp)
-              !    mp%idsoln = isoln
-              !  endif !PAR
-              !enddo !PAR
             enddo
           case default
             write(errmsg, '(4x,a,a)') &
@@ -754,6 +758,9 @@ module SimulationCreateModule
             call ustop()
         end select
       end do
+      !
+      model_topol_m1 = abs(model_topol_m1) !CGC
+      model_topol_m2 = abs(model_topol_m2) !CGC
       !
       ! -- Clean up
       if (filein) then !PAR
@@ -828,8 +835,8 @@ module SimulationCreateModule
     ! -- dummy
     character(len=*), intent(out) :: mname
     ! -- local
-    integer :: ilen
-    integer :: i
+    integer(I4B) :: ilen
+    integer(I4B) :: i
     character(len=LINELENGTH) :: errmsg
 ! ------------------------------------------------------------------------------
     !
@@ -871,8 +878,8 @@ module SimulationCreateModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- dummy
-    integer, intent(inout) :: im
-    integer, intent(in) :: isub
+    integer(I4B), intent(inout) :: im
+    integer(I4B), intent(in) :: isub
     character(len=*), intent(inout) :: mname
     ! -- local
 ! ------------------------------------------------------------------------------
@@ -886,5 +893,29 @@ module SimulationCreateModule
     ! -- return
     return
   end subroutine add_model_dd
+  
+  subroutine store_model_topol(m1, m2) !CGC
+! ******************************************************************************
+! Store model topology (global IDs)
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    integer(I4B), intent(in) :: m1
+    integer(I4B), intent(in) :: m2
+    ! -- local
+    integer(I4B) :: i
+! ------------------------------------------------------------------------------
+    !
+    call expandarray(model_topol_m1)
+    call expandarray(model_topol_m2)
+    i = size(model_topol_m1)
+    model_topol_m1(i) = m1
+    model_topol_m2(i) = m2
+    !
+    ! -- return
+    return
+  end subroutine store_model_topol
   
 end module SimulationCreateModule

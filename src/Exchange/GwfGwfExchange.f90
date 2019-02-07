@@ -575,9 +575,7 @@ contains
     return
   end subroutine gwf_gwf_cf
 
-  subroutine gwf_gwf_fc(this, kiter, iasln, amatsln, &
-    ibjflag, offdiagflag, & !BJ
-    inwtflag)
+  subroutine gwf_gwf_fc(this, kiter, iasln, amatsln, inwtflag)
 ! ******************************************************************************
 ! gwf_gwf_fc -- Fill the matrix
 ! ******************************************************************************
@@ -592,8 +590,6 @@ contains
     integer(I4B), intent(in) :: kiter
     integer(I4B), dimension(:), intent(in) :: iasln
     real(DP), dimension(:), intent(inout) :: amatsln
-    integer(I4B), intent(in) :: ibjflag !BJ
-    integer(I4B), dimension(:), intent(inout) :: offdiagflag !BJ
     integer(I4B), optional, intent(in) :: inwtflag
     ! -- local
     integer(I4B) :: inwt, iexg
@@ -650,13 +646,6 @@ contains
         amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) + terms(2, 2) !this%cond(i)
         this%gwfmodel2%rhs(m) = this%gwfmodel2%rhs(m) + terms(3, 2)
       enddo
-      !
-      if (ibjflag == 1) then !BJ
-        do iexg = 1, this%nexg !BJ
-          offdiagflag(this%idxglo(iexg)) = 1 !BJ
-          offdiagflag(this%idxsymglo(iexg)) = 1 !BJ
-        enddo !BJ
-      endif !BJ
     endif
     !
     ! -- if gnc is active, then copy cond into gnc cond (might consider a

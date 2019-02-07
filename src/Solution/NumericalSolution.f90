@@ -49,7 +49,6 @@ module NumericalSolutionModule
     integer(I4B), dimension(:), pointer, contiguous      :: active => NULL()
     real(DP), dimension(:), pointer, contiguous          :: xtemp => NULL()
     integer(I4B), pointer                                :: ibjflag => NULL() !BJ
-    integer(I4B), dimension(:), pointer, contiguous      :: offdiagflag => NULL() !BJ
     type(BlockParserType) :: parser
     !
     ! -- sparse matrix data
@@ -121,7 +120,31 @@ module NumericalSolutionModule
     !
     type(MpiExchangeType), pointer                       :: MpiSol => NULL() !PAR
     type(MpiExchangeType), pointer                       :: MpiMvr => NULL() !PAR
-
+    
+    integer(I4B), dimension(:), allocatable              :: blkgid       !CGC (TMP)
+    integer(I4B), dimension(:), allocatable              :: blkgidconnm1 !CGC (TMP)
+    integer(I4B), dimension(:), allocatable              :: blkgidconnm2 !CGC (TMP)
+    integer(I4B), dimension(:), allocatable              :: blkgizc      !CGC (TMP)
+    !
+    integer(I4B), pointer                                :: icgc     => NULL() !CGC
+    !
+    integer(I4B), pointer                                :: cgcgnia  => NULL() !CGC: global topology
+    integer(I4B), pointer                                :: cgcgnja  => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgia   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgja   => NULL() !CGC
+    !
+    integer(I4B), pointer                                :: cgclnia  => NULL() !CGC! local topology
+    integer(I4B), pointer                                :: cgclnja  => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclia   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclja   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclgja  => NULL() !CGC
+    !
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcl2gid => NULL() !CGC: local  --> global mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcg2lid => NULL() !CGC: global --> local  mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcg2cid => NULL() !CGC: global --> coarse mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcc2gid => NULL() !CGC: coarse --> global mapping
+    !
+    integer(I4B), dimension(:), pointer, contiguous      :: cgccizc  => NULL() !CGC
   contains
     procedure :: sln_df
     procedure :: sln_ar
@@ -138,6 +161,7 @@ module NumericalSolutionModule
     procedure :: slnmpiaddgmodel !PAR
     procedure :: slnmpiinit !PAR
     procedure :: slnmpimvrinit !PAR
+    procedure :: slnaddmodelid !CGC
     procedure :: save
 
     procedure, private :: sln_connect
@@ -157,6 +181,7 @@ module NumericalSolutionModule
     procedure, private :: allocate_arrays
     procedure, private :: convergence_summary
     procedure, private :: csv_convergence_summary
+    procedure, private :: sln_cgc_allocate !CGC
 
   end type NumericalSolutionType
 
@@ -394,10 +419,217 @@ contains
       this%convmodstart(i+1) = ieq
     end do
     !
+    ! -- allocate global block topology data
+    call mem_allocate(this%icgc, 'ICGC', this%name) !CGC
+    if (allocated(this%blkgid)) then !CGC
+      this%icgc = 1 !CGC
+      call this%sln_cgc_allocate() !CGC
+    else !CGC
+      this%icgc = 0 !CG
+    end if !CGC
+    !
     ! -- return
     return
   end subroutine allocate_arrays
 
+  subroutine sln_cgc_allocate(this) !CGC
+! ******************************************************************************
+! Allocate for coarse grid correction.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use SimModule, only: ustop, store_error
+    use MemoryManagerModule, only: mem_allocate
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    ! -- local
+    character(len=linelength) :: errmsg
+    class(NumericalModelType), pointer :: mp
+    integer(I4B) :: maxid, i, j, n, m, iia, nbr, nlblk, il, ig, ic0, ic1
+    integer(I4B) :: mid, m1id, m2id, iact, nja, cid, c1id, c2id
+    integer(I4b), dimension(:), allocatable :: wrk
+! ------------------------------------------------------------------------------
+    call mem_allocate(this%cgcgnia, 'CGCGNIA', this%name)
+    call mem_allocate(this%cgcgnja, 'CGCGNJA', this%name)
+    !
+    ! -- global block to coarse matrix mapping and vice versa
+    maxid = maxval(this%blkgid)
+    call mem_allocate(this%cgcg2cid, maxid, 'CGCG2CID', this%name)
+    this%cgcg2cid = 0
+    n = 0
+    do i = 1, size(this%blkgid)
+      mid = this%blkgid(i)
+      n = n + 1
+      this%cgcg2cid(mid) = n
+    end do
+    call mem_allocate(this%cgcc2gid, n, 'CGCC2GID', this%name)
+    do i = 1, maxid
+      cid = this%cgcg2cid(i)
+      if (cid > 0) then
+        this%cgcc2gid(cid) = i
+      end if
+    end do
+    !
+    ! -- create global topology
+    this%cgcgnia = n + 1
+    call mem_allocate(this%cgcgia, this%cgcgnia, 'CGCGIA', this%name)
+    !
+    allocate(wrk(maxid))
+    !
+    iactloop: do iact = 1, 2
+      nja = 0
+      midloop: do mid = 1, maxid
+        wrk = 0
+        cid = this%cgcg2cid(mid)
+        if (cid > 0) then
+          do j = 1, size(this%blkgidconnm1)
+            m1id = this%blkgidconnm1(j)
+            m2id = this%blkgidconnm2(j)
+            c1id = this%cgcg2cid(m1id)
+            c2id = this%cgcg2cid(m2id)
+            if (mid == m1id) then
+              if (c2id > 0) then
+                wrk(c2id) = 1
+              end if
+            end if
+            if (mid == m2id) then
+              if (c1id > 0) then
+                wrk(c1id) = 1
+              end if
+            end if
+          end do
+          !
+          if (iact == 1) then
+            nbr =  sum(wrk)
+            nja = nja + nbr + 1
+          else
+            nja = nja + 1
+            this%cgcgja(nja) = cid
+            nbr = 0
+            do j = 1, maxid
+              if (wrk(j) == 1) then
+                nja = nja + 1
+                this%cgcgja(nja) = j
+                nbr = nbr + 1
+              end if
+            end do
+            iia = iia + 1
+            this%cgcgia(iia) = this%cgcgia(iia-1)
+            this%cgcgia(iia) = this%cgcgia(iia) + nbr + 1
+          end if
+        end if
+      end do midloop
+      !
+      if (iact == 1) then
+        this%cgcgnja = nja
+        call mem_allocate(this%cgcgja, this%cgcgnja, 'CGCGJA', this%name)
+        iia = 1
+        this%cgcgia(iia) = 1
+      end if
+      !
+    end do iactloop
+    !
+    ! -- clean up
+    deallocate(wrk)
+    !
+    ! -- local block to global block mapping, and vice versa
+    nlblk = this%modellist%Count()
+    call mem_allocate(this%cgcl2gid, nlblk, 'CGCL2GID', this%name)
+    call mem_allocate(this%cgcg2lid, maxid, 'CGCG2LID', this%name)
+    this%cgcg2lid = 0
+    do i = 1, nlblk
+      mp => GetNumericalModelFromList(this%modellist, i)
+      this%cgcl2gid(i) = mp%id
+      this%cgcg2lid(mp%id) = i
+    end do
+    !
+    ! -- create local topology
+    call mem_allocate(this%cgclnia, 'CGCLNIA', this%name)
+    this%cgclnia = nlblk + 1
+    call mem_allocate(this%cgclia, this%cgclnia, 'CGCGIA', this%name)
+    call mem_allocate(this%cgclnja, 'CGCLNJA', this%name)
+    allocate(wrk(maxid))
+    wrk = 0
+    do iact = 1, 2
+      this%cgclnja = 0
+      do il = 1, nlblk
+        ig = this%cgcl2gid(il)
+        ic0 = this%cgcgia(ig)
+        ic1 = this%cgcgia(ig+1)-1
+        nbr = 0
+        do m = ic0, ic1
+          j = this%cgcgja(m)
+          this%cgclnja = this%cgclnja + 1
+          nbr = nbr + 1
+          if (iact == 1) then
+            wrk(j) = 1
+          else
+            this%cgclja(this%cgclnja) = wrk(j) ! local generated number
+            this%cgclgja(this%cgclnja) = j ! global model number
+          end if
+        end do
+        if (iact == 2) then
+          iia = iia + 1
+          this%cgclia(iia) = this%cgclia(iia-1)
+          this%cgclia(iia) = this%cgclia(iia) + nbr
+        end if
+      end do
+      if (iact == 1) then
+        call mem_allocate(this%cgclja,  this%cgclnja,  'CGCLJA', this%name)
+        call mem_allocate(this%cgclgja, this%cgclnja, 'CGCLGJA', this%name)
+        j = 0
+        do i = 1, maxid
+          if (wrk(i) > 0) then
+            j = j + 1
+            wrk(i) = j
+          end if
+        end do
+        iia = 1
+        this%cgclia(iia) = 1
+      end if
+    end do
+    deallocate(wrk)
+    
+    ! -- ZC mapping
+    call mem_allocate(this%cgccizc, this%cgcgnia-1, 'CGCCIZC', this%name)
+    n = size(this%blkgizc)
+    m = maxval(this%blkgizc)
+    if (n /= size(this%blkgid)) then
+      write(errmsg,'(4x,a,a)') 'IMS sln_cgc_allocate'
+      call store_error(errmsg)
+      call ustop()
+    end if
+    allocate(wrk(m))
+    wrk = 0
+    do i = 1, n
+      j = this%blkgizc(i)
+      wrk(j) = 1
+    end do
+    j = 0
+    do i = 1, m
+      if (wrk(i) == 1) then
+        j = j + 1
+        wrk(i) = j
+      end if
+    end do
+    do i = 1, n
+      mid = this%blkgid(i)
+      cid = this%cgcg2cid(mid)
+      if (cid > 0) then
+        j = this%blkgizc(i)
+        this%cgccizc(cid) = wrk(j)
+      end if
+    end do
+    !
+    ! -- clean up
+    deallocate(wrk)
+    !
+    ! -- return
+    return
+  end subroutine sln_cgc_allocate
+    
   subroutine sln_df(this)
 ! ******************************************************************************
 ! sln_df -- Define the solution
@@ -715,8 +947,6 @@ contains
           this%linmeth = ival
         case ('LINEAR_SOLVER_BJPC') !BJ
          this%ibjflag = 1 !BJ
-         call mem_allocate(this%offdiagflag, this%nja, 'OFFDIAGFLAG', this%name) !BJ
-         this%offdiagflag = IZERO !BJ
         case ('UNDER_RELAXATION_THETA')
           this%theta = this%parser%GetDouble()
         case ('UNDER_RELAXATION_KAPPA')
@@ -813,7 +1043,15 @@ contains
                                              this%neq, this%nja, this%ia,      &
                                              this%ja, this%amat, this%rhs,     &
                                              this%x, this%nitermax,            &
-                                             this%ibjflag, this%offdiagflag) !BJ
+                                             this%ibjflag) !BJ
+      if (this%icgc == 1) then !CGC
+        call this%imslinear%imslinear_allocate_cgc(this%icgc,                 & !CGC
+          this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja,               & !CGC
+          this%cgclnia, this%cgclnja, this%cgclia, this%cgclja, this%cgclgja, & !CGC
+          this%cgcl2gid, this%cgcg2lid, this%cgcg2cid, this%cgcc2gid,         & !CGC
+          this%cgccizc) !CGC
+      end if !CGC
+      
       WRITE(IOUT,*)
       isymflg = 0
       if ( imslinear.eq.1 ) isymflg = 1
@@ -1026,7 +1264,6 @@ contains
     call mem_deallocate(this%drmax)
     call mem_deallocate(this%convdvmax)
     call mem_deallocate(this%convdrmax)
-    call mem_deallocate(this%offdiagflag) !BJ
     !
     ! -- Scalars
     call mem_deallocate(this%id)
@@ -1081,6 +1318,24 @@ contains
     if (associated(this%MpiMvr)) then !PAR
       call this%MpiMvr%mpi_da() !PAR
     end if !PAR
+    !
+    call mem_deallocate(this%cgcgnia) !CGC
+    call mem_deallocate(this%cgcgnja) !CGC
+    call mem_deallocate(this%cgcgia) !CGC
+    call mem_deallocate(this%cgcgja) !CGC
+    !
+    call mem_deallocate(this%cgclnia) !CGC
+    call mem_deallocate(this%cgclnja) !CGC
+    call mem_deallocate(this%cgclia) !CGC
+    call mem_deallocate(this%cgclja) !CGC
+    call mem_deallocate(this%cgclgja) !CGC
+    !
+    call mem_deallocate(this%cgcl2gid) !CGC
+    call mem_deallocate(this%cgcg2lid) !CGC
+    call mem_deallocate(this%cgcg2cid) !CGC
+    call mem_deallocate(this%cgcc2gid) !CGC
+    !
+    call mem_deallocate(this%cgccizc) !CGC
     !
     ! -- return
     return
@@ -1277,9 +1532,7 @@ contains
         ! -- Add exchange coefficients to the solution
         do ic=1,this%exchangelist%Count()
           cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-          call cp%exg_fc(kiter, this%ia, this%amat, &
-            this%ibjflag, this%offdiagflag, &  !BJ
-            1)
+          call cp%exg_fc(kiter, this%ia, this%amat, 1)
         enddo
         !
         ! -- Add model coefficients to the solution
@@ -1902,6 +2155,51 @@ contains
     return
   end subroutine slnmpiaddgmodel
   
+ subroutine slnaddmodelid(this, mid, izc, topol_m1, topol_m2) !CGC
+! ******************************************************************************
+! Add the global model id.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ArrayHandlersModule, only: ExpandArray 
+    ! -- dummy
+    class(NumericalSolutionType) :: this
+    integer(I4B), intent(in) :: mid
+    integer(I4B), intent(in) :: izc
+    integer(I4B), dimension(:), intent(inout) :: topol_m1, topol_m2
+    ! -- local
+    integer(I4B) :: i, n, m1id, m2id
+! ------------------------------------------------------------------------------
+    !
+    call expandarray(this%blkgid)
+    n = size(this%blkgid)
+    this%blkgid(n) = mid
+    !
+    call expandarray(this%blkgizc)
+    n = size(this%blkgizc)
+    this%blkgizc(n) = izc
+    !
+    do i = 1, size(topol_m1)
+      m1id = topol_m1(i)
+      m2id = topol_m2(i)
+      if ((mid == m1id) .or. (mid == m2id)) then
+        call expandarray(this%blkgidconnm1)
+        n = size(this%blkgidconnm1)
+        this%blkgidconnm1(n) = m1id
+        call expandarray(this%blkgidconnm2)
+        n = size(this%blkgidconnm2)
+        this%blkgidconnm2(n) = m2id
+        topol_m1(i) = -topol_m1(i)
+        topol_m2(i) = -topol_m2(i)
+      end if
+    end do
+    !
+    ! -- return
+    return
+  end subroutine slnaddmodelid  
+  
   subroutine slnmpiinit(this, sname) !PAR
 ! ******************************************************************************
 ! Initialize MPI for this solution
@@ -2044,6 +2342,8 @@ contains
         this%MpiSol%lxch(ixp)%exchange(nex)%halo_name = cpgwf%gwfhalo%name
         this%MpiSol%lxch(ixp)%exchange(nex)%m1_name = cpgwf%gwfhalo%m1name
         this%MpiSol%lxch(ixp)%exchange(nex)%m2_name = cpgwf%gwfhalo%m2name
+        this%MpiSol%lxch(ixp)%exchange(nex)%m1_id = ifind(MpiWorld%gmodelnames, cpgwf%gwfhalo%m1name)
+        this%MpiSol%lxch(ixp)%exchange(nex)%m2_id = ifind(MpiWorld%gmodelnames, cpgwf%gwfhalo%m2name)
         call mpi_get_distype_str(cpgwf%gwfhalo%m1name, this%MpiSol%lxch(ixp)%exchange(nex)%m1_dis)
         call mpi_get_distype_str(cpgwf%gwfhalo%m2name, this%MpiSol%lxch(ixp)%exchange(nex)%m2_dis)
         this%MpiSol%lxch(ixp)%nexchange = nex
@@ -2808,9 +3108,7 @@ contains
     ! -- Fill coefficients (FC) for each exchange
     do ic=1,this%exchangelist%Count()
       cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      call cp%exg_fc(kiter, this%ia, this%amat, &
-        this%ibjflag, this%offdiagflag, & !BJ
-        0)
+      call cp%exg_fc(kiter, this%ia, this%amat, 0)
     end do
     !
     ! -- Fill coefficients (FC) for each model
@@ -2866,9 +3164,7 @@ contains
           ! -- Fill coefficients (FC) for each exchange
           do ic=1,this%exchangelist%Count()
             cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-            call cp%exg_fc(kiter, this%ia, this%amat, &
-              this%ibjflag, this%offdiagflag, & !BJ
-              0)
+            call cp%exg_fc(kiter, this%ia, this%amat, 0)
           end do
           !
           ! -- Fill coefficients (FC) for each model

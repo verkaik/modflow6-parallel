@@ -14,7 +14,7 @@
   private
   
   TYPE, PUBLIC :: IMSLINEAR_DATA
-    CHARACTER (LEN=20) :: ORIGIN
+    CHARACTER (LEN=20), POINTER :: ORIGIN
     integer(I4B), POINTER :: iout => NULL()
     integer(I4B), POINTER :: IPRIMS => NULL()
     integer(I4B), POINTER :: ILINMETH => NULL()
@@ -53,7 +53,6 @@
     real(DP), dimension(:), pointer, contiguous :: RHS => NULL()
     real(DP), dimension(:), pointer, contiguous :: X => NULL()
     integer(I4B), pointer :: IBJFLAG => NULL() !BJ
-    integer(I4B), dimension(:), pointer, contiguous :: OFFDIAGFLAG => NULL() !BJ
     ! VECTORS
     real(DP), POINTER, DIMENSION(:), CONTIGUOUS :: DSCALE => NULL()
     real(DP), POINTER, DIMENSION(:), CONTIGUOUS :: DSCALE2 => NULL()
@@ -88,15 +87,46 @@
     integer(I4B),POINTER,DIMENSION(:),CONTIGUOUS :: JW => NULL()
     real(DP),POINTER,DIMENSION(:),CONTIGUOUS::WLU => NULL()
     type(MpiExchangeType), pointer:: MpiSol => NULL() !PAR
-
+    ! COARSE GRID CORRECTION ARRAYS
+    integer(I4B), pointer                                :: icgc     => NULL() !CGC
+    !
+    integer(I4B), pointer                                :: cgcgnia  => NULL() !CGC
+    integer(I4B), pointer                                :: cgcgnja  => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgia   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgja   => NULL() !CGC
+    !
+    integer(I4B), pointer                                :: cgclnia  => NULL() !CGC
+    integer(I4B), pointer                                :: cgclnja  => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclia   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclja   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgclgja  => NULL() !CGC
+    !
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcl2gid => NULL() !CGC: local  --> global mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcg2lid => NULL() !CGC: global --> local  mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcg2cid => NULL() !CGC: global --> coarse mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcc2gid => NULL() !CGC: coarse --> global mapping
+    integer(I4B), dimension(:), pointer, contiguous      :: cgccizc  => NULL() !CGC
+    !
+    real(DP), pointer, dimension(:,:), contiguous        :: acpc  => NULL() !CGC
+    real(DP), pointer, dimension(:), contiguous          :: xc    => NULL() !CGC
+    real(DP), pointer, dimension(:), contiguous          :: rhsc  => NULL() !CGC
+    real(DP), pointer, dimension(:), contiguous          :: wc    => NULL() !CGC
+    real(DP), pointer, dimension(:), contiguous          :: zc    => NULL() !CGC
+    real(DP), dimension(:,:), pointer, contiguous        :: a0zc  => NULL() !CGC
+    integer(I4B), pointer                                :: acpcb => NULL() !CGC
     ! PROCEDURES (METHODS)
     CONTAINS
       PROCEDURE :: IMSLINEAR_ALLOCATE => IMSLINEAR_AR
+      PROCEDURE :: IMSLINEAR_ALLOCATE_CGC => IMSLINEAR_AR_CGC ! CGC
       PROCEDURE :: IMSLINEAR_APPLY => IMSLINEAR_AP
       procedure :: IMSLINEAR_DA
       procedure, private :: allocate_scalars
       ! -- PRIVATE PROCEDURES
       PROCEDURE, PRIVATE :: SET_IMSLINEAR_INPUT
+      procedure, private :: IMSLINEARSUB_CG !CGC
+      procedure, private :: IMSLINEARSUB_BCGS !CGC
+      procedure, private :: IMSLINEARSUB_PCC !CGC
+      procedure, private :: IMSLINEARSUB_PCC_SOL !CGC
   END TYPE IMSLINEAR_DATA
   
   type(BlockParserType), private :: parser
@@ -106,7 +136,7 @@
     SUBROUTINE IMSLINEAR_AR(THIS, NAME, IN, IOUT, IPRIMS, MXITER, IFDPARAM, &
                             IMSLINEARM, NEQ, NJA, IA, JA, AMAT, RHS, X,     &
                             NINNER, &
-                            IBJFLAG, OFFDIAGFLAG, & !BJ
+                            IBJFLAG, & !BJ
                             LFINDBLOCK)
 !     ******************************************************************
 !     ALLOCATE STORAGE FOR PCG ARRAYS AND READ IMSLINEAR DATA
@@ -136,7 +166,6 @@
       real(DP), DIMENSION(NEQ), TARGET, INTENT(INOUT) :: X
       integer(I4B), TARGET, INTENT(INOUT) :: NINNER
       integer(I4B), INTENT(IN), TARGET :: IBJFLAG !BJ
-      integer(I4B), DIMENSION(:), TARGET, INTENT(IN) :: OFFDIAGFLAG !BJ
       integer(I4B), INTENT(IN), OPTIONAL :: LFINDBLOCK
 !     + + + LOCAL VARIABLES + + +
       LOGICAL :: lreaddata
@@ -225,6 +254,7 @@
       END IF
 !
 !-------DEFINE NAME
+      ALLOCATE(THIS%ORIGIN) !CGC
       THIS%ORIGIN = TRIM(NAME) // ' IMSLINEAR'
 !
 !-------SET POINTERS TO SOLUTION STORAGE
@@ -236,7 +266,6 @@
       THIS%AMAT => AMAT
       THIS%RHS => RHS
       THIS%X => X
-      THIS%OFFDIAGFLAG => OFFDIAGFLAG !BJ
       THIS%IBJFLAG => IBJFLAG !BJ
 !-------ALLOCATE SCALAR VARIABLES
       call this%allocate_scalars()
@@ -662,6 +691,111 @@
       RETURN
     END SUBROUTINE IMSLINEAR_AR
 
+    subroutine imslinear_ar_cgc(this, icgc,                             & !CGC
+      cgcgnia, cgcgnja, cgcgia, cgcgja,                                 &
+      cgclnia, cgclnja, cgclia, cgclja, cgclgja,                        &
+      cgcl2gid, cgcg2lid, cgcg2cid, cgcc2gid, cgccizc) !CGC
+!     ******************************************************************
+!     ALLOCATE STORAGE FOR COARSE GRID CORRECTION ARRAYS
+!     ******************************************************************
+!
+!        SPECIFICATIONS:
+!     ------------------------------------------------------------------
+      use MemoryManagerModule, only: mem_allocate
+      use SimModule, only: ustop, store_error, count_errors
+      use MpiExchangeGenModule, only: parallelrun !PAR
+      
+      implicit none
+!     + + + dummy variables + + +
+      class(imslinear_data), intent(inout) :: this
+      integer(I4B), target                            :: icgc
+      !
+      integer(I4B), target                            :: cgcgnia
+      integer(I4B), target                            :: cgcgnja
+      integer(I4B), dimension(:), target, contiguous  :: cgcgia
+      integer(I4B), dimension(:), target, contiguous  :: cgcgja
+      !
+      integer(I4B), target                            :: cgclnia
+      integer(I4B), target                            :: cgclnja
+      integer(I4B), dimension(:), target, contiguous  :: cgclia
+      integer(I4B), dimension(:), target, contiguous  :: cgclja
+      integer(I4B), dimension(:), target, contiguous  :: cgclgja
+      !
+      integer(I4B), dimension(:), target, contiguous  :: cgcl2gid
+      integer(I4B), dimension(:), target, contiguous  :: cgcg2lid
+      integer(I4B), dimension(:), target, contiguous  :: cgcg2cid
+      integer(I4B), dimension(:), target, contiguous  :: cgcc2gid
+      integer(I4B), dimension(:), target, contiguous  :: cgccizc
+!     + + + local variables + + +
+      integer(I4B) :: il, ig, j, m, n, nc, nr, ic0, ic1, nlblk, ngblk
+      integer(I4B), dimension(:), allocatable :: iwrk
+!------------------------------------------------------------------
+      ! -- set pointers
+      this%icgc     => icgc
+      !
+      this%cgcgnia  => cgcgnia
+      this%cgcgnja  => cgcgnja
+      this%cgcgia   => cgcgia
+      this%cgcgja   => cgcgja
+      !
+      this%cgclnia  => cgclnia
+      this%cgclnja  => cgclnja
+      this%cgclia   => cgclia
+      this%cgclja   => cgclja
+      this%cgclgja   => cgclgja
+      !
+      this%cgcl2gid => cgcl2gid
+      this%cgcg2lid => cgcg2lid
+      this%cgcg2cid => cgcg2cid
+      this%cgcc2gid => cgcc2gid
+      this%cgccizc  => cgccizc
+      !
+      call mem_allocate(this%acpc, this%cgcgnia-1, this%cgcgnia-1,  &
+        'ACPC', trim(this%origin))
+      call mem_allocate(this%acpcb, 'ACPCB', trim(this%origin))
+      call mem_allocate(this%xc, this%cgcgnia-1, 'XC', trim(this%origin))
+      call mem_allocate(this%rhsc, this%cgcgnia-1, 'RHSC', trim(this%origin))
+      call mem_allocate(this%wc, this%cgcgnia-1, 'WC', trim(this%origin))
+      call mem_allocate(this%zc, this%neq, 'ZC', trim(this%origin))
+      !
+      this%acpcb = 0
+      do n = 1, this%neq
+        this%zc(n) = DONE
+      end do
+      !
+      ! -- allocate A0ZC
+      nr = this%neq
+      nc = 0
+      nlblk = size(this%cgcl2gid)
+      ngblk =  this%cgcgnia-1
+      allocate(iwrk(ngblk))
+      iwrk = 0
+      do il = 1, nlblk ! my local blocks
+        ig = this%cgcl2gid(il)
+        ic0 = this%cgcgia(ig)
+        ic1 = this%cgcgia(ig+1)-1
+        do m = ic0, ic1
+          j = this%cgcgja(m)
+          iwrk(j) = 1
+        end do
+      end do ! my local blocks
+      nc = sum(iwrk)
+      deallocate(iwrk)
+      !
+      call mem_allocate(this%a0zc, nc, nr, 'A0ZC', trim(this%origin))
+      !
+      ! -- add variables for MPI point-to-point
+      if (parallelrun) then
+        call this%MpiSol%mpi_add_vg('IMS-ZC') !PAR
+        call this%MpiSol%mpi_add_vmt('IMS-ZC','ZC','IMSLINEAR', &
+          'SOL', 'MM1', 'SOL', 'MEM') !PAR
+        call this%MpiSol%mpi_init_vg('IMS-ZC') !PAR
+      end if
+      
+!-------return
+      return
+    end subroutine imslinear_ar_cgc
+
     subroutine allocate_scalars(this)
       use MemoryManagerModule, only: mem_allocate
       class(IMSLINEAR_DATA), intent(inout) :: this
@@ -694,6 +828,7 @@
       call mem_allocate(this%alphatol, 'ALPHATOL', this%origin) !SOL
       call mem_allocate(this%omegatol, 'OMEGATOL', this%origin) !SOL
       call mem_allocate(this%ircloseprechk, 'IRCLOSEPRECHK', this%origin) !SOL
+      call mem_allocate(this%icgc, 'ICGC', this%origin) !CGC
       !
       ! -- initialize
       this%iout = 0
@@ -723,6 +858,7 @@
       this%alphatol = DZERO !SOL
       this%omegatol = DZERO !SOL
       this%ircloseprechk = 0 !SOL
+      this%icgc = 0 !CGC
       !
       ! --Return
       return
@@ -882,7 +1018,6 @@
 !        SPECIFICATIONS:
 !     ------------------------------------------------------------------
       USE SimModule
-      use MpiExchangeGenModule, only: parallelrun !PAR
       IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
@@ -1016,47 +1151,31 @@
         END IF !SOL
       END IF !SOL
 ! 
-!-------UPDATE PRECONDITIONER
       IF (LSOLVE) THEN !SOL
+!-------UPDATE PRECONDITIONER
       CALL IMSLINEARSUB_PCU(this%iout,THIS%NJA,THIS%NEQ,THIS%NIAPC,THIS%NJAPC,  & !SOL
                             THIS%IPC, THIS%RELAX, THIS%A0, THIS%IA0, THIS%JA0,  & !SOL
                             THIS%APC,THIS%IAPC,THIS%JAPC,THIS%IW,THIS%W,        & !SOL
                             THIS%LEVEL, THIS%DROPTOL, THIS%NJLU, THIS%NJW,      & !SOL
                             THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU,             & !SOL
-                            THIS%IBJFLAG, THIS%OFFDIAGFLAG) !BJ
+                            THIS%IBJFLAG, CONVNMOD, CONVMODSTART) !BJ
+!-------UPDATE COARSE GRID PRECONDITIONER
+      if (this%icgc) then !CGC
+        call this%imslinearsub_pcc(convnmod, convmodstart) !CGC
+      end if !CGC
+!      
 !-------SOLUTION BY THE CONJUGATE GRADIENT METHOD
       IF (THIS%ILINMETH ==  1) THEN
-        CALL IMSLINEARSUB_CG(ICNVG, itmax, innerit,                             &
-                             THIS%NEQ, THIS%NJA, THIS%NIAPC, THIS%NJAPC,        &
-                             THIS%IPC, THIS%NITERC, THIS%ICNVGOPT, THIS%NORTH,  &
-                             THIS%HCLOSE, THIS%RCLOSE, THIS%L2NORM0,            &
-                             THIS%EPFACT, THIS%IA0, THIS%JA0, THIS%A0,          &
-                             THIS%IAPC, THIS%JAPC, THIS%APC,                    &
-                             THIS%X, THIS%RHS, THIS%D, THIS%P, THIS%Q, THIS%Z,  &
-                             THIS%NJLU, THIS%IW, THIS%JLU,                      &
+        CALL THIS%IMSLINEARSUB_CG(ICNVG, itmax, innerit,                        &
                              NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,       &
                              CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,             &
-                             DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,                &
-                             THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS,             & !PAR
-                             THIS%RHOTOL) !SOL
+                             DVMAX, DRMAX, CONVDVMAX, CONVDRMAX)
 !-------SOLUTION BY THE BICONJUGATE GRADIENT STABILIZED METHOD
       ELSE IF (THIS%ILINMETH ==  2) THEN
-        CALL IMSLINEARSUB_BCGS(ICNVG, itmax, innerit,                           &
-                               THIS%NEQ, THIS%NJA, THIS%NIAPC, THIS%NJAPC,      &
-                               THIS%IPC, THIS%NITERC, THIS%ICNVGOPT, THIS%NORTH,&
-                               THIS%ISCL, THIS%DSCALE,                          &
-                               THIS%HCLOSE, THIS%RCLOSE, THIS%L2NORM0,          &
-                               THIS%EPFACT,  THIS%IA0, THIS%JA0, THIS%A0,       &
-                               THIS%IAPC, THIS%JAPC, THIS%APC,                  &
-                               THIS%X, THIS%RHS, THIS%D, THIS%P, THIS%Q,        &
-                               THIS%T, THIS%V, THIS%DHAT, THIS%PHAT, THIS%QHAT, &
-                               THIS%NJLU, THIS%IW, THIS%JLU,                    &
+        CALL THIS%IMSLINEARSUB_BCGS(ICNVG, itmax, innerit,                      &
                                NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,     &
                                CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,           &
-                               DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,              &
-                               THIS%ORIGIN, THIS%MPISOL, THIS%IPRIMS,           & !PAR
-                               THIS%RHOTOL, THIS%ALPHATOL,                      & !SOL
-                               THIS%OMEGATOL) !SOL
+                               DVMAX, DRMAX, CONVDVMAX, CONVDRMAX)
       END IF
       END IF !SOL
 !
@@ -1312,8 +1431,7 @@
       SUBROUTINE IMSLINEARSUB_PCU(IOUT, NJA, NEQ, NIAPC, NJAPC, IPC, RELAX,     &
                                   AMAT, IA, JA, APC, IAPC, JAPC, IW, W,         &
                                   LEVEL, DROPTOL, NJLU, NJW, NWLU, JLU, JW, WLU,&
-                                  IBJFLAG,                                      & !BJ
-                                  OFFDIAGFLAG) !BJ
+                                  IBJFLAG, CONVNMOD, CONVMODSTART) !BJ
       use SimModule, only: ustop, store_error, count_errors
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(IN) :: IOUT 
@@ -1341,7 +1459,8 @@
         integer(I4B), DIMENSION(NJW),  INTENT(INOUT) :: JW
         real(DP), DIMENSION(NWLU),  INTENT(INOUT) :: WLU
         integer(I4B), INTENT(IN) :: IBJFLAG !BJ
-        integer(I4B), DIMENSION(:),  INTENT(IN) :: OFFDIAGFLAG !BJ
+        integer(I4B), INTENT(IN) :: CONVNMOD !BJ
+        integer(I4B), DIMENSION(CONVNMOD+1), INTENT(INOUT) ::CONVMODSTART !BJ
 !       + + + LOCAL DEFINITIONS + + +                                     
         character(len=LINELENGTH) :: errmsg
         character(len=80), dimension(3) :: cerr
@@ -1367,8 +1486,7 @@
               CALL IMSLINEARSUB_PCILU0(NJA, NEQ, AMAT, IA, JA,                   &
                                        APC, IAPC, JAPC, IW, W,                   &
                                        RELAX, izero, delta,                      &
-                                       IBJFLAG,                                  & !BJ
-                                       OFFDIAGFLAG) !BJ
+                                       IBJFLAG, CONVNMOD, CONVMODSTART) !BJ
 !             ILUT AND MILUT                                             
             CASE (3,4) 
               ierr = 0
@@ -1401,6 +1519,277 @@
 !---------RETURN                                                        
         RETURN 
       END SUBROUTINE IMSLINEARSUB_PCU 
+
+!-------COARSE GRID PRECONDITIONER
+      subroutine imslinearsub_pcc(this, nlblk, lblkeq)
+        use MpiExchangeGenModule, only: parallelrun !PAR
+        use SimModule, only: ustop
+!       + + + dummy arguments + + +                                       
+        class(imslinear_data), intent(inout) :: this
+        integer(I4B), intent(in) :: nlblk
+        integer(I4B), dimension(:), intent(in) :: lblkeq
+!       + + + local definitions + + +                                     
+        integer(I4B) :: i, j, ngblk, lna1d
+        integer(I4B) :: icbl, icbg
+        integer(I4B) :: n, m, icol, ic, ic0, ic1, jc, jc0, jc1
+        integer(I4B) ::  ireq0, ireq1, iceq0, iceq1, ieq
+        integer(I4B) :: p, q
+        real(DP), dimension(:), allocatable :: la1d, ga1d
+        real(DP) :: tv
+        real(DP), dimension(:), allocatable :: dwrk
+        
+!       + + + code + + +                                                  
+        !
+        !-- correct ZC for constant head cells
+        do i = 1, this%neq
+          ic0 = this%ia(i)
+          ic1 = this%ia(i+1)-1
+          tv = DZERO
+          do m = ic0+1, ic1
+            j = this%ja(m)
+            tv = tv + abs(this%a0(m))
+          end do
+          if (tv == DZERO) then
+            j = this%ja(ic0)
+            this%zc(j) = DZERO
+          end if
+        end do
+        !
+        ngblk = this%cgcgnia-1
+        lna1d = 0
+        do i = 1, nlblk ! my local blocks
+          j = this%cgcl2gid(i)
+          j = this%cgcg2cid(j)
+          jc0 = this%cgcgia(j)
+          jc1 = this%cgcgia(j+1)-1
+          lna1d = lna1d + (jc1 - jc0 + 1)
+        end do ! my local blocks
+        !
+        allocate(la1d(lna1d))
+        allocate(ga1d(this%cgcgnja))
+        !
+        ! initalize and fill local A*ZC
+        do i = 1, size(this%a0zc,2)
+          do j = 1, size(this%a0zc,1)
+            this%a0zc(j,i) = DZERO
+          end do  
+        end do
+        !
+        ! -- allocate work array for interface contributions
+        if (parallelrun) then
+          allocate(dwrk(this%neq))
+        end if
+        !
+        ! -- point-to-point communication of ZC
+        call this%MpiSol%mpi_local_exchange(this%origin, 'IMS-ZC', .false.) !PAR
+        !
+        ! -- loop over local topology and fill A0*ZC
+        do i = 1, this%cgclnia-1 ! my local blocks
+          ic0 = this%cgclia(i)
+          ic1 = this%cgclia(i+1)-1 
+          !
+          ireq0 = lblkeq(i)
+          ireq1 = lblkeq(i+1)-1
+          !
+          do ic = ic0, ic1
+            j    = this%cgclja(ic) ! generated local index
+            icbg = this%cgclgja(ic) ! global block number
+            if (this%cgcg2lid(icbg) > 0) then ! block belongs to me
+              icbl = this%cgcg2lid(icbg) ! local block number
+              iceq0 = lblkeq(icbl)
+              iceq1 = lblkeq(icbl+1)-1
+              do ieq = ireq0, ireq1
+                tv = DZERO
+                jc0 = this%ia(ieq)
+                jc1 = this%ia(ieq+1)-1
+                do jc = jc0, jc1
+                  icol = this%ja(jc)
+                  if ((icol >= iceq0).and.(icol <= iceq1)) then
+                    tv  = tv + this%a0(jc) * this%zc(icol)
+                  end if
+                end do
+                this%a0zc(j,ieq) = tv
+              end do
+            else ! block does not belong to me (parallel only)
+              do ieq = 1, this%neq
+                dwrk(ieq) = DZERO
+              end do
+              call this%MpiSol%mpi_mv_halo(this%origin, 'IMS-ZC', dwrk, icbg) !PAR
+              do ieq = ireq0, ireq1
+                this%a0zc(j,ieq) = dwrk(ieq)
+              end do
+            end if
+          end do
+          !
+        end do
+        !
+        ! -- clean up
+        if (allocated(dwrk)) then
+          deallocate(dwrk)
+        end if
+        !
+        ! -- loop over local topology and fill AC coeffients
+        m = 0
+        do i = 1, this%cgclnia-1 ! my local blocks
+          ic0 = this%cgclia(i)
+          ic1 = this%cgclia(i+1)-1 
+          !
+          ireq0 = lblkeq(i)
+          ireq1 = lblkeq(i+1)-1
+          !
+          do ic = ic0, ic1
+            j = this%cgclja(ic) ! generated local index
+            tv = DZERO
+            do ieq = ireq0, ireq1
+              tv = tv + this%zc(ieq)*this%a0zc(j,ieq)
+            end do
+            m = m + 1
+            la1d(m) = tv
+          end do
+        end do
+        !
+        ! -- MPI all-to-all of matrix coefficients
+        call this%MpiSol%mpi_global_exchange_cgc(lna1d, this%cgcgnja,  &
+          la1d, ga1d, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, &
+          1)
+        !
+        do i = 1, ngblk
+          do j = 1, ngblk
+            this%acpc(j,i) = DZERO
+          end do
+        end do
+        !
+        n = 0
+        do i = 1, ngblk
+          ic0 = this%cgcgia(i)
+          ic1 = this%cgcgia(i+1)-1
+          do m = ic0, ic1
+            j = this%cgcgja(m)
+            n = n + 1
+            this%acpc(j,i) = ga1d(n)
+          end do
+        end do  
+        !
+        call imslinearsub_slu_band(this%acpc, ngblk, p, q)
+        this%acpcb = p
+        call imslinearsub_slu(this%acpc, ngblk, p, q)
+        !
+        !-- clean up
+        deallocate(la1d, ga1d)
+        !
+        !-- return
+        return
+      end subroutine imslinearsub_pcc
+      
+      subroutine imslinearsub_slu_band(a, n, p, q)
+!         ******************************************************************
+!         Determine the bands of the matrix.
+!         ******************************************************************
+!     
+!            SPECIFICATIONS:
+!         ------------------------------------------------------------------
+        implicit none
+!         + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4b), intent(in) :: n
+        integer(I4b), intent(out) :: p
+        integer(I4b), intent(out) :: q
+        real(DP), dimension(n,n), intent(inout) :: a
+!         + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4b) :: i, j
+!         + + + CODE + + +                                                  
+      
+        !  check for pivoting and determine the band length
+        p = 0 ! lower bandwidth
+        q = 0 ! upper bandwidth
+        do i = 1, n
+          ! check for pivoting
+          if (a(i,i) == dzero) then
+            write(*,*) 'Error, pivoting required.'
+            stop 1
+          end if
+          do j = 1, i ! lower band
+            if (a(j,i) /= dzero) then
+              p = max(p, i - j)
+            end if
+          end do
+          do j = i, n ! upper band
+            if (a(j,i) /= dzero) then
+              q = max(q, j - i)
+            end if
+          end do
+        end do
+      
+!---------return                                                        
+        return 
+      end subroutine imslinearsub_slu_band
+      
+      subroutine imslinearsub_slu(a, n, p, q)
+!         ******************************************************************
+!         Band LU-decomposition according to Golub & van Loan, p152.
+!         ******************************************************************
+!     
+!            SPECIFICATIONS:
+!         ------------------------------------------------------------------
+        implicit none
+!         + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4b), intent(in) :: n
+        real(DP), dimension(n,n), intent(inout) :: a
+        integer(I4b), intent(in) :: p, q
+!         + + + LOCAL DEFINITIONS + + +                                     
+        integer(i4b) :: i, j, k, min_p, min_q
+!         + + + CODE + + +                                                  
+        !
+        do k = 1, n - 1
+          min_p = min(k + p, n)
+          min_q = min(k + q, n)
+          do i = k + 1, min_p
+            a(k,i) = a(k,i) / a(k,k) ! L
+          end do
+          do j = k + 1, min_q
+            do i = k + 1, min_p 
+              a(j,i) = a(j,i) - a(k,i)*a(j,k) ! U
+            end do
+          end do
+        end do
+        
+!---------return                                                        
+        return 
+      end subroutine imslinearsub_slu
+      
+      subroutine imslinearsub_slu_solve(a, n, p, q, x)
+!         ******************************************************************
+!         Band LU-decomposition according to Golub & van Loan, p152.
+!         ******************************************************************
+!     
+!            SPECIFICATIONS:
+!         ------------------------------------------------------------------
+        implicit none
+!         + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4b), intent(in) :: n, p, q
+        real(DP), dimension(n,n), intent(in) :: a
+        real(DP), dimension(n), intent(inout) :: x
+!         + + + LOCAL DEFINITIONS + + +                                     
+        integer(i4b) :: i, j, min_p, max_q
+!         + + + CODE + + +                                                  
+        
+        forward: do j = 1, n
+          min_p = min(j + p, n)
+          do i = j + 1, min_p
+            x(i) = x(i) - a(j,i)*x(j)
+          end do
+        end do forward
+        
+        backward: do j = n, 1, -1
+          x(j) = x(j)/a(j,j)
+          max_q = max(1, j - q)
+          do i = max_q, j - 1
+            x(i) = x(i) - a(j,i)*x(j)
+          end do
+        end do backward
+        
+!---------return                                                        
+        return 
+      end subroutine imslinearsub_slu_solve
 !                                                                       
 !-------JACOBI PRECONDITIONER - INVERSE OF DIAGONAL                     
       SUBROUTINE IMSLINEARSUB_PCJ(NJA, NEQ, AMAT, APC, IA, JA) 
@@ -1461,8 +1850,7 @@
       SUBROUTINE IMSLINEARSUB_PCILU0(NJA, NEQ, AMAT, IA, JA,                    &
                                      APC, IAPC, JAPC, IW, W,                    &
                                      RELAX, IZERO, DELTA,                       &
-                                     IBJFLAG,                                   & !BJ
-                                     OFFDIAGFLAG) !BJ
+                                     IBJFLAG, CONVNMOD, CONVMODSTART) !BJ
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
         integer(I4B), INTENT(IN) :: NJA 
@@ -1479,7 +1867,8 @@
         integer(I4B), INTENT(INOUT) :: IZERO 
         real(DP), INTENT(IN) :: DELTA 
         integer(I4B), INTENT(IN) :: IBJFLAG !BJ
-        integer(I4B), DIMENSION(:),  INTENT(IN) :: OFFDIAGFLAG !BJ
+        integer(I4B), INTENT(IN) :: CONVNMOD !BJ
+        integer(I4B), DIMENSION(CONVNMOD+1), INTENT(INOUT) ::CONVMODSTART !BJ
 !       + + + LOCAL DEFINITIONS + + +                                     
         integer(I4B) :: ic0, ic1 
         integer(I4B) :: iic0, iic1 
@@ -1493,6 +1882,7 @@
         real(DP) :: tl 
         real(DP) :: rs 
         real(DP) :: d 
+        integer(I4B) :: im, ieq0, ieq1 !BJ
 !       + + + PARAMETERS + + +                                            
 !       + + + FUNCTIONS + + +                                             
 !       + + + CODE + + +                                                  
@@ -1501,80 +1891,85 @@
           IW(n)  = 0 
           W(n)   = DZERO 
         END DO 
-        MAIN: DO n = 1, NEQ 
-          ic0 = IA(n) 
-          ic1 = IA(n+1) - 1 
-          DO j = ic0, ic1 
-            jcol      = JA(j) 
-            IF (IBJFLAG.EQ.1) THEN !BJ
-              IF (OFFDIAGFLAG(j).EQ.0) THEN !BJ
-                IW(jcol) = 1  !BJ
-                W(jcol) = W(jcol) + AMAT(j) !BJ
+        
+        MAIN: DO im = 1, CONVNMOD !BJ
+          ieq0 = CONVMODSTART(im) !BJ
+          ieq1 = CONVMODSTART(im+1)-1 !BJ
+          DO n = ieq0, ieq1 !BJ
+            ic0 = IA(n) 
+            ic1 = IA(n+1) - 1 
+            DO j = ic0, ic1 
+              jcol      = JA(j) 
+              IF (IBJFLAG.EQ.1) THEN !BJ
+                IF (jcol >= ieq0 .and. jcol <= ieq1) THEN !BJ
+                  IW(jcol) = 1  !BJ
+                  W(jcol) = W(jcol) + AMAT(j) !BJ
+                END IF !BJ
+              ELSE !BJ
+                IW(jcol) = 1 
+                W(jcol) = W(jcol) + AMAT(j) 
               END IF !BJ
-            ELSE !BJ
-              IW(jcol) = 1 
-              W(jcol) = W(jcol) + AMAT(j) 
-            END IF
-          END DO !BJ
-          ic0 = IAPC(n) 
-          ic1 = IAPC(n+1) - 1 
-          iu  = JAPC(n) 
-          rs   = DZERO 
-          LOWER: DO j = ic0, iu-1 
-            jcol     = JAPC(j) 
-            iic0     = IAPC(jcol) 
-            iic1     = IAPC(jcol+1) - 1 
-            iiu      = JAPC(jcol) 
-            tl       = W(jcol) * APC(jcol) 
-            W(jcol) = tl 
-            DO jj = iiu, iic1 
-              jjcol = JAPC(jj) 
-              jw    = IW(jjcol) 
-              IF (jw.NE.0) THEN 
-                W(jjcol) = W(jjcol) - tl * APC(jj) 
+            END DO !BJ
+            ic0 = IAPC(n) 
+            ic1 = IAPC(n+1) - 1 
+            iu  = JAPC(n) 
+            rs   = DZERO 
+            LOWER: DO j = ic0, iu-1 
+              jcol     = JAPC(j) 
+              iic0     = IAPC(jcol) 
+              iic1     = IAPC(jcol+1) - 1 
+              iiu      = JAPC(jcol) 
+              tl       = W(jcol) * APC(jcol) 
+              W(jcol) = tl 
+              DO jj = iiu, iic1 
+                jjcol = JAPC(jj) 
+                jw    = IW(jjcol) 
+                IF (jw.NE.0) THEN 
+                  W(jjcol) = W(jjcol) - tl * APC(jj) 
+                ELSE 
+                  rs = rs + tl * APC(jj) 
+                END IF 
+              END DO 
+            END DO LOWER 
+!             DIAGONAL - CALCULATE INVERSE OF DIAGONAL FOR SOLUTION       
+            d   = W(n) 
+            tl  = ( DONE + DELTA ) * d - ( drelax * rs ) 
+!---  --------ENSURE THAT THE SIGN OF THE DIAGONAL HAS NOT CHANGED AND IS 
+            sd1 = SIGN(d,tl) 
+            IF (sd1.NE.d) THEN 
+!               USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
+!               PIVOTS THAT CHANGE THE SIGN OF THE DIAGONAL               
+              IF (IZERO > 1) THEN 
+                tl = SIGN(DEM6,d) 
+!               DIAGONAL SCALING CONTINUES TO BE EFFECTIVE                
               ELSE 
-                rs = rs + tl * APC(jj) 
+                IZERO = 1 
+                EXIT MAIN 
               END IF 
-            END DO 
-          END DO LOWER 
-!           DIAGONAL - CALCULATE INVERSE OF DIAGONAL FOR SOLUTION       
-          d   = W(n) 
-          tl  = ( DONE + DELTA ) * d - ( drelax * rs ) 
-!-----------ENSURE THAT THE SIGN OF THE DIAGONAL HAS NOT CHANGED AND IS 
-          sd1 = SIGN(d,tl) 
-          IF (sd1.NE.d) THEN 
-!             USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
-!             PIVOTS THAT CHANGE THE SIGN OF THE DIAGONAL               
-            IF (IZERO > 1) THEN 
-              tl = SIGN(DEM6,d) 
-!             DIAGONAL SCALING CONTINUES TO BE EFFECTIVE                
-            ELSE 
-              IZERO = 1 
-              EXIT MAIN 
             END IF 
-          END IF 
-          IF (ABS(tl) ==  DZERO) THEN 
-!             USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
-!             ZERO PIVOTS                                               
-            IF (IZERO > 1) THEN 
-              tl = SIGN(DEM6,d) 
-!             DIAGONAL SCALING CONTINUES TO BE EFFECTIVE FOR ELIMINATING 
-            ELSE 
-              IZERO = 1 
-              EXIT MAIN 
+            IF (ABS(tl) ==  DZERO) THEN 
+!               USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
+!               ZERO PIVOTS                                               
+              IF (IZERO > 1) THEN 
+                tl = SIGN(DEM6,d) 
+!               DIAGONAL SCALING CONTINUES TO BE EFFECTIVE FOR ELIMINATING 
+              ELSE 
+                IZERO = 1 
+                EXIT MAIN 
+              END IF 
             END IF 
-          END IF 
-          APC(n) = DONE / tl 
-!           RESET POINTER FOR IW TO ZERO                                
-          IW(n) = 0 
-          W(n)  = DZERO 
-          DO j = ic0, ic1 
-            jcol = JAPC(j) 
-            APC(j) = W(jcol) 
-            IW(jcol) = 0 
-            W(jcol) = DZERO 
-          END DO 
-      END DO MAIN 
+            APC(n) = DONE / tl 
+!             RESET POINTER FOR IW TO ZERO                                
+            IW(n) = 0 
+            W(n)  = DZERO 
+            DO j = ic0, ic1 
+              jcol = JAPC(j) 
+              APC(j) = W(jcol) 
+              IW(jcol) = 0 
+              W(jcol) = DZERO 
+            END DO
+        END DO
+      END DO MAIN !BJ
 !                                                                       
 !---------RESET IZERO IF SUCCESSFUL COMPLETION OF MAIN                  
         IZERO = 0 
@@ -1629,53 +2024,17 @@
 !---------RETURN                                                        
         RETURN 
       END SUBROUTINE IMSLINEARSUB_ILU0A 
-                                                                        
-      SUBROUTINE IMSLINEARSUB_CG(ICNVG, ITMAX, INNERIT,                         &
-                                 NEQ, NJA, NIAPC, NJAPC,                        &
-                                 IPC, NITERC, ICNVGOPT, NORTH,                  &
-                                 HCLOSE, RCLOSE, L2NORM0, EPFACT,               &
-                                 IA0, JA0, A0, IAPC, JAPC, APC,                 &
-                                 X, B, D, P, Q, Z,                              &
-                                 NJLU, IW, JLU,                                 &
+      SUBROUTINE IMSLINEARSUB_CG(THIS, ICNVG, ITMAX, INNERIT,                   &
                                  NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR,   &
                                  CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,         &
-                                 DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,            &
-                                 ORIGIN, MPISOL, IPRIMS,                        & !PAR
-                                 RHOTOL) !SOL
+                                 DVMAX, DRMAX, CONVDVMAX, CONVDRMAX)
         use MpiExchangeGenModule, only: writestd !PAR
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
+        CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS !CGC
         integer(I4B), INTENT(INOUT) :: ICNVG 
         integer(I4B), INTENT(IN)    :: ITMAX 
         integer(I4B), INTENT(INOUT) :: INNERIT 
-        integer(I4B), INTENT(IN)    :: NEQ 
-        integer(I4B), INTENT(IN)    :: NJA 
-        integer(I4B), INTENT(IN)    :: NIAPC 
-        integer(I4B), INTENT(IN)    :: NJAPC 
-        integer(I4B), INTENT(IN)    :: IPC 
-        integer(I4B), INTENT(INOUT) :: NITERC 
-        integer(I4B), INTENT(IN)    :: ICNVGOPT 
-        integer(I4B), INTENT(IN)    :: NORTH 
-        real(DP), INTENT(IN) :: HCLOSE 
-        real(DP), INTENT(IN) :: RCLOSE 
-        real(DP), INTENT(IN) :: L2NORM0 
-        real(DP), INTENT(IN) :: EPFACT 
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA0 
-        integer(I4B), DIMENSION(NJA), INTENT(IN) :: JA0 
-        real(DP), DIMENSION(NJA), INTENT(IN) :: A0 
-        integer(I4B), DIMENSION(NIAPC+1), INTENT(IN) :: IAPC 
-        integer(I4B), DIMENSION(NJAPC), INTENT(IN) :: JAPC 
-        real(DP), DIMENSION(NJAPC), INTENT(IN) :: APC 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: X 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: B 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: D 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: P 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: Q 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: Z 
-        ! ILUT
-        integer(I4B), INTENT(IN) :: NJLU
-        integer(I4B), DIMENSION(NIAPC), INTENT(IN) :: IW
-        integer(I4B), DIMENSION(NJLU), INTENT(IN) :: JLU
         ! CONVERGENCE INFORMATION
         integer(I4B), INTENT(IN) :: NCONV
         integer(I4B), INTENT(IN) :: CONVNMOD
@@ -1690,11 +2049,39 @@
         real(DP), DIMENSION(CONVNMOD), INTENT(INOUT) :: DRMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
-        character(len=*) :: origin !PAR
-        integer(I4B), INTENT(IN) :: IPRIMS !PAR
-        type(MpiExchangeType), intent(inout) :: MpiSol !PAR
-        real(DP), INTENT(IN) :: RHOTOL !SOL
 !       + + + LOCAL DEFINITIONS + + + 
+        integer(I4B),               POINTER :: NEQ      => NULL()
+        integer(I4B),               POINTER :: NJA      => NULL()
+        integer(I4B),               POINTER :: NIAPC    => NULL()
+        integer(I4B),               POINTER :: NJAPC    => NULL()
+        integer(I4B),               POINTER :: IPC      => NULL()
+        integer(I4B),               POINTER :: NITERC   => NULL()
+        integer(I4B),               POINTER :: ICNVGOPT => NULL() 
+        integer(I4B),               POINTER :: NORTH    => NULL()
+        real(DP),                   POINTER :: HCLOSE   => NULL()
+        real(DP),                   POINTER :: RCLOSE   => NULL()
+        real(DP),                   POINTER :: L2NORM0  => NULL()
+        real(DP),                   POINTER :: EPFACT   => NULL()
+        integer(I4B), DIMENSION(:), POINTER :: IA0      => NULL() 
+        integer(I4B), DIMENSION(:), POINTER :: JA0      => NULL()
+        real(DP),     DIMENSION(:), POINTER :: A0       => NULL()
+        integer(I4B), DIMENSION(:), POINTER :: IAPC     => NULL()
+        integer(I4B), DIMENSION(:), POINTER :: JAPC     => NULL()
+        real(DP),     DIMENSION(:), POINTER :: APC      => NULL()
+        real(DP),     DIMENSION(:), POINTER :: X        => NULL()
+        real(DP),     DIMENSION(:), POINTER :: B        => NULL()
+        real(DP),     DIMENSION(:), POINTER :: D        => NULL()
+        real(DP),     DIMENSION(:), POINTER :: P        => NULL()
+        real(DP),     DIMENSION(:), POINTER :: Q        => NULL()
+        real(DP),     DIMENSION(:), POINTER :: Z        => NULL()
+        integer(I4B),               POINTER :: NJLU     => NULL()
+        integer(I4B), DIMENSION(:), POINTER :: IW       => NULL()
+        integer(I4B), DIMENSION(:), POINTER :: JLU      => NULL()
+        character(len=20),          pointer :: origin   => NULL() !PAR
+        integer(I4B),               pointer :: IPRIMS   => NULL() !PAR
+        type(MpiExchangeType),      pointer :: MpiSol   => NULL() !PAR
+        real(DP),                   POINTER :: RHOTOL   => NULL() !SOL
+        !
         LOGICAL :: LORTH
         logical :: lsame 
         character(len=31) :: cval
@@ -1715,6 +2102,38 @@
 !       + + + FUNCTIONS + + +                                         
 !                                                                       
 !         + + + CODE + + +                                              
+        NEQ      => THIS%NEQ
+        NJA      => THIS%NJA
+        NIAPC    => THIS%NIAPC
+        NJAPC    => THIS%NJAPC
+        IPC      => THIS%IPC
+        NITERC   => THIS%NITERC
+        ICNVGOPT => THIS%ICNVGOPT
+        NORTH    => THIS%NORTH
+        HCLOSE   => THIS%HCLOSE
+        RCLOSE   => THIS%RCLOSE
+        L2NORM0  => THIS%L2NORM0
+        EPFACT   => THIS%EPFACT
+        IA0      => THIS%IA0
+        JA0      => THIS%JA0
+        A0       => THIS%A0
+        IAPC     => THIS%IAPC
+        JAPC     => THIS%JAPC
+        APC      => THIS%APC
+        X        => THIS%X
+        B        => THIS%RHS
+        D        => THIS%D
+        P        => THIS%P
+        Q        => THIS%Q
+        Z        => THIS%Z
+        NJLU     => THIS%NJLU
+        IW       => THIS%IW
+        JLU      => THIS%JLU
+        origin   => THIS%ORIGIN !PAR
+        IPRIMS   => THIS%IPRIMS !PAR
+        MpiSol   => THIS%MPISOL !PAR
+        RHOTOL   => THIS%RHOTOL !SOL
+! 
         rho0 = DZERO 
         rho = DZERO 
         INNERIT  = 0 
@@ -1731,7 +2150,11 @@
 !             ILUT AND MILUT
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, D, Z, APC, JLU, IW) 
-          END SELECT 
+          END SELECT
+          IF (THIS%ICGC) THEN !CGC
+!----------APPLY COARSE GRID PRECONDITIONER
+            CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, D, Z) !CGC
+          END IF !CGC
           rho = IMSLINEARSUB_DP(NEQ, D, Z) 
           ! -- MPI parallel: collective comm. of rho (sum)
           call MpiSol%mpi_global_exchange_sum(rho) !PAR
@@ -1855,9 +2278,9 @@
         if (iprims == 3 .and. writestd) then
           write(sa(1),*) real(deltax)
           write(sa(2),*) real(rmax)
-          write(*,'(1x,a,1x,i5.5,a,1x,i5.5,a,1x,2a,1x,a)')                  &
-          'cg: oit, iit, bih, bir =',                                       &
-          niterc,',',innerit,',',trim(adjustl(sa(1))),                      &
+          write(*,'(1x,a,1x,i5.5,a,1x,i5.5,a,1x,2a,1x,a)')                      &
+          'cg: oit, iit, bih, bir =',                                           &
+          niterc,',',innerit,',',trim(adjustl(sa(1))),                          &
           ',',trim(adjustl(sa(2)))
 !
         endif
@@ -1867,60 +2290,18 @@
         RETURN 
       END SUBROUTINE IMSLINEARSUB_CG 
                                                                         
-      SUBROUTINE IMSLINEARSUB_BCGS(ICNVG, ITMAX, INNERIT,                       &
-                                   NEQ, NJA, NIAPC, NJAPC,                      &
-                                   IPC, NITERC, ICNVGOPT, NORTH, ISCL, DSCALE,  &
-                                   HCLOSE, RCLOSE, L2NORM0, EPFACT,             &
-                                   IA0, JA0, A0, IAPC, JAPC, APC,               &
-                                   X, B, D, P, Q,                               &
-                                   T, V, DHAT, PHAT, QHAT,                      &
-                                   NJLU, IW, JLU,                               &
+      SUBROUTINE IMSLINEARSUB_BCGS(THIS, ICNVG, ITMAX, INNERIT,                 &
                                    NCONV, CONVNMOD, CONVMODSTART, LOCDV, LOCDR, &
                                    CACCEL, ITINNER, CONVLOCDV, CONVLOCDR,       &
-                                   DVMAX, DRMAX, CONVDVMAX, CONVDRMAX,          &
-                                   ORIGIN, MPISOL, IPRIMS,                      & !PAR
-                                   RHOTOL, ALPHATOL, OMEGATOL) !SOL
+                                   DVMAX, DRMAX, CONVDVMAX, CONVDRMAX)
         use MpiExchangeGenModule, only: writestd !PAR
 
         IMPLICIT NONE 
 !       + + + DUMMY ARGUMENTS + + +                                       
+        CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS !CGC
         integer(I4B), INTENT(INOUT) :: ICNVG 
         integer(I4B), INTENT(IN)    :: ITMAX 
         integer(I4B), INTENT(INOUT) :: INNERIT 
-        integer(I4B), INTENT(IN)    :: NEQ 
-        integer(I4B), INTENT(IN)    :: NJA 
-        integer(I4B), INTENT(IN)    :: NIAPC 
-        integer(I4B), INTENT(IN)    :: NJAPC 
-        integer(I4B), INTENT(IN)    :: IPC 
-        integer(I4B), INTENT(INOUT) :: NITERC 
-        integer(I4B), INTENT(IN)    :: ICNVGOPT 
-        integer(I4B), INTENT(IN)    :: NORTH
-        integer(I4B), INTENT(IN)    :: ISCL 
-        real(DP), DIMENSION(NEQ), INTENT(IN) :: DSCALE 
-        real(DP), INTENT(IN) :: HCLOSE 
-        real(DP), INTENT(IN) :: RCLOSE 
-        real(DP), INTENT(IN) :: L2NORM0 
-        real(DP), INTENT(IN) :: EPFACT 
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA0 
-        integer(I4B), DIMENSION(NJA), INTENT(IN) :: JA0 
-        real(DP), DIMENSION(NJA), INTENT(IN) :: A0 
-        integer(I4B), DIMENSION(NIAPC+1), INTENT(IN) :: IAPC 
-        integer(I4B), DIMENSION(NJAPC), INTENT(IN) :: JAPC 
-        real(DP), DIMENSION(NJAPC), INTENT(IN) :: APC 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: X 
-        real(DP), DIMENSION(NEQ), INTENT(IN) :: B 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: D 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: P 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: Q 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: T 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: V 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: DHAT 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: PHAT 
-        real(DP), DIMENSION(NEQ), INTENT(INOUT) :: QHAT
-        ! ILUT
-        integer(I4B), INTENT(IN) :: NJLU
-        integer(I4B), DIMENSION(NIAPC), INTENT(IN) :: IW
-        integer(I4B), DIMENSION(NJLU), INTENT(IN) :: JLU
         ! CONVERGENCE INFORMATION
         integer(I4B), INTENT(IN) :: NCONV
         integer(I4B), INTENT(IN) :: CONVNMOD
@@ -1935,13 +2316,48 @@
         real(DP), DIMENSION(CONVNMOD), INTENT(INOUT) :: DRMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
         real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
-        character(len=*) :: origin !PAR
-        integer(I4B), INTENT(IN) :: IPRIMS !PAR
-        type(MpiExchangeType), intent(inout) :: MpiSol !PAR
-        REAL(DP), INTENT(IN) :: RHOTOL !SOL
-        REAL(DP), INTENT(IN) :: ALPHATOL !SOL
-        REAL(DP), INTENT(IN) :: OMEGATOL !SOL
 !       + + + LOCAL DEFINITIONS + + +  
+        integer(I4B),               POINTER :: NEQ
+        integer(I4B),               POINTER :: NJA
+        integer(I4B),               POINTER :: NIAPC
+        integer(I4B),               POINTER :: NJAPC
+        integer(I4B),               POINTER :: IPC
+        integer(I4B),               POINTER :: NITERC
+        integer(I4B),               POINTER :: ICNVGOPT
+        integer(I4B),               POINTER :: NORTH
+        integer(I4B),               POINTER :: ISCL
+        real(DP),     DIMENSION(:), POINTER :: DSCALE
+        real(DP),                   POINTER :: HCLOSE
+        real(DP),                   POINTER :: RCLOSE
+        real(DP),                   POINTER :: L2NORM0
+        real(DP),                   POINTER :: EPFACT
+        integer(I4B), DIMENSION(:), POINTER :: IA0
+        integer(I4B), DIMENSION(:), POINTER :: JA0
+        real(DP),     DIMENSION(:), POINTER :: A0
+        integer(I4B), DIMENSION(:), POINTER :: IAPC
+        integer(I4B), DIMENSION(:), POINTER :: JAPC
+        real(DP),     DIMENSION(:), POINTER :: APC
+        real(DP),     DIMENSION(:), POINTER :: X
+        real(DP),     DIMENSION(:), POINTER :: B
+        real(DP),     DIMENSION(:), POINTER :: D
+        real(DP),     DIMENSION(:), POINTER :: P
+        real(DP),     DIMENSION(:), POINTER :: Q
+        real(DP),     DIMENSION(:), POINTER :: T
+        real(DP),     DIMENSION(:), POINTER :: V
+        real(DP),     DIMENSION(:), POINTER :: DHAT
+        real(DP),     DIMENSION(:), POINTER :: PHAT
+        real(DP),     DIMENSION(:), POINTER :: QHAT
+        ! ILUT
+        integer(I4B),               POINTER :: NJLU
+        integer(I4B), DIMENSION(:), POINTER :: IW
+        integer(I4B), DIMENSION(:), POINTER :: JLU
+        character(len=20),          POINTER :: origin !PAR
+        integer(I4B),               POINTER :: IPRIMS !PAR
+        type(MpiExchangeType),      POINTER :: MpiSol !PAR
+        REAL(DP),                   POINTER :: RHOTOL !SOL
+        REAL(DP),                   POINTER :: ALPHATOL !SOL
+        REAL(DP),                   POINTER :: OMEGATOL !SOL
+        !
         LOGICAL :: LORTH
         logical :: lsame 
         character(len=15) :: cval1, cval2
@@ -1965,6 +2381,46 @@
 !       + + + FUNCTIONS + + +                                         
 !                                                                       
 !         + + + CODE + + +                                              
+        NEQ      => THIS%NEQ
+        NJA      => THIS%NJA
+        NIAPC    => THIS%NIAPC
+        NJAPC    => THIS%NJAPC
+        IPC      => THIS%IPC
+        NITERC   => THIS%NITERC
+        ICNVGOPT => THIS%ICNVGOPT
+        NORTH    => THIS%NORTH
+        ISCL     => THIS%ISCL
+        DSCALE   => THIS%DSCALE
+        HCLOSE   => THIS%HCLOSE
+        RCLOSE   => THIS%RCLOSE
+        L2NORM0  => THIS%L2NORM0
+        EPFACT   => THIS%EPFACT
+        IA0      => THIS%IA0
+        JA0      => THIS%JA0
+        A0       => THIS%A0
+        IAPC     => THIS%IAPC
+        JAPC     => THIS%JAPC
+        APC      => THIS%APC
+        X        => THIS%X
+        B        => THIS%RHS
+        D        => THIS%D
+        P        => THIS%P
+        Q        => THIS%Q
+        T        => THIS%T
+        V        => THIS%V
+        DHAT     => THIS%DHAT
+        PHAT     => THIS%PHAT
+        QHAT     => THIS%QHAT
+        NJLU     => THIS%NJLU
+        IW       => THIS%IW
+        JLU      => THIS%JLU
+        origin   => THIS%origin !PAR
+        IPRIMS   => THIS%IPRIMS !PAR
+        MpiSol   => THIS%MpiSol !PAR
+        RHOTOL   => THIS%RHOTOL !SOL
+        ALPHATOL => THIS%ALPHATOL !SOL
+        OMEGATOL => THIS%OMEGATOL !SOL
+        
         INNERIT  = 0 
                                                                         
         alpha  = DZERO
@@ -2011,7 +2467,11 @@
 !             ILUT AND MILUT
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, P, PHAT, APC, JLU, IW) 
-          END SELECT 
+            END SELECT
+          IF (THIS%ICGC) THEN !CGC
+!----------APPLY COARSE GRID PRECONDITIONER
+            CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, P, PHAT) !CGC
+          END IF !CGC
 !-----------COMPUTE ITERATES                                            
 !           UPDATE V WITH A AND PHAT                                    
           CALL IMSLINEARSUB_MV(NJA, NEQ, A0, PHAT, V, IA0, JA0)
@@ -2059,7 +2519,11 @@
 !             ILUT AND MILUT
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, Q, QHAT, APC, JLU, IW)
-          END SELECT
+            END SELECT
+!----------APPLY COARSE GRID PRECONDITIONER
+          IF (THIS%ICGC) THEN !CGC
+            CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, Q, QHAT) !CGC
+          END IF !CGC
 !           UPDATE T WITH A AND QHAT                                    
           CALL IMSLINEARSUB_MV(NJA, NEQ, A0, QHAT, T, IA0, JA0)
           ! -- MPI parallel: point-to-point comm. of QHAT and update of T
@@ -3029,7 +3493,68 @@
       !----------------end of IMSLINEARSUB_PCMILUT_LUSOL ------------------------------------------
       !-----------------------------------------------------------------------
       END SUBROUTINE IMSLINEARSUB_PCMILUT_LUSOL
-                                           
+      
+      subroutine imslinearsub_pcc_sol(this, neq, nlblk, lblkeq, r, s) !CGC
+!       ******************************************************************
+!       ALLOCATE STORAGE FOR COARSE GRID CORRECTION ARRAYS
+!       ******************************************************************
+!    
+!          SPECIFICATIONS:
+!       ------------------------------------------------------------------
+        use SimModule, only: ustop
+!       + + + dummy variables + + +
+        class(imslinear_data), intent(inout) :: this
+        integer(I4B), intent(in) :: neq
+        integer(I4B), intent(in) :: nlblk
+        integer(I4B), dimension(:), intent(in) :: lblkeq
+        real(DP), dimension(neq), intent(in) :: r
+        real(DP), dimension(neq), intent(inout) :: s
+!       + + + local variables + + +
+        integer(I4B) :: irbl, irbg, irbc, ieq, ireq0, ireq1
+        real(DP) :: tv
+!--  ----------------------------------------------------------------
+        !
+        !-- construct RHS
+        do irbl = 1, nlblk ! my local blocks
+          irbg = this%cgcl2gid(irbl)
+          irbc = this%cgcg2cid(irbg) ! row block
+          !
+          ireq0 = lblkeq(irbl)
+          ireq1 = lblkeq(irbl+1)-1
+          !
+          tv = DZERO
+          do ieq = ireq0, ireq1
+            tv = tv + this%zc(ieq)*r(ieq)
+          end do
+          this%wc(irbl) = tv
+        end do
+        !
+        ! -- MPI all-to-all for global RHS
+        call this%MpiSol%mpi_global_exchange_cgc(nlblk, this%cgcgnia-1,  &
+          this%wc, this%rhsc, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, &
+          2)
+        !
+        !-- solve the coarse system
+        this%xc = this%rhsc
+        call imslinearsub_slu_solve(this%acpc, this%cgcgnia-1, this%acpcb,    &
+          this%acpcb, this%xc)
+        !
+        !-- Correct search direction s
+        do irbl = 1, nlblk ! my local blocks
+          irbg = this%cgcl2gid(irbl)
+          !
+          ireq0 = lblkeq(irbl)
+          ireq1 = lblkeq(irbl+1)-1
+          !
+          do ieq = ireq0, ireq1
+            s(ieq) = s(ieq) + this%xc(irbg)*this%zc(ieq)
+          end do
+        end do
+        !
+        !-- return
+        return
+      end subroutine imslinearsub_pcc_sol
+      
       !-----------------------------------------------------------------------
       SUBROUTINE IMSLINEARSUB_PCMILUT_QSPLIT(n, a, ind, ncut)
         integer(I4B) :: n
