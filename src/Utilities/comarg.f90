@@ -3,10 +3,12 @@ module CommandArguments
   use ConstantsModule, only: ISTDOUT, LINELENGTH, LENHUGELINE
   use VersionModule,          only: VERSION, MFVNAM, IDEVELOPMODE
   use CompilerVersion
-  use SimVariablesModule,     only: simfile
+  use SimVariablesModule,     only: simfile,                                   &
+                                    simlstfile !SIM
   use SimModule, only: store_error, ustop, store_error_unit,                   &
                        store_error_filename
-  use InputOutputModule, only: urword
+  use InputOutputModule, only: urword,                                         &
+                               upcase !SIM
   !
   implicit none
   !
@@ -19,6 +21,7 @@ module CommandArguments
     ! -- dummy
     ! -- local
     character(len=LENHUGELINE) :: line
+    character(len=LENHUGELINE) :: opt !SIM
     character(len=LINELENGTH) :: header
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: cexe
@@ -86,11 +89,13 @@ module CommandArguments
     iarg = 0
     iterm = 0
     do
-      call urword(line, lloc, istart, istop, 1, ival, rval, 0, inunit)
+      call urword(line, lloc, istart, istop, 0, ival, rval, 0, inunit) !SIM
       if (line(istart:istop) == ' ') exit
       iarg = iarg + 1
       iterm = 1
-      select case(line(istart:istop))
+      opt = line(istart:istop) !SIM
+      call upcase(opt) !SIM
+      select case(opt) !SIM
         case('-H', '-?', '--HELP')
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
         case('-V', '--VERSION')
@@ -103,6 +108,17 @@ module CommandArguments
           call get_compiler(compiler)
           write(ISTDOUT,'(2a,1x,a)') &
             trim(adjustl(cexe)), ':', trim(adjustl(compiler))
+        case('-S', '--SIMFILE') !SIM
+          call urword(line, lloc, istart, istop, 0, ival, rval, 0, inunit) !SIM
+          simfile = line(istart:istop) !SIM
+          i = index(simfile,'.',back=.true.) !SIM
+          if (i > 0) then !SIM
+            simlstfile = simfile(1:i-1)//'.lst' !SIM
+          else !SIM
+            simlstfile = trim(simfile)//'.lst' !SIM
+          end if !SIM
+          iarg = iarg - 1 !SIM
+          iterm = 0 !SIM
         case default 
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
           write(errmsg, '(2a,1x,a)') &
