@@ -1114,6 +1114,7 @@ contains
     ! -- local
     logical :: found
     integer(I4B) :: i, ipos, n
+    integer(I4B), dimension(:), allocatable :: iwrk
     real(DP) :: t !TIM
 ! ------------------------------------------------------------------------------
     !
@@ -1195,23 +1196,34 @@ contains
     end if
     !
     ! -- Store ipos for caching and sort
-    n = max(1,memorylist%count())
     nipos = nipos + 1
-    if(nipos > n) then
+    if (size(iposarr) /= size(iposidx)) then
       call store_error('Program error mem_get_ptr')
       call ustop()
-    endif
-    if(.not.allocated(iposarr)) then
-      allocate(iposarr(n))
-    endif
-    iposarr(nipos) = ipos
-    if(.not.allocated(iposidx)) then
-      allocate(iposidx(n))
-    endif
-    do i = 1, nipos
-      iposidx(i) = i
-    enddo
-    call qsort(iposidx(1:nipos), iposarr(1:nipos))
+    end if
+    n = size(iposarr)
+    if (nipos > n) then
+      allocate(iwrk(n))
+      do i = 1, n
+        iwrk(i) = iposarr(i)
+      end do
+      if (allocated(iposarr)) then
+        deallocate(iposarr)
+      end if
+      if (allocated(iposidx)) then
+        deallocate(iposidx)
+      end if
+      allocate(iposarr(nipos), iposidx(nipos))
+      do i = 1, n
+        iposarr(i) = iwrk(i)
+      end do
+      deallocate(iwrk)
+      iposarr(nipos) = ipos
+      do i = 1, nipos
+        iposidx(i) = i
+      enddo
+      call qsort(iposidx(1:nipos), iposarr(1:nipos))
+    end if
     !
     call code_timer(1, t, ttgetptr) !TIM
     !
