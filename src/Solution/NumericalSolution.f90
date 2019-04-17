@@ -52,6 +52,7 @@ module NumericalSolutionModule
     type(BlockParserType) :: parser
     !
     ! -- sparse matrix data
+    real(DP), pointer                                    :: rclosebnd => NULL()
     real(DP), pointer                                    :: theta => NULL()
     real(DP), pointer                                    :: akappa => NULL()
     real(DP), pointer                                    :: gamma => NULL()
@@ -284,6 +285,7 @@ contains
     call mem_allocate (this%linmeth, 'LINMETH', solutionname)
     call mem_allocate (this%nonmeth, 'NONMETH', solutionname)
     call mem_allocate (this%iprims, 'IPRIMS', solutionname)
+    call mem_allocate (this%rclosebnd, 'RCLOSEBND', solutionname)
     call mem_allocate (this%theta, 'THETA', solutionname)
     call mem_allocate (this%akappa, 'AKAPPA', solutionname)
     call mem_allocate (this%gamma, 'GAMMA', solutionname)
@@ -330,6 +332,7 @@ contains
     this%linmeth = 1
     this%nonmeth = 0
     this%iprims = 0
+    this%rclosebnd = DZERO
     this%theta = DZERO
     this%akappa = DZERO
     this%gamma = DZERO
@@ -669,16 +672,9 @@ contains
     ! -- Go through each model and point x, ibound, and rhs to solution
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      !if (.not.mp%bympi) then !PAR
       call mp%set_xptr(this%x)
       call mp%set_rhsptr(this%rhs)
       call mp%set_iboundptr(this%active)
-      !else !PAR
-      !  ! -- Initialize the dummy halo arrays and return
-      !  call mp%set_xptr_halo() !PAR
-      !  call mp%set_rhsptr_halo() !PAR
-      !  call mp%set_iboundptr_halo() !PAR
-      !endif !PAR
     enddo
     !
     ! -- Create the sparsematrix instance
@@ -725,11 +721,13 @@ contains
     integer(I4B) :: ifdparam, mxvl, npp
     integer(I4B) :: imslinear
     character(len=linelength) :: errmsg, keyword, fname
+    character(len=linelength) :: msg
     integer(I4B) :: isymflg=1
     integer(I4B) :: ierr
     logical :: isfound, endOfBlock
     integer(I4B) :: ival
     real(DP) :: rval
+    real(DP) :: rclose
     character(len=*),parameter :: fmtcsvout = &
       "(4x, 'CSV OUTPUT WILL BE SAVED TO FILE: ', a, /4x, 'OPENED ON UNIT: ', I7)"
     character(len=*),parameter :: fmtptcout = &
@@ -808,9 +806,21 @@ contains
             call store_error(errmsg)
           end if
         case ('NO_PTC')
-          call this%parser%DevOpt()
-          this%iallowptc = 0
-          write(IOUT,'(1x,A)') 'PSEUDO-TRANSIENT CONTINUATION DISABLED'
+          call this%parser%GetStringCaps(keyword)
+          select case(keyword)
+            case ('ALL')
+              ival = 0
+              msg = 'ALL'
+            case ('FIRST')
+              ival = -1
+              msg = 'THE FIRST'
+            case default
+              ival = 0
+              msg = 'ALL'
+          end select
+          this%iallowptc = ival
+          write(IOUT,'(1x,A)') 'PSEUDO-TRANSIENT CONTINUATION DISABLED FOR' // &
+            ' ' // trim(adjustl(msg)) // ' STRESS-PERIOD(S)'
         !
         ! -- right now these are options that are only available in the
         !    development version and are not included in the documentation.
@@ -918,6 +928,8 @@ contains
           this%hclose  = this%parser%GetDouble()
         case ('OUTER_MAXIMUM')
           this%mxiter  = this%parser%GetInteger()
+        case ('OUTER_RCLOSEBND')
+          this%rclosebnd  = this%parser%GetDouble()
         case ('UNDER_RELAXATION')
           call this%parser%GetStringCaps(keyword)
           ival = 0
@@ -978,48 +990,32 @@ contains
       end if
     end if
     !
-    IF ( THIS%THETA.LT.DEM3 ) this%theta = DEM3
+    IF ( THIS%THETA < DEM3 ) this%theta = DEM3
     !
     ! -- backtracking should only be used if this%nonmeth > 0
     if (this%nonmeth < 1) then
       this%ibflag = 0
     end if
     !
-    !-------ECHO INPUT OF NONLINEAR ITERATION PARAMETERS AND LINEAR SOLVER INDEX
-    WRITE(IOUT,9002) this%hclose,this%mxiter,this%iprims,this%nonmeth,this%linmeth
-    !
-9002 FORMAT(1X,'OUTER ITERATION CONVERGENCE CRITERION     (HCLOSE) = ', E15.6, &
-    &      /1X,'MAXIMUM NUMBER OF OUTER ITERATIONS        (MXITER) = ', I9,    &
-    &      /1X,'SOLVER PRINTOUT INDEX                     (IPRIMS) = ',I9,     &
-    &      /1X,'NONLINEAR ITERATION METHOD            (NONLINMETH) = ',I9,     &
-    &      /1X,'LINEAR SOLUTION METHOD                   (LINMETH) = ',I9)
-    !
-    IF(THIS%NONMETH.NE.0)THEN
-      WRITE(IOUT,9003) this%theta, this%akappa, this%gamma, this%amomentum,    &
-                       this%numtrack
-      IF(THIS%NUMTRACK.NE.0) WRITE(IOUT,9004) this%btol,this%breduc,this%res_lim
-    ENDIF
-
-9003 FORMAT(1X,'UNDER-RELAXATION WEIGHT REDUCTION FACTOR   (THETA) = ', E15.6, &
-    &      /1X,'UNDER-RELAXATION WEIGHT INCREASE INCREMENT (KAPPA) = ', E15.6, &
-    &      /1X,'UNDER-RELAXATION PREVIOUS HISTORY FACTOR   (GAMMA) = ', E15.6, &
-    &      /1X,'UNDER-RELAXATIONMOMENTUM TERM          (AMOMENTUM) = ', E15.6, &
-    &      /1X,'   MAXIMUM NUMBER OF BACKTRACKS         (NUMTRACK) = ',I9)
-9004 FORMAT(1X,'BACKTRACKING TOLERANCE FACTOR               (BTOL) = ', E15.6, &
-    &      /1X,'BACKTRACKING REDUCTION FACTOR             (BREDUC) = ', E15.6, &
-    &      /1X,'BACKTRACKING RESIDUAL LIMIT              (RES_LIM) = ', E15.6)
-
-    if(this%mxiter.le.0) then
+    ! -- check that MXITER is greater than zero
+    if (this%mxiter <= 0) then
       write (errmsg,'(a)') 'IMS sln_ar: OUTER ITERATION NUMBER MUST BE > 0.'
       call store_error(errmsg)
     END IF
-
+    !
+    ! -- check that RCLOSEBND is greater than zero
+    IF (this%rclosebnd <=  DZERO) THEN
+      WRITE( errmsg,'(A)' ) 'SLN_AR: OUTER_RCLOSEBND MUST > 0.0. '
+      call store_error(errmsg)
+    END IF
+    !
+    !
     isymflg = 1
-    if ( this%nonmeth.gt.0 )then
+    if ( this%nonmeth > 0 )then
       WRITE(IOUT,*) '**UNDER-RELAXATION WILL BE USED***'
       WRITE(IOUT,*)
       isymflg = 0
-    elseif ( this%nonmeth.eq.0 )then
+    elseif ( this%nonmeth == 0 )then
       WRITE(IOUT,*) '***UNDER-RELAXATION WILL NOT BE USED***'
       WRITE(IOUT,*)
     ELSE
@@ -1029,7 +1025,7 @@ contains
     END IF
     ! call secondary subroutine to initialize and read linear solver parameters
     ! IMSLINEAR solver
-    if ( this%linmeth==1 )then
+    if ( this%linmeth == 1 )then
       allocate(this%imslinear)
       WRITE(IOUT,*) '***IMS LINEAR SOLVER WILL BE USED***'
       ! -- Set pointer to MpiSol
@@ -1061,7 +1057,6 @@ contains
         &                'METHOD SPECIFIED. CHECK INPUT.***'
       call store_error(errmsg)
     END IF
-
     !
     ! -- If CG, then go through each model and each exchange and check
     !    for asymmetry
@@ -1086,6 +1081,41 @@ contains
       enddo
       !
     endif
+    !
+    ! -- write solver data to output file
+    !
+    ! -- non-linear solver data
+    WRITE(IOUT,9002) this%hclose, this%rclosebnd, this%mxiter,                 &
+                     this%iprims, this%nonmeth, this%linmeth
+    !
+    ! -- standard outer iteration formats
+9002 FORMAT(1X,'OUTER ITERATION CONVERGENCE CRITERION     (HCLOSE) = ', E15.6, &
+    &      /1X,'OUTER ITERATION BOUNDARY FLOW RESIDUAL (RCLOSEBND) = ', E15.6, &
+    &      /1X,'MAXIMUM NUMBER OF OUTER ITERATIONS        (MXITER) = ', I9,    &
+    &      /1X,'SOLVER PRINTOUT INDEX                     (IPRIMS) = ', I9,    &
+    &      /1X,'NONLINEAR ITERATION METHOD            (NONLINMETH) = ', I9,    &
+    &      /1X,'LINEAR SOLUTION METHOD                   (LINMETH) = ', I9)
+    !
+    IF(this%nonmeth /= 0)THEN
+      WRITE(IOUT,9003) this%theta, this%akappa, this%gamma, this%amomentum,    &
+                       this%numtrack
+      IF(this%numtrack /= 0) WRITE(IOUT,9004) this%btol,this%breduc,this%res_lim
+    END IF
+    !
+    ! -- under-relaxation formats
+9003 FORMAT(1X,'UNDER-RELAXATION WEIGHT REDUCTION FACTOR   (THETA) = ', E15.6, &
+    &      /1X,'UNDER-RELAXATION WEIGHT INCREASE INCREMENT (KAPPA) = ', E15.6, &
+    &      /1X,'UNDER-RELAXATION PREVIOUS HISTORY FACTOR   (GAMMA) = ', E15.6, &
+    &      /1X,'UNDER-RELAXATIONMOMENTUM TERM          (AMOMENTUM) = ', E15.6, &
+    &      /1X,'   MAXIMUM NUMBER OF BACKTRACKS         (NUMTRACK) = ',I9)
+    !
+    ! -- backtracking formats
+9004 FORMAT(1X,'BACKTRACKING TOLERANCE FACTOR               (BTOL) = ', E15.6, &
+    &      /1X,'BACKTRACKING REDUCTION FACTOR             (BREDUC) = ', E15.6, &
+    &      /1X,'BACKTRACKING RESIDUAL LIMIT              (RES_LIM) = ', E15.6)
+    !
+    ! -- linear solver data
+    call this%imslinear%imslinear_summary(this%mxiter)
 
     ! -- write summary of solver error messages
     ierr = count_errors()
@@ -1287,6 +1317,7 @@ contains
     call mem_deallocate(this%linmeth)
     call mem_deallocate(this%nonmeth)
     call mem_deallocate(this%iprims)
+    call mem_deallocate(this%rclosebnd)
     call mem_deallocate(this%theta)
     call mem_deallocate(this%akappa)
     call mem_deallocate(this%gamma)
@@ -1375,6 +1406,7 @@ contains
     integer(I4B) :: i0, i1
     integer(I4B) :: iend
     integer(I4B) :: iptc
+    integer(I4B) :: iallowptc
     integer(I4B) :: nodeu
     real(DP) :: ptcf
     real(DP) :: dt
@@ -1470,7 +1502,20 @@ contains
       do im = 1, this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
         call mp%model_ptcchk(iptc)
-        iptc = iptc * this%iallowptc
+        !
+        ! -- set iallowptc
+        ! -- no_ptc_option is FIRST
+        if (this%iallowptc < 0) then
+          if (kper > 1) then
+            iallowptc = 1
+          else
+            iallowptc = 0
+          end if
+        ! -- no_ptc_option is ALL (0) or using PTC (1)
+        else
+          iallowptc = this%iallowptc
+        end if
+        iptc = iptc * iallowptc
         if (iptc /= 0) then
           if (n == 1) then
             write (iout, '(//)')
@@ -1481,7 +1526,7 @@ contains
             trim(adjustl(mp%name)), '") DURING THIS TIME STEP'
         end if
       enddo
-      
+
       !
       ! -- Nonlinear iteration loop for this solution
       this%icnvg = 0
@@ -1577,7 +1622,7 @@ contains
         !
         ! -- linear solve
         call code_timer(0, ttsoln, this%ttsoln)
-        CALL this%sln_ls(kiter,kstp,kper,iter,itertot,iptc,ptcf)
+        CALL this%sln_ls(kiter, kstp, kper, iter, itertot, iptc, ptcf)
         call code_timer(1, ttsoln, this%ttsoln)
         !
         !-------------------------------------------------------
@@ -1636,7 +1681,7 @@ contains
           end if
           do im=1,this%modellist%Count()
             mp => GetNumericalModelFromList(this%modellist, im)
-            call mp%model_cc(kiter, iend, this%icnvg)
+            call mp%model_cc(kiter, iend, this%icnvg, this%hclose, this%rclosebnd)
           enddo
         end if
         !
@@ -1655,7 +1700,7 @@ contains
         end if
         !
         ! -- dampening
-        if (this%icnvg /= 1) then 
+        if (this%icnvg /= 1) then
           if (this%nonmeth > 0) then
             call this%sln_underrelax(kiter, this%hncg(kiter), this%neq,        &
                                      this%active, this%x, this%xtemp)
@@ -2836,6 +2881,7 @@ contains
     integer(I4B) :: n
     integer(I4B) :: itestmat, i, i1, i2
     integer(I4B) :: iptct
+    integer(I4B) :: iallowptc
     real(DP) :: adiag, diagval
     real(DP) :: l2norm
     real(DP) :: ptcval
@@ -2870,7 +2916,20 @@ contains
       endif
     end do
     ! -- pseudo transient continuation
-    iptct = iptc * this%iallowptc
+    !
+    ! -- set iallowptc
+    ! -- no_ptc_option is FIRST
+    if (this%iallowptc < 0) then
+      if (kper > 1) then
+        iallowptc = 1
+      else
+        iallowptc = 0
+      end if
+    ! -- no_ptc_option is ALL (0) or using PTC (1)
+    else
+      iallowptc = this%iallowptc
+    end if
+    iptct = iptc * iallowptc
     if (iptct /= 0) then
       call this%sln_l2norm(this%neq, this%nja,                                 &
                            this%ia, this%ja, this%active,                      &
@@ -2884,13 +2943,13 @@ contains
           end if
         end if
       else
-        lsame = IS_SAME(l2norm, this%l2norm0) 
+        lsame = IS_SAME(l2norm, this%l2norm0)
         if (lsame) then
           iptc = 0
         end if
       end if
     end if
-    iptct = iptc * this%iallowptc
+    iptct = iptc * iallowptc
     if (iptct /= 0) then
       if (kiter == 1) then
         if (this%iptcout > 0) then
@@ -3022,6 +3081,7 @@ contains
       this%hclose = dem3
       this%mxiter = 25
       this%nonmeth = 0
+      this%rclosebnd = DEM1
       this%theta = 1.0
       this%akappa = DZERO
       this%gamma = DZERO
@@ -3036,6 +3096,7 @@ contains
       this%hclose = dem2
       this%mxiter = 50
       this%nonmeth = 3
+      this%rclosebnd = DEM1
       this%theta = 0.9d0
       this%akappa = 0.0001d0
       this%gamma = DZERO
@@ -3050,6 +3111,7 @@ contains
       this%hclose = dem1
       this%mxiter = 100
       this%nonmeth = 3
+      this%rclosebnd = DEM1
       this%theta = 0.8d0
       this%akappa = 0.0001d0
       this%gamma = DZERO
@@ -3316,7 +3378,7 @@ contains
     ! -- return
     return
   end subroutine sln_l2norm
-  
+
   subroutine sln_maxval(this, neq, v, vnorm)
 ! ******************************************************************************
 ! sln_l2norm
@@ -3334,7 +3396,7 @@ contains
     real(DP) :: d
     real(DP) :: denom
     real(DP) :: dnorm
-! ------------------------------------------------------------------------------ 
+! ------------------------------------------------------------------------------
     vnorm = v(1)
     do n = 2, neq
       d = v(n)
@@ -3353,7 +3415,7 @@ contains
     ! -- return
     return
   end subroutine sln_maxval
-  
+
   subroutine sln_calcdx(this, neq, active, x, xtemp, dx)
 ! ******************************************************************************
 ! sln_l2norm
@@ -3370,7 +3432,7 @@ contains
     real(DP), dimension(neq), intent(inout) :: dx
     ! -- local
     integer(I4B) :: n
-! ------------------------------------------------------------------------------ 
+! ------------------------------------------------------------------------------
     do n = 1, neq
       ! -- skip inactive nodes
       if (active(n) < 1) then
@@ -3383,7 +3445,7 @@ contains
     ! -- return
     return
   end subroutine sln_calcdx
-  
+
 
   subroutine sln_underrelax(this, kiter, bigch, neq, active, x, xtemp)
 ! ******************************************************************************
@@ -3624,6 +3686,3 @@ contains
   end subroutine sln_get_nodeu
 
 end module NumericalSolutionModule
-
-
-

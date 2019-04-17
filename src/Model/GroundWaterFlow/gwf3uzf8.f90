@@ -104,7 +104,7 @@ module UzfModule
     !
     ! -- convergence check
     integer(I4B), pointer  :: iconvchk    => null()
-    real(DP), pointer      :: pdmax    => null()
+    !real(DP), pointer      :: pdmax    => null()
     !
     ! formulate variables
     real(DP), dimension(:), pointer, contiguous            :: deriv       => null()
@@ -209,6 +209,7 @@ contains
     packobj%ibcnum = ibcnum
     packobj%ncolbnd = 1
     packobj%iscloc = 0  ! not supported
+    packobj%ictorigin = 'NPF'
     !
     ! -- return
     return
@@ -527,17 +528,17 @@ contains
      &    'A FINAL CONVERGENCE CHECK OF THE CHANGE IN UZF RECHARGE ' //        &
      &    'WILL NOT BE MADE'
         found = .true.
-      case('DEV_MAXIMUM_PERCENT_DIFFERENCE')
-        call this%parser%DevOpt()
-        r = this%parser%GetDouble()
-        if (r > DZERO) then
-          this%pdmax = r
-          write(this%iout, fmtuzfopt) 'MAXIMUM_PERCENT_DIFFERENCE', this%pdmax
-        else
-          write(this%iout, fmtuzfopt) 'INVALID MAXIMUM_PERCENT_DIFFERENCE', r
-          write(this%iout, fmtuzfopt) 'USING DEFAULT MAXIMUM_PERCENT_DIFFERENCE', this%pdmax
-        end if
-        found = .true.
+      !case('DEV_MAXIMUM_PERCENT_DIFFERENCE')
+      !  call this%parser%DevOpt()
+      !  r = this%parser%GetDouble()
+      !  if (r > DZERO) then
+      !    this%pdmax = r
+      !    write(this%iout, fmtuzfopt) 'MAXIMUM_PERCENT_DIFFERENCE', this%pdmax
+      !  else
+      !    write(this%iout, fmtuzfopt) 'INVALID MAXIMUM_PERCENT_DIFFERENCE', r
+      !    write(this%iout, fmtuzfopt) 'USING DEFAULT MAXIMUM_PERCENT_DIFFERENCE', this%pdmax
+      !  end if
+      !  found = .true.
      case default
     ! -- No options found
         found = .false.
@@ -1150,7 +1151,7 @@ contains
     return
   end subroutine uzf_fn
 
-  subroutine uzf_cc(this, iend, icnvg)
+  subroutine uzf_cc(this, iend, icnvg, hclose, rclose)
 ! **************************************************************************
 ! uzf_cc -- Final convergence check for package
 ! **************************************************************************
@@ -1162,6 +1163,8 @@ contains
     class(Uzftype), intent(inout) :: this
     integer(I4B), intent(in) :: iend
     integer(I4B), intent(inout) :: icnvg
+    real(DP), intent(in) :: hclose
+    real(DP), intent(in) :: rclose
     ! -- local
     character(len=LINELENGTH) :: line, linesep
     character(len=16) :: text
@@ -1195,6 +1198,7 @@ contains
         if (avgrch > DZERO) then
           pdrch = DHUNDRED * drch / avgrch
         end if
+        dseep = DZERO
         avgseep = DZERO
         if (this%iseepflag == 1) then
           dseep = this%gwd0(n) - this%gwd(n)
@@ -1204,7 +1208,9 @@ contains
         if (avgseep > DZERO) then
           pdseep = DHUNDRED * dseep / avgseep
         end if
-        if (ABS(pdrejinf) > this%pdmax .or. ABS(pdrch) > this%pdmax .or. ABS(pdseep) > this%pdmax) then
+        !if (ABS(pdrejinf) > this%pdmax .or. ABS(pdrch) > this%pdmax .or. ABS(pdseep) > this%pdmax) then
+        if (ABS(drejinf) > rclose .or. ABS(drch) > rclose .or.                  &
+            ABS(dseep) > rclose) then
           icnvg = 0
           ! write convergence check information if this is the last outer iteration
           if (iend == 1) then
@@ -1223,7 +1229,7 @@ contains
                 call UWWORD(line, iloc, 15, 1, 'gwf seepage', n, r, CENTER=.TRUE., sep=' ')
                 call UWWORD(line, iloc, 15, 1, 'gwf seepage', n, r, CENTER=.TRUE., sep=' ')
               end if
-              call UWWORD(line, iloc, 15, 1, 'pct difference', n, r, CENTER=.TRUE.)
+              call UWWORD(line, iloc, 15, 1, 'closure', n, r, CENTER=.TRUE.)
               ! -- create line separator
               linesep = repeat('-', iloc)
               ! -- write first line
@@ -1259,7 +1265,7 @@ contains
               call UWWORD(line, iloc, 15, 3, text, n, dseep, sep=' ')
               call UWWORD(line, iloc, 15, 3, text, n, pdseep, sep=' ')
             end if
-            call UWWORD(line, iloc, 15, 3, text, n, this%pdmax)
+            call UWWORD(line, iloc, 15, 3, text, n, rclose)
             write(this%iout, '(1X,A)') line(1:iloc)
           else
             exit final_check
@@ -1431,7 +1437,7 @@ contains
                               qgwformvr,sumaet,ierr)
       if ( ierr > 0 ) then
         if ( ierr == 1 ) &
-          msg = 'Error: UZF variable NWAVSETS needs to be increased.'
+          msg = 'Error: UZF variable NWAVESETS needs to be increased.'
         call store_error(msg)
         call ustop()
       end if
@@ -2317,7 +2323,7 @@ contains
                                     qfrommvr,qformvr,ierr,sumaet,ivertflag)
         if ( ierr > 0 ) then
             if ( ierr == 1 ) &
-              msg = 'Error: UZF variable NWAVSETS needs to be increased '
+              msg = 'Error: UZF variable NWAVESETS needs to be increased '
             call store_error(msg)
             call ustop()
         end if
@@ -3349,7 +3355,7 @@ contains
     call mem_allocate(this%cbcauxitems, 'CBCAUXITEMS', this%origin)
 
     call mem_allocate(this%iconvchk, 'ICONVCHK', this%origin)
-    call mem_allocate(this%pdmax, 'PDMAX', this%origin)
+    !call mem_allocate(this%pdmax, 'PDMAX', this%origin)
     !
     ! -- initialize scalars
     this%iprwcont = 0
@@ -3375,7 +3381,7 @@ contains
     !
     ! -- convergence check
     this%iconvchk = 1
-    this%pdmax = DEM1
+    !this%pdmax = DEM1
     !
     ! -- return
     return
@@ -3444,7 +3450,7 @@ contains
     !
     ! -- convergence check
     call mem_deallocate(this%iconvchk)
-    call mem_deallocate(this%pdmax)
+    !call mem_deallocate(this%pdmax)
     !
     ! -- deallocate arrays
     call mem_deallocate(this%mfcellid)

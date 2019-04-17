@@ -33,7 +33,7 @@ program mf6
   use MpiExchangeGenModule,   only: serialrun, writestd !PAR
   use MpiExchangeModule,      only: mpi_initialize_world, mpi_world_da,        & !PAR
                                     MpiWorld !PAR
-  use MpiExchangeGwfModule,   only: mpi_gwfhalo_world,                        &
+  use MpiExchangeGwfModule,   only: mpi_gwfhalo_world,                         & !PAR
                                     mpi_set_gwfhalo_world_mvr !PAR
   use NumericalSolutionModule, only: NumericalSolutionType !PAR
   use GwfGwfExchangeModule, only: gwf_mpi_halo_init
@@ -44,7 +44,7 @@ program mf6
   class(NumericalSolutionType), pointer :: nsp !PAR
   class(BaseModelType),     pointer :: mp => null()
   class(BaseExchangeType),  pointer :: ep => null()
-  integer(I4B) :: im, ic, is, isg, iprtim
+  integer(I4B) :: im, ic, is, isg
   logical :: exit_tsloop
   character(len=80) :: compiler
   ! -- formats
@@ -60,7 +60,7 @@ program mf6
   call write_centered('MODFLOW'//MFVNAM, ISTDOUT, 80)
   call write_centered(MFTITLE, ISTDOUT, 80)
   call write_centered('VERSION '//VERSION, ISTDOUT, 80)
-  if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '& !PAR
+  if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '  & !PAR
     //TRIM(MpiWorld%nrprocstr)//' MPI PROCESSES***',ISTDOUT, 80) !PAR
   !
   ! -- Write if develop mode
@@ -96,10 +96,10 @@ program mf6
   endif !PAR
   !
   ! -- Define each exchange phase 1
-  do ic = 1, baseexchangelist%Count()
-    ep => GetBaseExchangeFromList(baseexchangelist, ic)
-    call ep%exg_df(1)
-  enddo
+  do ic = 1, baseexchangelist%Count() !HALO2
+    ep => GetBaseExchangeFromList(baseexchangelist, ic) !HALO2
+    call ep%exg_df(1) !HALO2
+  enddo !HALO2
   !
   ! -- MPI local exchange 
   if (isimdd == 1) then !PAR
@@ -108,10 +108,10 @@ program mf6
   endif
   !  
   ! -- Define each exchange phase 2
-  do ic = 1, baseexchangelist%Count()
-    ep => GetBaseExchangeFromList(baseexchangelist, ic)
-    call ep%exg_df(2)
-  enddo
+  do ic = 1, baseexchangelist%Count() !HALO2
+    ep => GetBaseExchangeFromList(baseexchangelist, ic) !HALO2
+    call ep%exg_df(2) !HALO2
+  enddo !HALO2
   !
   ! -- Define each solution
   do is = 1, basesolutionlist%Count()
@@ -130,8 +130,10 @@ program mf6
   if (isimdd == 1) then !PAR
     ! -- Local MPI exchange of NPF flags
     call mpi_gwfhalo_world(3)
+    !
     !-- Local MPI exchange of NPF arrays
     call MpiWorld%mpi_local_exchange('', 'HALO_INIT_NPFIC', .false.) !PAR
+    !
     do is=1,basesolutionlist%Count() !PAR
       sp => GetBaseSolutionFromList(basesolutionlist, is) !PAR
       select type (sp) !PAR
@@ -290,7 +292,7 @@ program mf6
   call mem_usage(iout)
   call mem_timing(iout) !TIM
   call mem_da()
-  call elapsed_time(iout, 1, writestd)
+  call elapsed_time(iout, 1, writestd) !PAR
   call final_message()
   !
 end program mf6

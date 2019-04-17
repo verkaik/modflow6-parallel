@@ -7,8 +7,7 @@ module CommandArguments
                                     simlstfile !SIM
   use SimModule, only: store_error, ustop, store_error_unit,                   &
                        store_error_filename
-  use InputOutputModule, only: urword,                                         &
-                               upcase !SIM
+  use InputOutputModule, only: upcase
   !
   implicit none
   !
@@ -18,10 +17,15 @@ module CommandArguments
   contains
   
   subroutine GetCommandLineArguments()
+! ******************************************************************************
+! Write information on command line arguments
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     ! -- local
     character(len=LENHUGELINE) :: line
-    character(len=LENHUGELINE) :: opt !SIM
     character(len=LINELENGTH) :: header
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: cexe
@@ -30,45 +34,28 @@ module CommandArguments
     character(len=17) :: ctyp
     logical :: ltyp
     logical :: lexist
-    integer(I4B) :: inunit = 0
-    integer(I4B) :: ilen
-    integer(I4B) :: istat
-    integer(I4B) :: lloc
-    integer(I4B) :: istart
-    integer(I4B) :: istop
-    integer(I4B) :: ival
-    integer(I4B) :: i
     integer(I4B) :: ipos
-    integer(I4B) :: iarg
+    integer(I4B) :: iarg, jarg, i !SIM
     integer(I4B) :: iterm
-    real(DP) :: rval
+    
+    integer(I4B) :: icountcmd
 ! ------------------------------------------------------------------------------
     !
-    ! -- Get the command line string
-    call GET_COMMAND(line, ilen, istat)
+    ! -- set mf6 executable name
+    icountcmd = command_argument_count()
+    call get_command_argument(0, cexe)
+    cexe = adjustl(cexe)
     !
-    ! -- This will read mf6 executable
-    lloc = 1
-    call urword(line, lloc, istart, istop, 0, ival, rval, 0, inunit)
-    !
-    ! -- remove quotes around the mf6 executable
-    do i = istart, istop
-      if (line(i:i) == '"' .or. line(i:i) == "'") then
-        line(i:i) = ' '
-      end if
-    end do
-    !
-    ! -- find name of executable without path
-    ipos = index(line(istart:istop), '/', back=.TRUE.)
+    ! -- find the program basename, not including the path (this should be 
+    !    mf6.exe, mf6d.exe, etc.)
+    ipos = index(cexe, '/', back=.TRUE.)
     if (ipos == 0) then
-      ipos = index(line(istart:istop), '\', back=.TRUE.)
+      ipos = index(cexe, '\', back=.TRUE.)
     end if
     if (ipos /= 0) then
-      istart = ipos + 1
+      ipos = ipos + 1
     end if
-    !
-    ! -- set mf6 executable name
-    cexe = adjustl(line(istart:istop))
+    cexe = cexe(ipos:)
     !
     ! -- write header
     call get_compile_date(cdate)
@@ -88,47 +75,46 @@ module CommandArguments
     ! -- Read remaining arguments
     iarg = 0
     iterm = 0
-    do
-      call urword(line, lloc, istart, istop, 0, ival, rval, 0, inunit) !SIM
-      if (line(istart:istop) == ' ') exit
-      iarg = iarg + 1
+    jarg = 0 !SIM
+    do iarg = 1, icountcmd
+      jarg = jarg + 1 !SIM
+      call get_command_argument(jarg, line)
+      call upcase(line)
       iterm = 1
-      opt = line(istart:istop) !SIM
-      call upcase(opt) !SIM
-      select case(opt) !SIM
+      select case(trim(adjustl(line)))
         case('-H', '-?', '--HELP')
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
         case('-V', '--VERSION')
           write(ISTDOUT,'(2a,2(1x,a))') &
             trim(adjustl(cexe)), ':', trim(adjustl(VERSION)), ctyp
         case('-DEV', '--DEVELOP')
-          write(ISTDOUT,'(2a,l)') &
-            trim(adjustl(cexe)), ': develop version', ltyp
+          write(ISTDOUT,'(2a,g0)') &
+            trim(adjustl(cexe)), ': develop version ', ltyp
         case('-C', '--COMPILER') 
           call get_compiler(compiler)
           write(ISTDOUT,'(2a,1x,a)') &
             trim(adjustl(cexe)), ':', trim(adjustl(compiler))
         case('-S', '--SIMFILE') !SIM
-          call urword(line, lloc, istart, istop, 0, ival, rval, 0, inunit) !SIM
-          simfile = line(istart:istop) !SIM
+          jarg = jarg + 1 !SIM 
+          call get_command_argument(jarg, line) !SIM
+          simfile = trim(adjustl(line)) !SIM
           i = index(simfile,'.',back=.true.) !SIM
           if (i > 0) then !SIM
             simlstfile = simfile(1:i-1)//'.lst' !SIM
           else !SIM
             simlstfile = trim(simfile)//'.lst' !SIM
           end if !SIM
-          iarg = iarg - 1 !SIM
           iterm = 0 !SIM
         case default 
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
           write(errmsg, '(2a,1x,a)') &
-            trim(adjustl(cexe)), ': illegal option -', line(istart:istop)
+            trim(adjustl(cexe)), ': illegal option -', trim(adjustl(line))
           call store_error(errmsg)
       end select
     end do
     !
     ! -- no command line arguments - check if mfsim.nam exists
-    if  (iarg == 0) then
+    if  (icountcmd == 0) then
       inquire(file=simfile, exist=lexist)
       if (.NOT. lexist) then
         iterm = 1
