@@ -1,4 +1,5 @@
-module MpiExchangeModule
+  ! -- groups functionality for MPI exchanges
+  module MpiExchangeModule
   use TimerModule, only: code_timer
   use KindModule, only: DP, I4B  
   use SimModule, only: ustop, store_error
