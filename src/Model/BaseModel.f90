@@ -9,7 +9,7 @@ module BaseModelModule
 
   private
   public :: BaseModelType, CastAsBaseModelClass, AddBaseModelToList, &
-            GetBaseModelFromList, GetBaseModelFromListByName
+            GetBaseModelFromList, GetBaseModelFromListByName !PAR
 
   type :: BaseModelType
     character(len=LENMODELNAME), pointer :: name             => null()          ! name of the model
@@ -223,7 +223,7 @@ module BaseModelModule
     return
   end function GetBaseModelFromList
   
-  function GetBaseModelFromListByName(list, name) result (res)
+  function GetBaseModelFromListByName(list, name) result (res) !PAR
     use SimModule, only: store_error, store_error_unit, ustop
     implicit none
     ! -- dummy

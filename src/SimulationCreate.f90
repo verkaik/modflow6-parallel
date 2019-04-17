@@ -519,42 +519,6 @@ module SimulationCreateModule
             write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWF6 exchange ', id,      &
               ' will be created to connect model ', m1, ' with model ', m2
             call gwfexchange_create(fname, id, m1, m2, name1, name2, m2_bympi)
-          !case ('GWF6P-GWF6P') !PAR
-          !  id = id + 1
-          !  !
-          !  ! -- get filename
-          !  call parser%GetString(fname)
-          !  !
-          !  ! -- get modelname
-          !  call parser%GetStringCaps(name1)
-          !  call parser%GetStringCaps(name2)
-          !  !
-          !  ! -- get nexg
-          !  ! -- PAR-TODO: read nexg earlier?
-          !  nexg = parser%GetInteger()
-          !  !
-          !  ! -- Determine wether to create halo or not
-          !  m1 = ifind(modelname_all, name1)
-          !  m2 = ifind(modelname_all, name2)
-          !  s1 = model_sub(m1)
-          !  s2 = model_sub(m2)
-          !  if (s1 /= s2) then
-          !    createhalo = .true.
-          !  else
-          !    createhalo = .false.
-          !  endif
-          !  !
-          !  ! -- get model id
-          !  m1 = ifind(modelname, name1)
-          !  m2 = ifind(modelname, name2)
-          !  !
-          !  ! -- PAR-TODO: add check for model existence
-          !  !
-          !  ! -- Create the exchange object.
-          !  write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWFP6-GWFP6 exchange ', id,    &
-          !    ' will be created to connect model ', m1, ' with model ', m2
-          !  call gwfpexchange_create(fname, id, m1, m2, name1, name2, im,      &
-          !                           createhalo, nexg)
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SIMULATION EXCHANGES: ',                 &

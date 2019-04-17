@@ -1894,7 +1894,7 @@ module MpiExchangeModule
     !
     m = ifind(this%gmodelnames, mname)
     if (m <= 0) then
-      write(errmsg,'(a)') 'Error, mover model not found.'
+      write(errmsg,'(a)') 'Error, mover model not found: '//trim(mname)
       call store_error(errmsg)
       call ustop()
     end if

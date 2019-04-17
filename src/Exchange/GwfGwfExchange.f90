@@ -1,16 +1,16 @@
 module GwfGwfExchangeModule
 
   use KindModule,              only: DP, I4B
-  use ConstantsModule,         only: DZERO
+  use ConstantsModule,         only: DZERO !HALO2
   use ArrayHandlersModule,     only: ExpandArray
   use BaseModelModule,         only: GetBaseModelFromList
   use BaseExchangeModule,      only: BaseExchangeType, AddBaseExchangeToList
-  use ConstantsModule,         only: LENBOUNDNAME, NAMEDBOUNDFLAG, LENMODELNAME
+  use ConstantsModule,         only: LENBOUNDNAME, NAMEDBOUNDFLAG, LENMODELNAME !HALO2
   use ListsModule,             only: basemodellist
   use NumericalExchangeModule, only: NumericalExchangeType
   use NumericalModelModule,    only: NumericalModelType
   use GwfModule,               only: GwfModelType
-  use GwfHaloModule,           only: GwfHaloModelType
+  use GwfHaloModule,           only: GwfHaloModelType !HALO2
   use GhostNodeModule,         only: GhostNodeType
   use GwfMvrModule,            only: GwfMvrType
   use ObserveModule,           only: ObserveType
@@ -23,15 +23,15 @@ module GwfGwfExchangeModule
 
   private
   public :: gwfexchange_create
-  public :: GwfExchangeType
-  public :: gwf_mpi_halo_init
+  public :: GwfExchangeType !HALO2
+  public :: gwf_mpi_halo_init !HALO2
 
   type, extends(NumericalExchangeType) :: GwfExchangeType
-    type(GwfHaloModelType), pointer                  :: gwfhalo   => null()     ! pointer to halo model
+    type(GwfHaloModelType), pointer                  :: gwfhalo   => null()     ! pointer to halo model !HALO2
     type(GwfModelType), pointer                      :: gwfmodel1 => null()     ! pointer to GWF Model 1
     type(GwfModelType), pointer                      :: gwfmodel2 => null()     ! pointer to GWF Model 2
-    integer(I4B), pointer                            :: m1id => null()
-    integer(I4B), pointer                            :: m2id => null()
+    integer(I4B), pointer                            :: m1id => null() !HALO2
+    integer(I4B), pointer                            :: m2id => null() !HALO2
     integer(I4B), pointer                            :: inewton   => null()     ! newton flag (1 newton is on)
     integer(I4B), pointer                            :: icellavg  => null()     ! cell averaging
     integer(I4B), pointer                            :: ivarcv    => null()     ! variable cv
@@ -85,7 +85,7 @@ module GwfGwfExchangeModule
 
 contains
 
-  subroutine gwfexchange_create(filename, id, m1i, m2i, mname1i, mname2i, m2_bympi)
+  subroutine gwfexchange_create(filename, id, m1i, m2i, mname1i, mname2i, m2_bympi) !PAR
 ! ******************************************************************************
 ! Create a new GWF to GWF exchange object.
 ! ******************************************************************************
@@ -94,16 +94,16 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ConstantsModule, only: LINELENGTH
-    use BaseModelModule, only: BaseModelType, AddBaseModelToList
-    use ListsModule, only: baseexchangelist, halomodellist
+    use BaseModelModule, only: BaseModelType, AddBaseModelToList !HALO2
+    use ListsModule, only: baseexchangelist, halomodellist !HALO2
     use ObsModule, only: obs_cr
-    use GwfHaloModule, only: gwfhalo_cr
-    use MpiExchangeModule, only: MpiWorld
+    use GwfHaloModule, only: gwfhalo_cr !HALO2
+    use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     character(len=*),intent(in) :: filename
     integer(I4B), intent(in) :: id, m1i, m2i
     character(len=*), intent(in) :: mname1i, mname2i !PAR
-    logical, intent(in) :: m2_bympi
+    logical, intent(in) :: m2_bympi !PAR
     ! -- local
     type(GwfExchangeType), pointer :: exchange
     class(BaseModelType), pointer :: mb
@@ -133,7 +133,7 @@ contains
     exchange%filename = filename
     exchange%typename = 'GWF-GWF'
     exchange%implicit = .true.
-    exchange%m2_bympi = m2_bympi
+    exchange%m2_bympi = m2_bympi !PAR
     !
     if (m1i > 0 .or. .not.m2_bympi) then !PAR
       m1 = m1i !PAR
@@ -151,17 +151,17 @@ contains
     !
     ! -- Create the halo model
     !write(*,*) 'Myrank:',MpiWorld%myrank,' creating ','GWFHALO_'//trim(adjustl(cint)),' for "',trim(m1name),'" and "',trim(m2name),'"'
-    hmodel = 'GWFHALO_'//trim(adjustl(cint))
-    call gwfhalo_cr(exchange%gwfhalo, id, hmodel, m1name, m2name)
+    hmodel = 'GWFHALO_'//trim(adjustl(cint)) !HALO2
+    call gwfhalo_cr(exchange%gwfhalo, id, hmodel, m1name, m2name) !HALO2
     !
     ! -- Add to halo model list
-    mb => exchange%gwfhalo
-    call AddBaseModelToList(halomodellist, mb)
+    mb => exchange%gwfhalo !HALO2
+    call AddBaseModelToList(halomodellist, mb) !HALO2
     !
     ! -- Add halo model to MPI world communicator
-    if (m2_bympi) then
-      call MpiWorld%mpi_addhmodel(hmodel, m1name, m2name)
-    endif
+    if (m2_bympi) then !PAR
+      call MpiWorld%mpi_addhmodel(hmodel, m1name, m2name) !PAR
+    endif !PAR
     !
     ! -- set exchange%m1
     mb => GetBaseModelFromList(basemodellist, m1)
@@ -171,17 +171,17 @@ contains
     end select
     !
     ! -- set exchange%m2
-    if (.not.m2_bympi) then
+    if (.not.m2_bympi) then !PAR
       mb => GetBaseModelFromList(basemodellist, m2)
       select type (mb)
       class is (NumericalModelType)
         exchange%m2=>mb
       end select
-    endif
+    endif !PAR
     !
     ! -- set gwfmodel1
-    allocate(exchange%m1id)
-    exchange%m1id = m1
+    allocate(exchange%m1id) !HALO2
+    exchange%m1id = m1 !HALO2
     mb => GetBaseModelFromList(basemodellist, m1)
     select type (mb)
     type is (GwfModelType)
@@ -189,8 +189,8 @@ contains
     end select
     !
     ! -- set gwfmodel2
-    allocate(exchange%m2id)
-    exchange%m2id = m2
+    allocate(exchange%m2id) !HALO2
+    exchange%m2id = m2 !HALO2
     if (.not.m2_bympi) then
       mb => GetBaseModelFromList(basemodellist, m2)
       select type (mb)
@@ -206,7 +206,7 @@ contains
     return
   end subroutine gwfexchange_create
 
-  subroutine gwf_gwf_df(this, iopt)
+  subroutine gwf_gwf_df(this, iopt) !HALO2
 ! ******************************************************************************
 ! gwf_gwf_df -- Define GWF to GWF exchange object.
 ! ******************************************************************************
@@ -217,23 +217,23 @@ contains
     use SimVariablesModule, only: iout
     use InputOutputModule, only: getunit, openfile
     use GhostNodeModule, only: gnc_cr
-    use BaseModelModule, only: BaseModelType
+    use BaseModelModule, only: BaseModelType !HALO2
     ! -- dummy
     class(GwfExchangeType) :: this
-    integer(I4B), intent(in) :: iopt
+    integer(I4B), intent(in) :: iopt !HALO2
     ! -- local
     integer(I4B) :: inunit
 ! ------------------------------------------------------------------------------
     !
-    if (iopt == 2) then
+    if (iopt == 2) then !HALO2
       ! -- Define the halo model part 3
-      call this%gwfhalo%gwfhalo_df3(this%nodem2, this%ihc, this%cl1, &
-        this%cl2, this%hwva)
-      return
-    end if
+      call this%gwfhalo%gwfhalo_df3(this%nodem2, this%ihc, this%cl1,                & !HALO2 
+        this%cl2, this%hwva) !HALO2
+      return !HALO2
+    end if !HALO2
     
     ! -- Define the halo model part 1
-    call this%gwfhalo%gwfhalo_df1(this%m1id, this%m2id)
+    call this%gwfhalo%gwfhalo_df1(this%m1id, this%m2id) !HALO2
     !
     ! -- open the file
     inunit = getunit()
@@ -266,9 +266,9 @@ contains
     !
     ! -- call each model and increase the edge count
     call this%gwfmodel1%npf%increase_edge_count(this%nexg)
-    if(associated(this%gwfmodel2)) then
+    if(associated(this%gwfmodel2)) then !HALO2
       call this%gwfmodel2%npf%increase_edge_count(this%nexg)
-    endif
+    endif !HALO2
     !
     ! -- Create and read ghost node information
     if(this%ingnc > 0) then
@@ -286,10 +286,10 @@ contains
     !
     ! -- Store obs
     call this%gwf_gwf_df_obs()
-    call this%obs%obs_df(iout, this%name, 'GWF-GWF', this%gwfhalo%dis)
+    call this%obs%obs_df(iout, this%name, 'GWF-GWF', this%gwfhalo%dis) !HALO2
     !
     ! -- Define the halo model part 2
-    call this%gwfhalo%gwfhalo_df2(this%nodem1, this%inewton, this%m2_bympi)
+    call this%gwfhalo%gwfhalo_df2(this%nodem1, this%inewton, this%m2_bympi) !HALO2
     !
     ! -- return
     return
@@ -380,7 +380,7 @@ contains
 ! ------------------------------------------------------------------------------
     !
     ! -- halo ar
-    call this%gwfhalo%gwfhalo_ar()
+    call this%gwfhalo%gwfhalo_ar() !HALO2
     !
     ! -- If mover is active, then call ar routine
     if(this%inmvr > 0) call this%mvr%mvr_ar()
@@ -388,7 +388,7 @@ contains
     ! -- Check to see if horizontal anisotropy is in either model1 or model2.
     !    If so, then ANGLDEGX must be provided as an auxiliary variable for this
     !    GWF-GWF exchange (this%ianglex > 0).
-    if(this%gwfhalo%npf%ik22 /= 0) then
+    if(this%gwfhalo%npf%ik22 /= 0) then !HALO2
       if(this%ianglex == 0) then
         write(errmsg, '(a)') 'Error.  GWF-GWF requires that ANGLDEGX be ' //   &
                              'specified as an auxiliary variable because ' //  &
@@ -402,7 +402,7 @@ contains
     ! -- Check to see if specific discharge is needed for model1 or model2.
     !    If so, then ANGLDEGX must be provided as an auxiliary variable for this
     !    GWF-GWF exchange (this%ianglex > 0).
-    if(this%gwfhalo%npf%icalcspdis /= 0) then
+    if(this%gwfhalo%npf%icalcspdis /= 0) then !HALO2
       if(this%ianglex == 0) then
         write(errmsg, '(a)') 'Error.  GWF-GWF requires that ANGLDEGX be ' //   &
                              'specified as an auxiliary variable because ' //  &
@@ -425,14 +425,14 @@ contains
     do iexg = 1, this%nexg
       !
       ihc = this%ihc(iexg)
-      n = this%gwfhalo%imapnodem1tohalo(iexg)
-      m = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset
-      topn = this%gwfhalo%dis%top(n)
-      topm = this%gwfhalo%dis%top(m)
-      botn = this%gwfhalo%dis%bot(n)
-      botm = this%gwfhalo%dis%bot(m)
-      satn = this%gwfhalo%npf%sat(n)
-      satm = this%gwfhalo%npf%sat(m)
+      n = this%gwfhalo%imapnodem1tohalo(iexg) !HALO2
+      m = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !HALO2
+      topn = this%gwfhalo%dis%top(n) !HALO2
+      topm = this%gwfhalo%dis%top(m) !HALO2
+      botn = this%gwfhalo%dis%bot(n) !HALO2
+      botm = this%gwfhalo%dis%bot(m) !HALO2
+      satn = this%gwfhalo%npf%sat(n) !HALO2
+      satm = this%gwfhalo%npf%sat(m) !HALO2
       thickn = (topn - botn) * satn
       thickm = (topm - botm) * satm
       !
@@ -443,8 +443,8 @@ contains
         vg(1) = DZERO
         vg(2) = DZERO
         vg(3) = DONE
-        hyn = this%gwfhalo%npf%hy_eff(n, 0, ihc, vg=vg)
-        hym = this%gwfhalo%npf%hy_eff(m, 0, ihc, vg=vg)
+        hyn = this%gwfhalo%npf%hy_eff(n, 0, ihc, vg=vg) !HALO2
+        hym = this%gwfhalo%npf%hy_eff(m, 0, ihc, vg=vg) !HALO2
         csat = vcond(1, 1, 1, 1, 0, 1, 1, DONE,                                &
                       botn, botm,                                              &
                       hyn, hym,                                                &
@@ -455,8 +455,8 @@ contains
       else
         !
         ! -- Calculate horizontal conductance
-        hyn = this%gwfhalo%npf%k11(n)
-        hym = this%gwfhalo%npf%k11(m)
+        hyn = this%gwfhalo%npf%k11(n) !HALO2
+        hym = this%gwfhalo%npf%k11(m) !HALO2
         !
         ! -- Check for anisotropy in models, and recalculate hyn and hym
         if(this%ianglex > 0) then
@@ -466,9 +466,9 @@ contains
           vg(3) = DZERO
           !
           ! -- anisotropy in model 1 !TODO
-          if(this%gwfhalo%npf%ik22 /= 0) then
-            hyn = this%gwfhalo%npf%hy_eff(n, 0, ihc, vg=vg)
-            hym = this%gwfhalo%npf%hy_eff(m, 0, ihc, vg=vg)
+          if(this%gwfhalo%npf%ik22 /= 0) then !HALO2
+            hyn = this%gwfhalo%npf%hy_eff(n, 0, ihc, vg=vg) !HALO2
+            hym = this%gwfhalo%npf%hy_eff(m, 0, ihc, vg=vg) !HALO2
           endif
         endif
         !
@@ -542,7 +542,7 @@ contains
     call this%obs%obs_ad()
     !
     ! -- advance halo model
-    call this%gwfhalo%model_ad(kpicard, isubtime)
+    call this%gwfhalo%model_ad(kpicard, isubtime) !HALO2
     !
     ! -- Return
     return
@@ -562,14 +562,14 @@ contains
 ! ------------------------------------------------------------------------------
     !
     ! -- Set x and ibound for halo model
-    call this%gwfhalo%gwfhalo_cf1(kiter)
+    call this%gwfhalo%gwfhalo_cf1(kiter) !HALO2
     !
     ! -- Rewet cells across models using the wetdry parameters in each model's
     !    npf package, and the head in the connected model.
     call this%rewet(kiter)
     !
     ! -- handle cf routines for halo model
-    call this%gwfhalo%gwfhalo_cf2(kiter)
+    call this%gwfhalo%gwfhalo_cf2(kiter) !HALO2
     !
     ! -- Return
     return
@@ -594,8 +594,8 @@ contains
     ! -- local
     integer(I4B) :: inwt, iexg
     integer(I4B) :: njasln
-    integer(I4B) :: n, m, nodensln, nodemsln, idiagsln
-    real(DP), dimension(3, 2) :: terms
+    integer(I4B) :: n, m, nodensln, nodemsln, idiagsln !HALO2
+    real(DP), dimension(3, 2) :: terms !HALO2
 ! ------------------------------------------------------------------------------
     !
     !
@@ -603,58 +603,58 @@ contains
     !call this%NumericalExchangeType%exg_fc(kiter, iasln, amatsln)
     !
     ! -- Use halo model to calculate amat terms
-    !call this%gwfhalo%gwfhalo_fc(kiter, this%cond)
+    !call this%gwfhalo%gwfhalo_fc(kiter, this%cond) !HALO2
     !
-    if (this%m2_bympi) then
+    if (this%m2_bympi) then !PAR
       do iexg = 1, this%nexg
         !
         ! -- initialize terms to zero
-        terms(:, :) = DZERO
+        terms(:, :) = DZERO !HALO2
         !
-        n = this%nodem1(iexg)
-        nodensln = this%nodem1(iexg) + this%m1%moffset
-        call this%gwfhalo%gwfhalo_fc_calc(iexg, terms)
+        n = this%nodem1(iexg) !HALO2
+        nodensln = this%nodem1(iexg) + this%m1%moffset !HALO2
+        call this%gwfhalo%gwfhalo_fc_calc(iexg, terms) !HALO2
         !
         ! -- row n
-        idiagsln = iasln(nodensln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i)
-        this%cond(iexg) = terms(2, 1)
-        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1)
+        idiagsln = iasln(nodensln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i) !HALO2
+        this%cond(iexg) = terms(2, 1) !HALO2
+        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1) !HALO2
       end do 
-    else
-      do iexg = 1, this%nexg
+    else !PAR
+      do iexg = 1, this%nexg !HALO2
         !
         ! -- initialize terms to zero
-        terms(:, :) = DZERO
+        terms(:, :) = DZERO !HALO2
         !
-        n = this%nodem1(iexg)
-        m = this%nodem2(iexg)
-        nodensln = this%nodem1(iexg) + this%m1%moffset
-        nodemsln = this%nodem2(iexg) + this%m2%moffset
-        call this%gwfhalo%gwfhalo_fc_calc(iexg, terms)
-        this%cond(iexg) = terms(2, 1)
+        n = this%nodem1(iexg) !HALO2
+        m = this%nodem2(iexg) !HALO2
+        nodensln = this%nodem1(iexg) + this%m1%moffset !HALO2
+        nodemsln = this%nodem2(iexg) + this%m2%moffset !HALO2
+        call this%gwfhalo%gwfhalo_fc_calc(iexg, terms) !HALO2
+        this%cond(iexg) = terms(2, 1) !HALO2
         !
         ! -- row n
-        idiagsln = iasln(nodensln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i)
-        amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + terms(2, 1) !this%cond(i)
+        idiagsln = iasln(nodensln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i) !HALO2
+        amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + terms(2, 1) !this%cond(i) !HALO2
         this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1)
         !
         ! -- row m
-        idiagsln = iasln(nodemsln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 2) !- this%cond(i)
-        amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) + terms(2, 2) !this%cond(i)
-        this%gwfmodel2%rhs(m) = this%gwfmodel2%rhs(m) + terms(3, 2)
-      enddo
-    endif
+        idiagsln = iasln(nodemsln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 2) !- this%cond(i) !HALO2
+        amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) + terms(2, 2) !this%cond(i)!HALO2 
+        this%gwfmodel2%rhs(m) = this%gwfmodel2%rhs(m) + terms(3, 2) !HALO2
+      enddo !HALO2
+    endif !HALO2
     !
     ! -- if gnc is active, then copy cond into gnc cond (might consider a
     !    pointer here in the future)
-    if(this%ingnc > 0) then
-      do iexg = 1, this%nexg
-        this%gnc%cond(iexg) = this%cond(iexg)
-      enddo
-    endif
+    if(this%ingnc > 0) then !HALO2
+      do iexg = 1, this%nexg !HALO2
+        this%gnc%cond(iexg) = this%cond(iexg) !HALO2
+      enddo !HALO2
+    endif !HALO2
     !
     ! -- Fill the gnc terms in the solution matrix
     if(this%ingnc > 0) then
@@ -680,8 +680,8 @@ contains
         njasln = size(amatsln)
         call this%gnc%gnc_fn(kiter, njasln, amatsln, this%condsat,             &
           ihc_opt=this%ihc, ivarcv_opt=this%ivarcv,                            &
-          ictm1_opt=this%gwfhalo%npf%icelltype,                              &
-          ictm2_opt=this%gwfhalo%npf%icelltype)
+          ictm1_opt=this%gwfhalo%npf%icelltype,                                & !HALO2
+          ictm2_opt=this%gwfhalo%npf%icelltype) !HALO2
       endif
     endif
     !
@@ -704,49 +704,49 @@ contains
     integer(I4B), dimension(:), intent(in) :: iasln
     real(DP), dimension(:), intent(inout) :: amatsln
     ! -- local
-    integer(I4B) :: iexg, n, m, nodensln, nodemsln, idiagsln
-    real(DP), dimension(3, 2) :: terms
+    integer(I4B) :: iexg, n, m, nodensln, nodemsln, idiagsln !HALO2 
+    real(DP), dimension(3, 2) :: terms !HALO2
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_bympi) then
-      do iexg = 1, this%nexg
+    if (this%m2_bympi) then !PAR
+      do iexg = 1, this%nexg !HALO2
         ! -- initialize terms to zero
-        terms(:, :) = DZERO
+        terms(:, :) = DZERO !HALO2
         !
-        n = this%gwfhalo%nodem1(iexg)
-        call this%gwfhalo%gwfhalo_fn_calc(iexg, terms)
+        n = this%gwfhalo%nodem1(iexg) !HALO2
+        call this%gwfhalo%gwfhalo_fn_calc(iexg, terms) !HALO2
         !
-        nodensln = this%nodem1(iexg) + this%m1%moffset
-        idiagsln = iasln(nodensln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i)
-        this%newtonterm(iexg) = terms(2, 1)
-        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1)
+        nodensln = this%nodem1(iexg) + this%m1%moffset !HALO2
+        idiagsln = iasln(nodensln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i) !HALO2
+        this%newtonterm(iexg) = terms(2, 1) !HALO2
+        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1) !HALO2
       enddo
     else
-      do iexg = 1, this%nexg
+      do iexg = 1, this%nexg !HALO2
         !
         ! -- initialize terms to zero
-        terms(:, :) = DZERO
+        terms(:, :) = DZERO !HALO2
         !
-        n = this%gwfhalo%nodem1(iexg)
-        m = this%gwfhalo%nodem2(iexg)
-        call this%gwfhalo%gwfhalo_fn_calc(iexg, terms)
+        n = this%gwfhalo%nodem1(iexg) !HALO2
+        m = this%gwfhalo%nodem2(iexg) !HALO2
+        call this%gwfhalo%gwfhalo_fn_calc(iexg, terms) !HALO2
         !
         nodensln = this%nodem1(iexg) + this%m1%moffset
         nodemsln = this%nodem2(iexg) + this%m2%moffset
         !
         ! -- row n
-        idiagsln = iasln(nodensln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i)
-        amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + terms(2, 1) !this%cond(i)
-        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1)
+        idiagsln = iasln(nodensln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i) !HALO2
+        amatsln(this%idxglo(iexg)) = amatsln(this%idxglo(iexg)) + terms(2, 1) !this%cond(i) !HALO2
+        this%gwfmodel1%rhs(n) = this%gwfmodel1%rhs(n) + terms(3, 1) !HALO2
         !
         ! -- row m
-        idiagsln = iasln(nodemsln)
-        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 2) !- this%cond(i)
-        amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) + terms(2, 2) !this%cond(i)
-        this%gwfmodel2%rhs(m) = this%gwfmodel2%rhs(m) + terms(3, 2)
-      enddo
+        idiagsln = iasln(nodemsln) !HALO2
+        amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 2) !- this%cond(i) !HALO2
+        amatsln(this%idxsymglo(iexg)) = amatsln(this%idxsymglo(iexg)) + terms(2, 2) !this%cond(i) !HALO2 
+        this%gwfmodel2%rhs(m) = this%gwfmodel2%rhs(m) + terms(3, 2) !HALO2
+      enddo !HALO2
     endif
     !
     ! -- Return
@@ -798,7 +798,7 @@ contains
 ! ------------------------------------------------------------------------------
     !
     ! -- Return if there neither model needs to calculate specific discharge
-    if (this%gwfhalo%npf%icalcspdis == 0) return
+    if (this%gwfhalo%npf%icalcspdis == 0) return !HALO2
     !
     ! -- initialize
     iusg = 0
@@ -806,22 +806,22 @@ contains
     ! -- Loop through all exchanges
     do i = 1, this%nexg
       rrate = DZERO
-      n1 = this%gwfhalo%imapnodem1tohalo(i)
-      n2 = this%gwfhalo%imapnodem2tohalo(i) + this%gwfhalo%offset
+      n1 = this%gwfhalo%imapnodem1tohalo(i) !HALO2
+      n2 = this%gwfhalo%imapnodem2tohalo(i) + this%gwfhalo%offset !HALO2
       ihc = this%ihc(i)
       hwva = this%hwva(i)
-      ibdn1 = this%gwfhalo%ibound(n1)
-      ibdn2 = this%gwfhalo%ibound(n2)
-      ictn1 = this%gwfhalo%npf%icelltype(n1)
-      ictn2 = this%gwfhalo%npf%icelltype(n2)
-      topn1 = this%gwfhalo%dis%top(n1)
-      topn2 = this%gwfhalo%dis%top(n2)
-      botn1 = this%gwfhalo%dis%bot(n1)
-      botn2 = this%gwfhalo%dis%bot(n2)
-      satn1 = this%gwfhalo%npf%sat(n1)
-      satn2 = this%gwfhalo%npf%sat(n2)
-      hn1 = this%gwfhalo%x(n1)
-      hn2 = this%gwfhalo%x(n2)
+      ibdn1 = this%gwfhalo%ibound(n1) !HALO2
+      ibdn2 = this%gwfhalo%ibound(n2) !HALO2
+      ictn1 = this%gwfhalo%npf%icelltype(n1) !HALO2
+      ictn2 = this%gwfhalo%npf%icelltype(n2) !HALO2
+      topn1 = this%gwfhalo%dis%top(n1) !HALO2
+      topn2 = this%gwfhalo%dis%top(n2) !HALO2
+      botn1 = this%gwfhalo%dis%bot(n1) !HALO2
+      botn2 = this%gwfhalo%dis%bot(n2) !HALO2
+      satn1 = this%gwfhalo%npf%sat(n1) !HALO2
+      satn2 = this%gwfhalo%npf%sat(n2) !HALO2
+      hn1 = this%gwfhalo%x(n1) !HALO2
+      hn2 = this%gwfhalo%x(n2) !HALO2
       !
       ! -- If both cells are active then calculate flow rate, and add ghost
       !    node contribution
@@ -902,7 +902,7 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: DZERO, LENBUDTXT, LENMODELNAME
+    use ConstantsModule, only: DZERO, LENBUDTXT, LENPACKAGENAME
     use TdisModule, only: kstp, kper
     ! -- dummy
     class(GwfExchangeType) :: this
@@ -911,11 +911,11 @@ contains
     integer(I4B), intent(in) :: isolnid
     ! -- local
     character(len=LENBOUNDNAME) :: bname
-    character(len=LENMODELNAME) :: packname1
-    character(len=LENMODELNAME) :: packname2
+    character(len=LENPACKAGENAME+4) :: packname1
+    character(len=LENPACKAGENAME+4) :: packname2
     character(len=LENBUDTXT), dimension(1) :: budtxt
     real(DP), dimension(2, 1) :: budterm
-    integer(I4B) :: i, n1, n2, n1u, n2u, n1h, n2h
+    integer(I4B) :: i, n1, n2, n1u, n2u, n1h, n2h !HALO2
     integer(I4B) :: ibinun1, ibinun2
     integer(I4B) :: ibdlbl
     integer(I4B) :: icbcfl, ibudfl
@@ -949,8 +949,8 @@ contains
     ! -- If cell-by-cell flows will be saved as a list, write header.
     if(ibinun1 /= 0) then
       call this%gwfmodel1%dis%record_srcdst_list_header(budtxt(1),             &
-                                       this%gwfhalo%m1name, this%name,         &
-                                       this%gwfhalo%m2name, this%name,         &
+                                       this%gwfhalo%m1name, this%name,         & !HALO2
+                                       this%gwfhalo%m2name, this%name,         & !HALO2
                                        this%naux, this%auxname,                &
                                        ibinun1, this%nexg, this%gwfmodel1%iout)
     endif
@@ -974,13 +974,13 @@ contains
       rrate = DZERO
       n1 = this%nodem1(i)
       n2 = this%nodem2(i)
-      n1h = this%gwfhalo%imapnodem1tohalo(i)
-      n2h = this%gwfhalo%imapnodem2tohalo(i) + this%gwfhalo%offset
+      n1h = this%gwfhalo%imapnodem1tohalo(i) !HALO2
+      n2h = this%gwfhalo%imapnodem2tohalo(i) + this%gwfhalo%offset !HALO2
       !
       ! -- If both cells are active then calculate flow rate
-      if(this%gwfhalo%ibound(n1h) /= 0 .and. &
-         this%gwfhalo%ibound(n2h) /= 0) then
-        rrate = this%qcalc(i, n1h, n2h)
+      if(this%gwfhalo%ibound(n1h) /= 0 .and. & !HALO2
+         this%gwfhalo%ibound(n2h) /= 0) then !HALO2
+        rrate = this%qcalc(i, n1h, n2h) !HALO2
         !
         ! -- add ghost node contribution
         if(this%ingnc > 0) then
@@ -1046,8 +1046,8 @@ contains
       ! -- If cell-by-cell flows will be saved as a list, write header.
       if(ibinun2 /= 0) then
         call this%gwfmodel2%dis%record_srcdst_list_header(budtxt(1),             &
-                                         this%gwfhalo%m2name, this%name,         &
-                                         this%gwfhalo%m1name, this%name,         &
+                                         this%gwfhalo%m2name, this%name,         & !HALO2
+                                         this%gwfhalo%m1name, this%name,         & !HALO2
                                          this%naux, this%auxname,                &
                                          ibinun2, this%nexg, this%gwfmodel2%iout)
       endif
@@ -1175,23 +1175,23 @@ contains
                              'NODEM2', 'COND', 'X_M1', 'X_M2', 'FLOW'
       endif
       do iexg = 1, this%nexg
-        n1 = this%gwfhalo%imapnodem1tohalo(iexg) !TODO
-        n2 = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !TODO
-        flow = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1))
-        call this%gwfhalo%dis%noder_to_string(n1, node1str)!TODO
-        call this%gwfhalo%dis%noder_to_string(n2, node2str)!TODO
+        n1 = this%gwfhalo%imapnodem1tohalo(iexg) !HALO2 TODO
+        n2 = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !HALO2 TODO
+        flow = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1)) !HALO2
+        call this%gwfhalo%dis%noder_to_string(n1, node1str)!HALO2 TODO
+        call this%gwfhalo%dis%noder_to_string(n2, node2str)!HALO2 TODO
         if(this%ingnc > 0) then
           deltaqgnc = this%gnc%deltaqgnc(iexg)
           write(iout, fmtdata) trim(adjustl(node1str)),                        &
                                trim(adjustl(node2str)),                        &
-                               this%cond(iexg), this%gwfhalo%x(n1),            &
-                               this%gwfhalo%x(n2),                             &
+                               this%cond(iexg), this%gwfhalo%x(n1),            & !HALO2
+                               this%gwfhalo%x(n2),                             & !HALO2
                                deltaqgnc, flow + deltaqgnc
         else
           write(iout, fmtdata) trim(adjustl(node1str)),                        &
                                trim(adjustl(node2str)),                        &
-                               this%cond(iexg), this%gwfhalo%x(n1),            &
-                               this%gwfhalo%x(n2),                             &
+                               this%cond(iexg), this%gwfhalo%x(n1),            & !HALO2
+                               this%gwfhalo%x(n2),                             & !HALO2
                                flow
         endif
       enddo
@@ -1384,7 +1384,7 @@ contains
     use BaseModelModule, only: BaseModelType
     use BaseDisModule, only: DisBaseType !PAR
     use MpiExchangeGenModule, only: mpi_is_halo !PAR
-    use MpiExchangeGwfModule, only: mpi_set_gwfhalo_world_dis
+    use MpiExchangeGwfModule, only: mpi_set_gwfhalo_world_dis !PAR
     ! -- dummy
     class(gwfExchangeType) :: this
     integer(I4B), intent(in) :: iout
@@ -1394,7 +1394,7 @@ contains
     integer(I4B) :: lloc, ierr, nerr, iaux
     integer(I4B) :: iexg, nodem1, nodem2, nodeum1, nodeum2
     logical :: isfound, endOfBlock
-    class(NumericalModelType), pointer :: m2
+    class(NumericalModelType), pointer :: m2 !PAR
     ! -- format
     character(len=*), parameter :: fmtexglabel = "(5x, 3a10, 50(a16))"
     character(len=*), parameter :: fmtexgdata  =                               &
@@ -1402,13 +1402,13 @@ contains
     character(len=40) :: fmtexgdata2
 ! ------------------------------------------------------------------------------
     !
-    if (this%m2_bympi) then
-      call mpi_set_gwfhalo_world_dis(this%gwfhalo%m2name, m2)
-!      call m2tmp%dis_da()
-!      deallocate(m2tmp)
-    else
+    if (this%m2_bympi) then !PAR
+      call mpi_set_gwfhalo_world_dis(this%gwfhalo%m2name, m2) !PAR
+!      call m2tmp%dis_da() !PAR
+!      deallocate(m2tmp) !PAR
+    else !PAR
       m2 => this%m2
-    endif
+    endif !PAR
     !
     ! -- get ExchangeData block
     call this%parser%GetBlock('EXCHANGEDATA', isfound, ierr,                   &
@@ -1456,19 +1456,19 @@ contains
           endif !PAR
         else
           ! -- Read and check node 2
-          call this%parser%GetCellid(m2%dis%ndim, cellid, flag_string=.true.)
-          nodem2 = m2%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
-                                            iout, flag_string=.true.)
+          call this%parser%GetCellid(m2%dis%ndim, cellid, flag_string=.true.) !HALO2
+          nodem2 = m2%dis%noder_from_cellid(cellid, this%parser%iuactive,   & !HALO2
+                                            iout, flag_string=.true.) !HALO2
           this%nodem2(iexg) = nodem2
-          if (this%m2_bympi) then
-            this%nodeum2(iexg) = nodem2
-            this%nodem2(iexg) = iexg
-          endif
+          if (this%m2_bympi) then !PAR
+            this%nodeum2(iexg) = nodem2 !PAR
+            this%nodem2(iexg) = iexg !PAR
+          endif !PAR
           !
           ! -- Read and check node 1
-          call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.)
-          nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
-                                                 iout, flag_string=.true.)
+          call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.) !HALO2
+          nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   & !HALO2
+                                                 iout, flag_string=.true.) !HALO2
           this%nodem1(iexg) = nodem1
         endif
         !
@@ -1490,7 +1490,7 @@ contains
         endif
         !
         ! -- Write the data to listing file if requested
-        !TODO
+        !HALO2 TODO
         !if(this%iprpak /= 0) then
         !  nodeum1 = this%m1%dis%get_nodeuser(nodem1)
         !  call this%m1%dis%nodeu_to_string(nodeum1, node1str)
@@ -1551,10 +1551,10 @@ contains
       call ustop()
     end if
     !
-    if (this%m2_bympi) then
-      call m2%dis%dis_da()
-      deallocate(m2)
-    endif
+    if (this%m2_bympi) then !PAR
+      call m2%dis%dis_da() !PAR
+      deallocate(m2) !PAR
+    endif !PAR
     !
     ! -- return
     return
@@ -1662,7 +1662,7 @@ contains
     integer(I4B), intent(in) :: kiter
     ! -- local
     integer(I4B) :: iexg
-    integer(I4B) :: n, m, nn, mm, nu, mu
+    integer(I4B) :: n, m, nn, mm, nu, mu !HALO2
     integer(I4B) :: ibdn, ibdm
     integer(I4B) :: ihc
     real(DP) :: hn, hm
@@ -1675,44 +1675,44 @@ contains
     !
     ! -- Use model 1 to rewet model 2 and vice versa
     do iexg = 1, this%nexg
-      n = this%gwfhalo%imapnodem1tohalo(iexg)
-      m = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset
-      hn = this%gwfhalo%x(n)
-      hm = this%gwfhalo%x(m)
-      ibdn = this%gwfhalo%ibound(n)
-      ibdm = this%gwfhalo%ibound(m)
+      n = this%gwfhalo%imapnodem1tohalo(iexg) !HALO2
+      m = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !HALO2
+      hn = this%gwfhalo%x(n) !HALO2 
+      hm = this%gwfhalo%x(m) !HALO2
+      ibdn = this%gwfhalo%ibound(n) !HALO2
+      ibdm = this%gwfhalo%ibound(m) !HALO2
       ihc = this%ihc(iexg)
-      this%gwfhalo%npf%irewet = this%gwfhalo%m1irewet
-      call this%gwfhalo%npf%rewet_check(kiter, n, hm, ibdm, ihc,               &
-        this%gwfhalo%x, irewet)
-      if(irewet == 1) then !TODO
-        nn = this%gwfhalo%nodem1(iexg)
-        this%gwfhalo%gwf1%ibound(nn) = this%gwfhalo%ibound(n)
-        this%gwfhalo%gwf1%x(nn) = this%gwfhalo%x(n)
-        if(this%gwfhalo%ibound(n)==30000) then
-          this%gwfhalo%ibound(n)=1
+      this%gwfhalo%npf%irewet = this%gwfhalo%m1irewet !HALO2
+      call this%gwfhalo%npf%rewet_check(kiter, n, hm, ibdm, ihc,               & !HALO2
+        this%gwfhalo%x, irewet) !HALO2
+      if(irewet == 1) then !HALO2 TODO
+        nn = this%gwfhalo%nodem1(iexg) !HALO2
+        this%gwfhalo%gwf1%ibound(nn) = this%gwfhalo%ibound(n) !HALO2
+        this%gwfhalo%gwf1%x(nn) = this%gwfhalo%x(n) !HALO2
+        if(this%gwfhalo%ibound(n)==30000) then !HALO2
+          this%gwfhalo%ibound(n)=1 !HALO2
+        endif !HALO2
+        call this%gwfhalo%dis%noder_to_string(n, nodestrn) !HALO2
+        call this%gwfhalo%dis%noder_to_string(m, nodestrm) !HALO2
+        !TODO write(this%gwfmodel1%iout, fmtrwt) trim(nodestrn),               & !HALO2
+        !TODO  trim(this%gwfmodel2%name), trim(nodestrm), kiter, kstp, kper !HALO2
+      endif !HALO2
+      this%gwfhalo%npf%irewet = this%gwfhalo%m2irewet !HALO2
+      call this%gwfhalo%npf%rewet_check(kiter, m, hn, ibdn, ihc,               & !HALO2
+        this%gwfhalo%x, irewet) !HALO2
+      if(irewet == 1) then !HALO2 TODO
+        if (associated(this%gwfhalo%gwf2)) then !HALO2
+          mm = this%gwfhalo%nodem2(iexg) !HALO2
+          this%gwfhalo%gwf2%ibound(mm) = this%gwfhalo%ibound(m) !HALO2
+          this%gwfhalo%gwf2%x(mm) = this%gwfhalo%x(m) !HALO2
+          if(this%gwfhalo%ibound(m)==30000) then !HALO2
+            this%gwfhalo%ibound(m)=1 !HALO2
+          endif !HALO2
         endif
-        call this%gwfhalo%dis%noder_to_string(n, nodestrn)
-        call this%gwfhalo%dis%noder_to_string(m, nodestrm)
-        !TODO write(this%gwfmodel1%iout, fmtrwt) trim(nodestrn),                     &
-        !TODO  trim(this%gwfmodel2%name), trim(nodestrm), kiter, kstp, kper
-      endif
-      this%gwfhalo%npf%irewet = this%gwfhalo%m2irewet
-      call this%gwfhalo%npf%rewet_check(kiter, m, hn, ibdn, ihc,               &
-        this%gwfhalo%x, irewet)
-      if(irewet == 1) then !TODO
-        if (associated(this%gwfhalo%gwf2)) then
-          mm = this%gwfhalo%nodem2(iexg)
-          this%gwfhalo%gwf2%ibound(mm) = this%gwfhalo%ibound(m)
-          this%gwfhalo%gwf2%x(mm) = this%gwfhalo%x(m)
-          if(this%gwfhalo%ibound(m)==30000) then
-            this%gwfhalo%ibound(m)=1
-          endif
-        endif
-        call this%gwfhalo%dis%noder_to_string(n, nodestrm)
-        call this%gwfhalo%dis%noder_to_string(m, nodestrn)
-        !TODOwrite(this%gwfmodel2%iout, fmtrwt) trim(nodestrn),                     &
-        !TODO  trim(this%gwfmodel1%name), trim(nodestrm), kiter, kstp, kper
+        call this%gwfhalo%dis%noder_to_string(n, nodestrm) !HALO2
+        call this%gwfhalo%dis%noder_to_string(m, nodestrn) !HALO2
+        !TODOwrite(this%gwfmodel2%iout, fmtrwt) trim(nodestrn),                & !HALO2
+        !TODO  trim(this%gwfmodel1%name), trim(nodestrm), kiter, kstp, kper !HALO2
       endif
       !
     enddo
@@ -2001,7 +2001,7 @@ contains
 ! ------------------------------------------------------------------------------
     !
     ! -- Calculate flow between nodes in the two models
-    qcalc = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1))
+    qcalc = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1)) !HALO2
     !
     ! -- return
     return
@@ -2089,9 +2089,9 @@ contains
           v = DZERO
           select case (obsrv%ObsTypeId)
           case ('FLOW-JA-FACE')
-            n1 = this%gwfhalo%imapnodem1tohalo(iexg)
-            n2 = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset
-            v = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1))
+            n1 = this%gwfhalo%imapnodem1tohalo(iexg) !HALO2
+            n2 = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !HALO2
+            v = this%cond(iexg) * (this%gwfhalo%x(n2) - this%gwfhalo%x(n1)) !HALO2
             if(this%ingnc > 0) then
               v = v + this%gnc%deltaqgnc(iexg)
             endif
@@ -2155,7 +2155,7 @@ contains
     return
   end subroutine gwf_gwf_process_obsID
 
-  subroutine gwf_cr_halo(this, id, modelname)
+  subroutine gwf_cr_halo(this, id, modelname) !HALO2
 ! ******************************************************************************
 ! gwf_cr_halo -- Create a new groundwater flow model object for exchange
 ! Subroutine: (1) creates model object and add to exchange modellist
@@ -2207,7 +2207,7 @@ contains
     return
   end subroutine gwf_cr_halo
   
-subroutine gwf_mpi_halo_init()
+subroutine gwf_mpi_halo_init() !PAR
 ! ******************************************************************************
 ! Initialize the MpiWorld communicator local exchange for gwfhalo
 ! ******************************************************************************

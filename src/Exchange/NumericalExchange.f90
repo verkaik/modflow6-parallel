@@ -35,8 +35,8 @@ module NumericalExchangeModule
     character(len=16), allocatable, dimension(:)    :: auxname                   !array of auxiliary variable names
     real(DP), dimension(:, :), pointer, contiguous  :: auxvar    => null()       !array of auxiliary variable values
     type(BlockParserType)                           :: parser                    !block parser
-    logical, pointer                                :: m2_bympi                   ! flag indicating that model 2 is of type halo !PAR 
-    logical, pointer                                :: m1m2_swap                   ! logical indicating that model1 and model2 are swapped !PAR
+    logical, pointer                                :: m2_bympi                  ! flag indicating that model 2 is of type halo !PAR 
+    logical, pointer                                :: m1m2_swap                 ! logical indicating that model1 and model2 are swapped !PAR
   contains
     procedure :: exg_df
     procedure :: exg_ac
@@ -62,7 +62,7 @@ module NumericalExchangeModule
 
 contains
 
-  subroutine exg_df(this, iopt)
+  subroutine exg_df(this, iopt) !HALO2
 ! ******************************************************************************
 ! exg_df -- define the exchange
 ! ******************************************************************************
@@ -74,7 +74,7 @@ contains
     use InputOutputModule, only: getunit, openfile
     ! -- dummy
     class(NumericalExchangeType) :: this
-    integer(I4B), intent(in) :: iopt
+    integer(I4B), intent(in) :: iopt !HALO2
     ! -- local
 ! ------------------------------------------------------------------------------
     !

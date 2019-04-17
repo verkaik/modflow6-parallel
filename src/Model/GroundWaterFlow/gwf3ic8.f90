@@ -15,7 +15,7 @@ module GwfIcModule
   contains
     procedure          :: ic_ar
     procedure          :: ic_da
-    procedure          :: allocate_arrays
+    procedure          :: allocate_arrays !HALO2?
     procedure, private :: read_options
     procedure, private :: read_data
   end type GwfIcType

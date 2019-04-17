@@ -15,7 +15,7 @@ module ListsModule
   ! -- list of all models in simulation
   type(ListType) :: basemodellist
 
-  ! -- list of all exchange models in simulation !PAR
+  ! -- list of all halo models in simulation !PAR
   type(ListType) :: halomodellist !PAR
   
   ! -- list of all solutions in simulation

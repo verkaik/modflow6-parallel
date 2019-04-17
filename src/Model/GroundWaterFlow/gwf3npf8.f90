@@ -83,9 +83,9 @@ module GwfNpfModule
     procedure                               :: npf_ad
     procedure                               :: npf_cf
     procedure                               :: npf_fc
-    procedure                               :: npf_fc_calc
+    procedure                               :: npf_fc_calc !HALO2
     procedure                               :: npf_fn
-    procedure                               :: npf_fn_calc
+    procedure                               :: npf_fn_calc !HALO2
     procedure                               :: npf_flowja
     procedure                               :: npf_bdadj
     procedure                               :: npf_nur
@@ -103,7 +103,7 @@ module GwfNpfModule
     procedure, private                      :: read_data
     procedure                               :: prepcheck
     procedure, public                       :: rewet_check
-    procedure, public                       :: sat_calc
+    procedure, public                       :: sat_calc !HALO2
     procedure, public                       :: hy_eff
     procedure, public                       :: calc_spdis
     procedure, public                       :: sav_spdis
@@ -347,7 +347,7 @@ module GwfNpfModule
     end if
     !
     ! -- Calculate saturation for convertible cells
-    call this%sat_calc(hnew)
+    call this%sat_calc(hnew) !HALO2
     !
     ! -- Return
     return
@@ -491,7 +491,7 @@ module GwfNpfModule
     ! -- local
     integer(I4B) :: n, m, ii, idiag
     integer(I4B) :: isymcon, idiagm
-    real(DP), dimension(3, 2) :: terms
+    real(DP), dimension(3, 2) :: terms !HALO2
 ! ------------------------------------------------------------------------------
     !
     ! -- Calculate conductance and put into amat
@@ -509,21 +509,21 @@ module GwfNpfModule
         if(m < n) cycle
         !
         ! -- initialize and calculate amat and rhs terms
-        terms(:, :) = DZERO
-        call this%npf_fc_calc(n, m, ii, hnew, terms)
+        terms(:, :) = DZERO !HALO2
+        call this%npf_fc_calc(n, m, ii, hnew, terms) !HALO2
         !
         ! -- Fill row n terms
                 idiag = this%dis%con%ia(n)
-        amat(idxglo(idiag)) = amat(idxglo(idiag)) + terms(1, 1)
-        amat(idxglo(ii)) = amat(idxglo(ii)) + terms(2, 1)
-        rhs(n) = rhs(n) + terms(3, 1)
+        amat(idxglo(idiag)) = amat(idxglo(idiag)) + terms(1, 1) !HALO2
+        amat(idxglo(ii)) = amat(idxglo(ii)) + terms(2, 1) !HALO2
+        rhs(n) = rhs(n) + terms(3, 1) !HALO2
         !
         ! -- Fill row m terms
         isymcon = this%dis%con%isym(ii)
         idiagm = this%dis%con%ia(m)
-        amat(idxglo(idiagm)) = amat(idxglo(idiagm)) + terms(1, 2)
-        amat(idxglo(isymcon)) = amat(idxglo(isymcon)) + terms(2, 2)
-        rhs(m) = rhs(m) + terms(3, 2)
+        amat(idxglo(idiagm)) = amat(idxglo(idiagm)) + terms(1, 2) !HALO2
+        amat(idxglo(isymcon)) = amat(idxglo(isymcon)) + terms(2, 2) !HALO2
+        rhs(m) = rhs(m) + terms(3, 2) !HALO2
         !
       enddo
     enddo
@@ -534,7 +534,7 @@ module GwfNpfModule
     return
   end subroutine npf_fc
 
-  subroutine npf_fc_calc(this, n, m, ii, hnew, terms)
+  subroutine npf_fc_calc(this, n, m, ii, hnew, terms) !HALO2
 ! ******************************************************************************
 ! npf_fc_calc -- Formulate
 ! ******************************************************************************
@@ -775,7 +775,7 @@ module GwfNpfModule
 !    return
 !  end subroutine npf_fn_old
 
-  subroutine npf_fn(this, kiter, nodes, nja, njasln, amat, idxglo, rhs, hnew)
+  subroutine npf_fn(this, kiter, nodes, nja, njasln, amat, idxglo, rhs, hnew) !HALO2
 ! ******************************************************************************
 ! npf_fn -- Fill newton terms
 ! ******************************************************************************
@@ -840,7 +840,7 @@ module GwfNpfModule
     return
   end subroutine npf_fn
 
-  subroutine npf_fn_calc(this, n, m, ii, hnew, terms)
+  subroutine npf_fn_calc(this, n, m, ii, hnew, terms) !HALO2
 ! ******************************************************************************
 ! npf_fn_calc -- Calculate newton terms
 ! ******************************************************************************
@@ -1315,8 +1315,8 @@ module GwfNpfModule
     ! -- Deallocate arrays
     call mem_deallocate(this%icelltype)
     call mem_deallocate(this%k11)
-    call mem_deallocate(this%k22)
-    call mem_deallocate(this%k33)
+    call mem_deallocate(this%k22, 'K22', this%origin)
+    call mem_deallocate(this%k33, 'K33', this%origin)
     call mem_deallocate(this%sat)
     call mem_deallocate(this%condsat)
     call mem_deallocate(this%wetdry)
@@ -1838,7 +1838,7 @@ module GwfNpfModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ConstantsModule,   only: LINELENGTH, DONE, DPIO180
-    use MemoryManagerModule, only: mem_reallocate
+    use MemoryManagerModule, only: mem_reallocate, mem_reassignptr
     use SimModule,         only: ustop, store_error, count_errors
     ! -- dummy
     class(GwfNpftype) :: this
@@ -1981,6 +1981,8 @@ module GwfNpfModule
     ! -- Check for K33
     if(.not. lname(3)) then
       write(this%iout, '(1x, a)') 'K33 not provided.  Assuming K33 = K.'
+      call mem_reassignptr(this%k33, 'K33', trim(this%origin),                 &
+                                     'K11', trim(this%origin))
     else
       nerr = 0
       do n = 1, size(this%k33)
@@ -2003,6 +2005,8 @@ module GwfNpfModule
     ! -- Check for K22
     if(.not. lname(4)) then
       write(this%iout, '(1x, a)') 'K22 not provided.  Assuming K22 = K.'
+      call mem_reassignptr(this%k22, 'K22', trim(this%origin),                 &
+                                     'K11', trim(this%origin))
     else
       ! -- Check to make sure that angles are available
       if(this%dis%con%ianglex == 0) then
@@ -2598,7 +2602,7 @@ module GwfNpfModule
     return
   end subroutine sgwf_npf_wdmsg
 
-  subroutine sat_calc(this, hnew)
+  subroutine sat_calc(this, hnew) !HALO2
 ! ******************************************************************************
 ! sat_calc -- recalculate saturation array
 ! ******************************************************************************

@@ -278,10 +278,10 @@ module BaseDisModule
     call mem_deallocate(this%ibuff)
     !
     ! -- Connections
-    if (associated(this%con)) then
+    if (associated(this%con)) then !HALO2
     call this%con%con_da()
     deallocate(this%con)
-    endif
+    endif !HALO2
     !
     ! -- Return
     return
@@ -939,7 +939,7 @@ module BaseDisModule
     character(len=16), dimension(:), intent(inout) :: auxname
     character(len=LENBOUNDNAME), dimension(:), pointer, contiguous,                        &
                                           intent(inout) :: boundname
-    character(len=500), intent(in) :: label
+    character(len=*), intent(in) :: label
     character(len=*),  intent(in) :: pkgName
     type(TimeSeriesManagerType)   :: tsManager
     integer(I4B), intent(in) :: iscloc

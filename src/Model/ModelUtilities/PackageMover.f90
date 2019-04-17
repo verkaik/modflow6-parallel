@@ -8,13 +8,15 @@ module PackageMoverModule
   implicit none
   private
   public :: PackageMoverType
+  public :: set_packagemover_pointer
+  public :: nulllify_packagemover_pointer
   
   type PackageMoverType
     
     character(len=LENORIGIN)                     :: origin
     integer, pointer                             :: nproviders
     integer, pointer                             :: nreceivers
-    logical, pointer                 :: bympi !PAR
+    logical, pointer                             :: bympi !PAR
     real(DP), dimension(:), pointer, contiguous  :: qtformvr      => null()
     real(DP), dimension(:), pointer, contiguous  :: qformvr       => null()
     real(DP), dimension(:), pointer, contiguous  :: qtomvr        => null()
@@ -35,6 +37,46 @@ module PackageMoverModule
   end type PackageMoverType
   
   contains
+  
+  subroutine set_packagemover_pointer(packagemover, origin)
+    use MpiExchangeGenModule, only: parallelrun !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR
+    use SimModule, only: ustop !PAR
+    use ConstantsModule, only: LENMODELNAME, LENPACKAGENAME !PAR
+    type(PackageMoverType), intent(inout) :: packagemover
+    character(len=*), intent(in) :: origin
+    logical :: lok !PAR
+    character(len=LENMODELNAME+LENPACKAGENAME+1) :: mname, pname !PAR
+    !
+    if (parallelrun) then !PAR
+      read(origin,*) mname, pname !PAR
+      call MpiWorld%mpi_getmodel(mname, lok) !PAR
+      if (.not.lok) then !PAR
+        call ustop('Program error set_packagemover_pointer.') !PAR
+      end if !PAR
+      packagemover%origin = trim(mname)//' '//trim(pname)
+    else !PAR
+      packagemover%origin = origin
+    end if !PAR
+    !
+    call mem_setptr(packagemover%nproviders, 'NPROVIDERS', packagemover%origin) !PAR
+    call mem_setptr(packagemover%nreceivers, 'NRECEIVERS', packagemover%origin) !PAR
+    call mem_setptr(packagemover%qtformvr, 'QTFORMVR', packagemover%origin) !PAR
+    call mem_setptr(packagemover%qformvr, 'QFORMVR', packagemover%origin) !PAR
+    call mem_setptr(packagemover%qtomvr, 'QTOMVR', packagemover%origin) !PAR
+    call mem_setptr(packagemover%qfrommvr, 'QFROMMVR', packagemover%origin) !PAR
+  end subroutine set_packagemover_pointer
+
+  subroutine nulllify_packagemover_pointer(packagemover)
+    type(PackageMoverType), intent(inout) :: packagemover
+    packagemover%origin = ''
+    packagemover%nproviders => null()
+    packagemover%nreceivers => null()
+    packagemover%qtformvr => null()
+    packagemover%qformvr => null()
+    packagemover%qtomvr => null()
+    packagemover%qfrommvr => null()
+  end subroutine nulllify_packagemover_pointer
 
   subroutine ar(this, nproviders, nreceivers, origin, bympi) !PAR
     class(PackageMoverType) :: this
