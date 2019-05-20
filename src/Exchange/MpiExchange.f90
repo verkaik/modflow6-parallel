@@ -1,7 +1,7 @@
   ! -- groups functionality for MPI exchanges
   module MpiExchangeModule
   use TimerModule, only: code_timer
-  use KindModule, only: DP, I4B  
+  use KindModule, only: DP, I4B
   use SimModule, only: ustop, store_error
   use ConstantsModule, only: LENPACKAGENAME, LENMODELNAME, LENORIGIN,          &
                              LENVARNAME, LINELENGTH
@@ -20,9 +20,9 @@
   use MpiWrapper, only: MetaMemoryType
 
   implicit none
-  
+
   private
-  
+
   ! -- Public types
   public :: MpiExchangeType
   public :: VarGroupType
@@ -34,11 +34,11 @@
   public :: mpi_world_da
   !public :: mpi_add_halo_model
   public :: mpi_to_colmem
-  
-  integer, parameter :: MAXNVG  = 10  ! maximum number of variable groups 
+
+  integer, parameter :: MAXNVG  = 10  ! maximum number of variable groups
   integer, parameter :: MAXNVAR = 100
   integer, parameter :: MAXNEX  = 5
-  
+
   integer, parameter :: isrcsol = 1
   integer, parameter :: isrcgwf = 2
   integer, parameter :: isrcmvr = 3
@@ -87,7 +87,7 @@
     integer(I4B)                      :: nvar = 0
     type(VarType), dimension(MAXNVAR) :: var
   end type VarGroupType
-  
+
   type ExchangeType
     type(VarGroupType), dimension(:), pointer :: vgvar => null()
     character(len=LENVARNAME)                 :: name
@@ -100,15 +100,15 @@
     integer(I4B)                              :: m1_id !CGC
     integer(I4B)                              :: m2_id !CGC
   end type ExchangeType
-  
+
   ! -- Local types
   type :: MpiGwfCommInt
     integer(I4B), pointer                     :: xprnk     => null() ! neighboring rank
-    integer(I4B), pointer                     :: nexchange => null() ! number of exchanges 
+    integer(I4B), pointer                     :: nexchange => null() ! number of exchanges
     type(ExchangeType), dimension(:), pointer :: exchange  => null() ! exchanges
     type(MpiGwfBuf), dimension(:), pointer    :: vgbuf     => null() ! variable group buffers over all exchanges
   end type MpiGwfCommInt
-  
+
   type :: MpiExchangeType
     logical                                                :: linit = .false.
     character(len=LENPACKAGENAME)                          :: name          ! name (origin)
@@ -134,7 +134,7 @@
     type(MpiGwfCommInt), dimension(:), pointer           :: lxch => null() ! Point to-point communication structure
     integer(I4B)                                         :: nvg  ! number of variable groups
     character(len=LINELENGTH), dimension(MAXNVG)         :: vg   ! variable groups
-    logical,  dimension(MAXNVG)                          :: lxchmeta = .true. ! exchange meta data 
+    logical,  dimension(MAXNVG)                          :: lxchmeta = .true. ! exchange meta data
     character(len=50), pointer                           :: nrprocstr => null() ! Number of processes string
     integer(I4B), pointer                                :: npdigits  => null() ! Number of digits for nrproc
     character(len=50), pointer                           :: partstr   => null() ! Partition string
@@ -182,18 +182,18 @@
     procedure :: mpi_copy_dbl_to_halo
     generic   :: mpicopydbltohalo => mpi_copy_dbl_to_halo
   end type MpiExchangeType
-  
+
   ! -- World communicator
   type(MpiExchangeType), pointer :: MpiWorld => null()
 
   character(len=LINELENGTH) :: errmsg
-  
+
   real(DP) :: t
-  
+
   save
-  
+
   contains
-  
+
   subroutine mpi_initialize_world()
 ! ******************************************************************************
 ! MPI initialization for the world communicator.
@@ -255,7 +255,7 @@
     ! -- return
     return
   end subroutine mpi_initialize_world
-  
+
   subroutine mpi_world_da()
 ! ******************************************************************************
 ! Deallocate for the world communicator.
@@ -279,7 +279,7 @@
     ! -- return
     return
   end subroutine mpi_world_da
-  
+
   subroutine mpi_barrier(this)
 ! ******************************************************************************
 ! MPI barrier.
@@ -308,7 +308,7 @@
     ! -- return
     return
   end subroutine mpi_barrier
-  
+
   subroutine mpi_create_output_str(this)
 ! ******************************************************************************
 ! Create several strings for output.
@@ -322,7 +322,7 @@
     class(MpiExchangeType) :: this
     ! -- local
     character(len=LENORIGIN) :: origin
-    character(len=20) :: fmt  
+    character(len=20) :: fmt
 ! ------------------------------------------------------------------------------
     ! -- Allocate
     origin = this%name
@@ -337,11 +337,11 @@
     fmt = adjustl(fmt)
     fmt = '(a,i'//trim(fmt)//'.'//trim(fmt)//')'
     write(this%partstr,fmt) 'p',this%myrank
-    !    
+    !
     ! -- return
     return
   end subroutine mpi_create_output_str
-  
+
   subroutine mpi_debug(this)
 ! ******************************************************************************
 ! Debug subroutine.
@@ -355,14 +355,14 @@
     ! -- local
 ! ------------------------------------------------------------------------------
     if (this%myrank == 0) then
-      write(*,*) 'Press a key...' 
+      write(*,*) 'Press a key...'
       pause
     end if
     call mpi_barrier(this)
     ! -- return
     return
   end subroutine mpi_debug
-    
+
   subroutine mpi_local_exchange_init(this)
 ! ******************************************************************************
 ! This subroutine initializes the local exchange data structure for the
@@ -532,7 +532,7 @@
       do iex = 1, this%lxch(ixp)%nexchange
         vgvar => this%lxch(ixp)%exchange(iex)%vgvar(ivg)
         iv = vgvar%nvar
-        iv = iv + 1 
+        iv = iv + 1
         if (iv > MAXNVAR) then
           call store_error('Program error 3: mpi_add_vmt')
           call ustop()
@@ -548,11 +548,11 @@
             vgvar%var(iv)%srctype = isrcsol
           case('GWF')
             vgvar%var(iv)%srctype = isrcgwf
-          case('MVR')        
+          case('MVR')
             vgvar%var(iv)%srctype = isrcmvr
-          case('HAL')        
+          case('HAL')
             vgvar%var(iv)%srctype = isrchal
-          case('HLL')        
+          case('HLL')
             vgvar%var(iv)%srctype = isrchll
           case default
             call store_error('Program error 4: mpi_add_vmt')
@@ -574,11 +574,11 @@
             vgvar%var(iv)%tgttype = itgtsol
           case('GWF')
             vgvar%var(iv)%tgttype = itgtgwf
-          case('MVR')        
+          case('MVR')
             vgvar%var(iv)%tgttype = itgtmvr
-          case('HAL')        
+          case('HAL')
             vgvar%var(iv)%tgttype = itgthal
-          case('HLL')        
+          case('HLL')
             vgvar%var(iv)%tgttype = itgthll
           case default
             call store_error('Program error 6: mpi_add_vmt')
@@ -591,7 +591,7 @@
             vgvar%var(iv)%unptype = iunphal
           case('MVR')
             vgvar%var(iv)%unptype = iunpmvr
-         case default 
+         case default
             call store_error('Program error 7: mpi_add_vmt')
             call ustop()
         end select
@@ -601,7 +601,7 @@
     ! -- return
     return
   end subroutine mpi_add_vmt
-  
+
  subroutine mpi_init_vg(this, vgname)
 ! ******************************************************************************
 ! ******************************************************************************
@@ -637,18 +637,18 @@
           if (vgvar%var(iv)%lsnd) then
             nsnd = nsnd + 1
           end if
-        end do  
+        end do
       end do
       buf => this%lxch(ixp)%vgbuf(ivg)
-      buf%nsnd = nsnd 
+      buf%nsnd = nsnd
       allocate(buf%sndmt(max(nsnd,1)))
       allocate(buf%sndmmt(max(nsnd,1)))
     end do
     !
     ! -- return
     return
-  end subroutine mpi_init_vg  
-  
+  end subroutine mpi_init_vg
+
   subroutine mpi_local_exchange(this, solname, vgname, lunpack)
 ! ******************************************************************************
 ! Local point-to-point exchange (wrapper).
@@ -665,7 +665,7 @@
     class(MpiExchangeType) :: this
     character(len=*), intent(in) :: solname
     character(len=*), intent(in) :: vgname
-    logical, intent(in) :: lunpack 
+    logical, intent(in) :: lunpack
     ! -- local
     !type(VarMemoryType), pointer :: vmt
     !
@@ -691,7 +691,7 @@
     integer(I4B), dimension(:), pointer :: nodem1
     integer(I4B) ::  moffset
     integer(I4B), pointer :: tmp
-    
+
     logical :: lpack, lpackmeta
 ! ------------------------------------------------------------------------------
     !
@@ -877,7 +877,7 @@
     end if
     !
     ! -- Second point-to-point communication to exchange actual data
-    
+
     ! -- Create MPI send and receive datatypes
     allocate(snd_newtype(this%nrxp), rcv_newtype(this%nrxp))
     do ixp = 1, this%nrxp
@@ -912,7 +912,7 @@
     !
     ! -- Debug
     if (.false. .and. trim(vgname) == 'MOVER') then
-      write(*,*) '@@@@@ VARGROUP = '//trim(vgname)
+      write(*,*) '@@@@@@ VARGROUP = '//trim(vgname)
       do irank = 0, this%nrproc-1
         if (irank == this%myrank) then
           write(*,*) '=================myrank',this%myrank
@@ -1013,7 +1013,7 @@
                     id = 'DISU'
                   end if
                   tgt_origin = trim(halo_name)//' '//trim(id)
-                case(itgthll)  
+                case(itgthll)
                   tgt_origin = trim(halo_name)//'_M2 '//trim(var%nameext)
                 case(itgtmvr)
                   tgt_origin = var%origin
@@ -1049,7 +1049,7 @@
     ! -- return
     return
   end subroutine mpi_local_exchange
-  
+
   subroutine mpi_mv_halo(this, solname, vgname, x, m2_id) !CGC
 ! ******************************************************************************
 ! Add terms for halo matrix-vector product.
@@ -1110,7 +1110,7 @@
             cycle !CGC
           end if !CGC
         end if !CGC
-        ! 
+        !
         ! -- get exchange nodes and conductance
         call mem_setptr(nexg, 'NEXG', trim(this%lxch(ixp)%exchange(ix)%name))
         call mem_setptr(nodem1, 'NODEM1',                                      &
@@ -1137,13 +1137,13 @@
             x(n) = x(n) + (cond(iexg) + newtonterm(iexg))*v
           end if
         end do
-      end do 
+      end do
     end do
     !
     ! -- return
     return
   end subroutine mpi_mv_halo
-  
+
   function mpi_get_halo_rcvmt(this, vgname, varname, varext, hmname) result(mt)
 ! ******************************************************************************
 !
@@ -1207,7 +1207,7 @@
     ! -- return
     return
   end function mpi_get_halo_rcvmt
-  
+
   subroutine mpi_copy_int_to_halo(this, vgname, varname, varext, hmname,        &
     gwfhaloarray, offset)
 ! ******************************************************************************
@@ -1369,7 +1369,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_sum2
-  
+
   subroutine mpi_global_exchange_absmax1(this, dval)
 ! ******************************************************************************
 ! Collective maximum over all processes for one double precision value.
@@ -1402,7 +1402,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_absmax1
-  
+
   subroutine mpi_global_exchange_absmax2(this, dval1, dval2)
 ! ******************************************************************************
 ! Collective maximum over all processes for two double precision values.
@@ -1437,7 +1437,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_absmax2
-  
+
   subroutine mpi_global_exchange_max_int(this, ival)
 ! ******************************************************************************
 ! Collective maximum over all processes for one integer value.
@@ -1470,7 +1470,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_max_int
-  
+
   subroutine mpi_global_exchange_absmin1(this, dval)
 ! ******************************************************************************
 ! Collective minimum over all processes for one double precision value.
@@ -1503,7 +1503,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_absmin1
-  
+
   subroutine mpi_global_exchange_absmin2(this, dval1, dval2)
 ! ******************************************************************************
 ! Collective minimum over all processes for two double precision values.
@@ -1587,7 +1587,7 @@
         ic1 = gia(i+1) - 1
       else
         ic1 = ic0
-      end if  
+      end if
       do j = ic0, ic1
         im = gja(j) ! global model
         ip = MpiWorld%gsubs(im) ! processor ID
@@ -1635,7 +1635,7 @@
     ! -- return
     return
   end subroutine mpi_global_exchange_cgc
-    
+
   subroutine mpi_pack_mt(origin, mti, mto, node, nexg, moffset)
 ! ******************************************************************************
 ! Pack memory type for point-to-point communication.
@@ -1661,7 +1661,7 @@
     mto%name     = mti%name
     mto%origin   = trim(origin)
     mto%memitype = mti%memitype
-    mto%isize    = 0 
+    mto%isize    = 0
     !
     ! TODO: checks for K22, K33, ANGLE1, ANGLE2 and ANGLE3
     if (present(node)) then
@@ -1723,7 +1723,7 @@
     ! -- return
     return
   end subroutine mpi_pack_mt
-  
+
   subroutine mpi_pack_mmt(mt, mmt)
 ! ******************************************************************************
 ! Pack memory type for point-to-point communication.
@@ -1771,7 +1771,7 @@
     ! -- local
 ! ------------------------------------------------------------------------------
     if (serialrun) then
-      !add = .true. !DEBUG 
+      !add = .true. !DEBUG
       !return
     end if
     !
@@ -1779,7 +1779,7 @@
       add = .true.
     else
       add = .false.
-    end if  
+    end if
     !
     ! -- return
     return
@@ -1831,7 +1831,7 @@
     ! -- return
     return
   end subroutine mpi_addmodel
-  
+
   subroutine mpi_addhmodel(this, hmname, m1name, m2name)
 ! ******************************************************************************
 ! Add a model to my subdomain.
@@ -1865,7 +1865,7 @@
     ! -- return
     return
   end subroutine mpi_addhmodel
-  
+
   subroutine mpi_getmodel(this, mname, lok)
 ! ******************************************************************************
 ! Get the model name. In case this model turn out to be halo, return the first
@@ -1919,7 +1919,7 @@
     ! -- return
     return
   end subroutine mpi_getmodel
-  
+
   subroutine mpi_addsub(this, iopt, isub)
 ! ******************************************************************************
 ! Add a model to my subdomain.
@@ -1965,7 +1965,7 @@
     ! -- return
     return
   end subroutine mpi_addsub
-      
+
 !  subroutine mpi_add_halo_model(im, modelname)
 !! ******************************************************************************
 !! This subroutine sets the list of halo (m2) models
@@ -1992,7 +1992,7 @@
 !    ! -- return
 !    return
 !  end subroutine mpi_add_halo_model
-  
+
   subroutine mpi_to_colmem(mt, is, cmt, iopt)
 ! ******************************************************************************
 ! Convert to collective MemoryType
@@ -2001,7 +2001,7 @@
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: DZERO  
+    use ConstantsModule, only: DZERO
     use MemoryTypeModule, only: MemoryType
     ! -- dummy
     type(MemoryType), intent(in) :: mt
@@ -2015,7 +2015,7 @@
     if (iopt == 1) then
       return
     end if
-    
+
     cmt(is)%name     = mt%name
     cmt(is)%origin   = mt%origin
     cmt(is)%memitype = mt%memitype
@@ -2023,7 +2023,7 @@
       cmt(is)%logicalsclr = mt%logicalsclr
     else
       cmt(is)%logicalsclr = .false.
-    end if  
+    end if
     if (associated(mt%intsclr)) then
       cmt(is)%intsclr = mt%intsclr
     else
@@ -2048,7 +2048,7 @@
     ! -- return
     return
   end subroutine mpi_to_colmem
-  
+
   subroutine mpi_not_supported(this, msg)
 ! ******************************************************************************
 ! Stop in case the functionality is not supported in parallel.
@@ -2073,7 +2073,7 @@
     ! -- return
     return
   end subroutine mpi_not_supported
-  
+
   subroutine mpi_da(this)
 ! ******************************************************************************
 ! mpi_da -- deallocate
@@ -2094,14 +2094,14 @@
     if (serialrun) then
       return
     end if
-    
+
     ! -- communicator
     if (associated(this%comm)) then
       call mem_deallocate(this%comm)
     end if
     if (associated(this%nrproc)) then
       call mem_deallocate(this%nrproc)
-    end if  
+    end if
     if (associated(this%myrank)) then
       call mem_deallocate(this%myrank)
     end if
