@@ -1,4 +1,4 @@
-module mawmodule
+module MawModule
   !
   use KindModule, only: DP, I4B
   use ConstantsModule, only: LINELENGTH, LENBOUNDNAME, LENTIMESERIESNAME,       &
@@ -4305,4 +4305,4 @@ contains
   end subroutine maw_fill_budobj
 
 
-end module mawmodule
+end module MawModule

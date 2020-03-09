@@ -899,8 +899,6 @@ contains
       write(iout,'(1x,a)')'NO IMS OPTION BLOCK DETECTED.'
     end if
 
-00020 FORMAT(1X,'SPECIFIED OPTION:',/,                                         &
-    &       1X,'SOLVER INPUT VALUES WILL BE USER-SPECIFIED')
 00021 FORMAT(1X,'SIMPLE OPTION:',/,                                            &
     &       1X,'DEFAULT SOLVER INPUT VALUES FOR FAST SOLUTIONS')
 00023 FORMAT(1X,'MODERATE OPTION:',/,1X,'DEFAULT SOLVER',                      &
