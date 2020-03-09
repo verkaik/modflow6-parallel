@@ -5,8 +5,8 @@ module MemoryManagerModule
   use SimModule,              only: store_error, ustop
   use MemoryTypeModule,       only: MemoryTSType, MemoryType
   use MemoryTypeModule,       only: ilogicalsclr, iintsclr, idblsclr,          & !PAR
-                                    iaint1d, iaint2d,                          & !PAR
-                                    iadbl1d, iadbl2d,                          & !PAR
+                                    iaint1d, iaint2d, iaint3d,                 & !PAR
+                                    iadbl1d, iadbl2d, iadbl3d,                 & !PAR
                                     iats1d                                       !PAR
   use MemoryListModule,       only: MemoryListType
   use TimerModule,            only: code_timer !TIM
@@ -38,7 +38,9 @@ module MemoryManagerModule
   interface mem_allocate
     module procedure allocate_logical,                                         &
                      allocate_int, allocate_int1d, allocate_int2d,             &
+                     allocate_int3d,                                           &
                      allocate_dbl, allocate_dbl1d, allocate_dbl2d,             &
+                     allocate_dbl3d,                                           &
                      allocate_ts1d
   end interface mem_allocate
   
@@ -66,7 +68,9 @@ module MemoryManagerModule
   interface mem_deallocate
     module procedure deallocate_logical,                                         &
                      deallocate_int, deallocate_int1d, deallocate_int2d,         &
+                     deallocate_int3d,                                           &
                      deallocate_dbl, deallocate_dbl1d, deallocate_dbl2d,         &
+                     deallocate_dbl3d,                                           &
                      deallocate_ts1d
   end interface mem_deallocate
 
@@ -238,7 +242,34 @@ module MemoryManagerModule
     write(mt%memtype, "(a,' (',i0,',',i0,')')") 'INTEGER', ncol, nrow
     call memorylist%add(mt)
   end subroutine allocate_int2d
-  
+    
+  subroutine allocate_int3d(aint, ncol, nrow, nlay, name, origin)
+    integer(I4B), dimension(:, :, :), pointer, contiguous, intent(inout) :: aint
+    integer(I4B), intent(in) :: ncol
+    integer(I4B), intent(in) :: nrow
+    integer(I4B), intent(in) :: nlay
+    character(len=*), intent(in) :: name
+    character(len=*), intent(in) :: origin
+    integer(I4B) :: istat
+    integer(I4B) :: isize
+    type(MemoryType), pointer :: mt
+    character(len=100) :: ermsg
+    call check_varname(name)
+    isize = ncol * nrow * nlay
+    allocate(aint(ncol, nrow, nlay), stat=istat, errmsg=ermsg)
+    if(istat /= 0) call allocate_error(name, origin, istat, ermsg, isize)
+    nvalues_aint = nvalues_aint + isize
+    allocate(mt)
+    mt%aint3d => aint
+    mt%isize = isize
+    mt%name = name
+    mt%origin = origin
+    mt%memitype = iaint3d !PAR
+    write(mt%memtype, "(a,' (',i0,',',i0,',',i0,')')") 'INTEGER', ncol,          &
+                                                       nrow, nlay
+    call memorylist%add(mt)
+  end subroutine allocate_int3d
+
   subroutine allocate_dbl(dblsclr, name, origin)
     real(DP), pointer, intent(inout) :: dblsclr
     character(len=*), intent(in) :: name
@@ -306,6 +337,33 @@ module MemoryManagerModule
     write(mt%memtype, "(a,' (',i0,',',i0,')')") 'DOUBLE', ncol, nrow
     call memorylist%add(mt)
   end subroutine allocate_dbl2d
+  
+  subroutine allocate_dbl3d(adbl, ncol, nrow, nlay, name, origin)
+    real(DP), dimension(:, :, :), pointer, contiguous, intent(inout) :: adbl
+    integer(I4B), intent(in) :: ncol
+    integer(I4B), intent(in) :: nrow
+    integer(I4B), intent(in) :: nlay
+    character(len=*), intent(in) :: name
+    character(len=*), intent(in) :: origin
+    integer(I4B) :: istat
+    integer(I4B) :: isize
+    type(MemoryType), pointer :: mt
+    character(len=100) :: ermsg
+    call check_varname(name)
+    isize = ncol * nrow * nlay
+    allocate(adbl(ncol, nrow, nlay), stat=istat, errmsg=ermsg)
+    if(istat /= 0) call allocate_error(name, origin, istat, ermsg, isize)
+    nvalues_adbl = nvalues_adbl + isize
+    allocate(mt)
+    mt%adbl3d => adbl
+    mt%isize = isize
+    mt%name = name
+    mt%origin = origin
+    mt%memitype = iadbl3d !PAR
+    write(mt%memtype, "(a,' (',i0,',',i0,',',i0,')')") 'DOUBLE', ncol,           &
+                                                       nrow, nlay
+    call memorylist%add(mt)
+  end subroutine allocate_dbl3d
 
   subroutine allocate_ts1d(ats, isize, name, origin)
     type (MemoryTSType), dimension(:), pointer, contiguous, intent(inout) :: ats
@@ -346,6 +404,7 @@ module MemoryManagerModule
     integer(I4B) :: istat
     type(MemoryType), pointer :: mt
     integer(I4B) :: i, isizeold
+    integer(I4B) :: ifill
     character(len=100) :: ermsg
     logical :: found
     !
@@ -354,9 +413,10 @@ module MemoryManagerModule
     !
     ! -- Allocate aint and then refill
     isizeold = size(mt%aint1d)
+    ifill = min(isizeold, isize)
     allocate(aint(isize), stat=istat, errmsg=ermsg)
     if(istat /= 0) call allocate_error(name, origin, istat, ermsg, isize)
-    do i = 1, isizeold
+    do i = 1, ifill
       aint(i) = mt%aint1d(i)
     enddo
     !
@@ -421,6 +481,7 @@ module MemoryManagerModule
     integer(I4B) :: istat
     type(MemoryType), pointer :: mt
     integer(I4B) :: i, isizeold
+    integer(I4B) :: ifill
     character(len=100) :: ermsg
     logical :: found
     !
@@ -429,9 +490,10 @@ module MemoryManagerModule
     !
     ! -- Allocate adbl and then refill
     isizeold = size(mt%adbl1d)
+    ifill = min(isizeold, isize)
     allocate(adbl(isize), stat=istat, errmsg=ermsg)
     if(istat /= 0) call allocate_error(name, origin, istat, ermsg, isize)
-    do i = 1, isizeold
+    do i = 1, ifill
       adbl(i) = mt%adbl1d(i)
     enddo
     !
@@ -849,6 +911,7 @@ module MemoryManagerModule
       return !PAR
     endif !PAR
     if (present(name) .and. present(origin)) then
+      found = .true. !PAR
       call get_from_memorylist(name, origin, mt, found)
       nullify(mt%aint1d)
     else
@@ -885,6 +948,7 @@ module MemoryManagerModule
       return !PAR
     endif !PAR
     if (present(name) .and. present(origin)) then
+      found = .true. !PAR
       call get_from_memorylist(name, origin, mt, found)
       nullify(mt%aint2d)
     else
@@ -910,6 +974,43 @@ module MemoryManagerModule
     endif
   end subroutine deallocate_int2d
   
+  subroutine deallocate_int3d(aint3d, name, origin)
+    integer(I4B), dimension(:, :, :), pointer, contiguous, intent(inout) :: aint3d
+    character(len=*), optional :: name
+    character(len=*), optional :: origin
+    type(MemoryType), pointer :: mt
+    integer(I4B) :: ipos
+    logical :: found
+    if (.not.associated(aint3d)) then !PAR
+      return !PAR
+    endif !PAR
+    if (present(name) .and. present(origin)) then
+      found = .true. !PAR
+      call get_from_memorylist(name, origin, mt, found)
+      nullify(mt%aint3d)
+    else
+      found = .false.
+      do ipos = 1, memorylist%count()
+        mt => memorylist%Get(ipos)
+        if(associated(mt%aint3d, aint3d)) then
+          nullify(mt%aint3d)
+          found = .true.
+          exit
+        endif
+      enddo
+    end if
+    if (.not. found .and. size(aint3d) > 0 ) then
+      call store_error('programming error in deallocate_int3d')
+      call ustop()
+    else
+      if (mt%master) then
+        deallocate(aint3d)
+      else
+        nullify(aint3d)
+      end if
+    endif
+  end subroutine deallocate_int3d
+  
   subroutine deallocate_dbl1d(adbl1d, name, origin)
     real(DP), dimension(:), pointer, contiguous, intent(inout) :: adbl1d
     character(len=*), optional :: name
@@ -921,6 +1022,7 @@ module MemoryManagerModule
       return !PAR
     endif !PAR
     if (present(name) .and. present(origin)) then
+      found = .true. !PAR
       call get_from_memorylist(name, origin, mt, found)
       nullify(mt%adbl1d)
     else
@@ -957,6 +1059,7 @@ module MemoryManagerModule
       return !PAR
     endif !PAR
     if (present(name) .and. present(origin)) then
+      found = .true. !PAR
       call get_from_memorylist(name, origin, mt, found)
       nullify(mt%adbl2d)
     else
@@ -971,6 +1074,7 @@ module MemoryManagerModule
       enddo
     end if
     if (.not. found .and. size(adbl2d) > 0 ) then
+      write(*,*) '@@@@@@',trim(name),trim(origin)
       call store_error('programming error in deallocate_dbl2d')
       call ustop()
     else
@@ -981,6 +1085,43 @@ module MemoryManagerModule
       end if
     endif
   end subroutine deallocate_dbl2d
+  
+  subroutine deallocate_dbl3d(adbl3d, name, origin)
+    real(DP), dimension(:, :, :), pointer, contiguous, intent(inout) :: adbl3d
+    character(len=*), optional :: name
+    character(len=*), optional :: origin
+    type(MemoryType), pointer :: mt
+    integer(I4B) :: ipos
+    logical :: found
+    if (.not.associated(adbl3d)) then !PAR
+      return !PAR
+    endif !PAR
+    if (present(name) .and. present(origin)) then
+      found = .true. !PAR
+      call get_from_memorylist(name, origin, mt, found)
+      nullify(mt%adbl3d)
+    else
+      found = .false.
+      do ipos = 1, memorylist%count()
+        mt => memorylist%Get(ipos)
+        if(associated(mt%adbl3d, adbl3d)) then
+          nullify(mt%adbl3d)
+          found = .true.
+          exit
+        endif
+      enddo
+    end if
+    if (.not. found .and. size(adbl3d) > 0 ) then
+      call store_error('programming error in deallocate_dbl3d')
+      call ustop()
+    else
+      if (mt%master) then
+        deallocate(adbl3d)
+      else
+        nullify(adbl3d)
+      end if
+    endif
+  end subroutine deallocate_dbl3d
   
   subroutine deallocate_ts1d(ats1d)
     type (MemoryTSType), dimension(:), pointer, contiguous, intent(inout) :: ats1d
@@ -1128,13 +1269,25 @@ module MemoryManagerModule
   end subroutine mem_timing  
   
   subroutine mem_da()
+    use SimModule, only: store_error, ustop, count_errors
+    use VersionModule, only: IDEVELOPMODE
     class(MemoryType), pointer :: mt
     integer(I4B) :: ipos
+    character(len=LINELENGTH) :: errmsg
+    logical, parameter :: lcheck = .false. !PAR
     do ipos = 1, memorylist%count()
       mt => memorylist%Get(ipos)
+      if ((IDEVELOPMODE == 1).and.lcheck) then !PAR
+        if (mt%mt_associated() .and. mt%isize > 0) then
+          errmsg = trim(adjustl(mt%origin)) // ' ' // &
+                   trim(adjustl(mt%name)) // ' not deallocated'
+          call store_error(trim(errmsg))
+        end if
+      end if
       deallocate(mt)
     enddo
     call memorylist%clear()
+    if (count_errors() > 0) call ustop()
   end subroutine mem_da
   
   subroutine mem_unique_origins(cunique)
@@ -1204,10 +1357,14 @@ module MemoryManagerModule
               if(associated(mt%aint1d)) found = .true.
             case(iaint2d)
               if(associated(mt%aint2d)) found = .true.
+            case(iaint3d)
+              if(associated(mt%aint3d)) found = .true.
             case(iadbl1d)
               if(associated(mt%adbl1d)) found = .true.
             case(iadbl2d)
               if(associated(mt%adbl2d)) found = .true.
+            case(iadbl3d)
+              if(associated(mt%adbl3d)) found = .true.
             case(iats1d)
               if(associated(mt%ats1d)) found = .true.
           end select
@@ -1239,10 +1396,14 @@ module MemoryManagerModule
               if(associated(mt%aint1d)) found = .true.
             case(iaint2d)
               if(associated(mt%aint2d)) found = .true.
+            case(iaint3d)
+              if(associated(mt%aint3d)) found = .true.
             case(iadbl1d)
               if(associated(mt%adbl1d)) found = .true.
             case(iadbl2d)
               if(associated(mt%adbl2d)) found = .true.
+            case(iadbl3d)
+              if(associated(mt%adbl3d)) found = .true.
             case(iats1d)
               if(associated(mt%ats1d)) found = .true.
           end select
@@ -1450,6 +1611,9 @@ end subroutine setval_logical
       case(iadbl1d)
         if (isize < isizei) then
           call allocate_error(name, origin, 0, errmsg, 0)
+        endif
+        if (.not.associated(mti%adbl1d)) then
+          write(*,*) '@@@@@ NOT ASSOCIATED: "'//trim(mti%name)//'" "'//trim(mti%origin)//'"', mti%isize 
         endif
         do i = 1, isizei
           mt%adbl1d(i+offset) = mti%adbl1d(i)

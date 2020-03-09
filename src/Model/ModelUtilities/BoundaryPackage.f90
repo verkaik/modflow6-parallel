@@ -113,6 +113,7 @@ module BndModule
     !
     ! -- procedure to support time series
     procedure, public :: bnd_rp_ts
+    !
   end type BndType
 
   contains
@@ -278,10 +279,9 @@ module BndModule
     ! -- dummy
     class(BndType),intent(inout) :: this
     ! -- local
-    integer(I4B) :: i, ierr, nlinks, nlist, node
-    logical :: isfound, endOfBlock
+    integer(I4B) :: ierr, nlist
+    logical :: isfound
     character(len=LINELENGTH) :: line, errmsg
-    type(TimeSeriesLinkType), pointer :: tsLink => null()
     ! -- formats
     character(len=*),parameter :: fmtblkerr = &
       "('Error.  Looking for BEGIN PERIOD iper.  Found ', a, ' instead.')"
@@ -1545,6 +1545,8 @@ module BndModule
     !
     return
   end subroutine bnd_rp_ts
+
+  ! -- Procedures related to casting
 
   function CastAsBndClass(obj) result(res)
     implicit none

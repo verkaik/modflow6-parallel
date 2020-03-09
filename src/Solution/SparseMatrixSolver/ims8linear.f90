@@ -171,13 +171,6 @@
 !     + + + LOCAL VARIABLES + + +
       LOGICAL :: lreaddata
       character(len=LINELENGTH) :: errmsg, keyword
-      !CHARACTER (LEN= 10) :: clin(0:2)
-      !CHARACTER (LEN= 31) :: clintit(0:2)
-      !CHARACTER (LEN= 20) :: cipc(0:4)
-      !CHARACTER (LEN= 20) :: cscale(0:2)
-      !CHARACTER (LEN= 25) :: corder(0:2)
-      !CHARACTER (LEN= 16), DIMENSION(0:4) :: ccnvgopt
-      !CHARACTER (LEN= 15) :: clevel, cdroptol
       integer(I4B) :: i, n
       integer(I4B) :: i0
       integer(I4B) :: iscllen, iolen
@@ -228,18 +221,18 @@
       THIS%ISCL = 0
       THIS%IPC = 0
       THIS%LEVEL = 0
-
+      
       !clevel = ''
       !cdroptol = ''
 !
 !-------TRANSFER COMMON VARIABLES FROM IMS TO IMSLINEAR
       THIS%ILINMETH = 0
-
+      
       THIS%IACPC = 0
       THIS%RELAX = DZERO !0.97
-
+      
       THIS%DROPTOL = DZERO
-
+      
       THIS%NORTH = 0
 
       THIS%ICNVGOPT = 0
@@ -258,7 +251,8 @@
 !
 ! -- get IMSLINEAR block
       if (lreaddata) then
-        call parser%GetBlock('LINEAR', isfound, ierr)
+        call parser%GetBlock('LINEAR', isfound, ierr, &
+          supportOpenClose=.true., blockRequired=.FALSE.)
       else
         isfound = .FALSE.
       end if
@@ -405,7 +399,7 @@
           call store_error(errmsg)
         end if
       end if
-
+      
       IMSLINEARM = THIS%ILINMETH
 !
 !-------DETERMINE PRECONDITIONER
@@ -468,7 +462,7 @@
       IF (THIS%ISCL.NE.0 ) iscllen  = NEQ
       CALL mem_allocate(THIS%DSCALE, iscllen, 'DSCALE', TRIM(THIS%ORIGIN))
       CALL mem_allocate(THIS%DSCALE2, iscllen, 'DSCALE2', TRIM(THIS%ORIGIN))
-
+      
 !-------ALLOCATE MEMORY FOR PRECONDITIONING MATRIX
       ijlu      = 1
       ijw       = 1
@@ -592,7 +586,7 @@
         THIS%PHAT(n) = DZERO
         THIS%QHAT(n) = DZERO
       END DO
-!-------ILUT AND MILUT WORKING VECTORS
+!-------ILUT AND MILUT WORKING VECTORS      
       DO n = 1, ijlu
         THIS%JLU(n)   = DZERO
       END DO
@@ -617,9 +611,9 @@
                                      THIS%NJA,THIS%IA,THIS%JA,                  &
                                      THIS%LORDER,THIS%IORDER)
       END IF
-!
+!      
 !-------ALLOCATE MEMORY FOR STORING ITERATION CONVERGENCE DATA
-
+      
 !
 !-------RETURN
       RETURN
@@ -636,8 +630,8 @@
       CHARACTER (LEN= 25) :: corder(0:2)
       CHARACTER (LEN= 16), DIMENSION(0:4) :: ccnvgopt
       CHARACTER (LEN= 15) :: clevel
-      CHARACTER (LEN= 15) :: cdroptol
-      integer(I4B) :: i, j, n
+      CHARACTER (LEN= 15) :: cdroptol 
+      integer(I4B) :: i, j
 !     + + + PARAMETERS + + +
 !       DATA
       DATA clin  /'UNKNOWN   ', &
@@ -715,22 +709,22 @@
       ELSE
          WRITE (this%iout,'(//)')
       END IF
-
+      
       if (this%iord /= 0) then
-        !
-        ! -- WRITE SUMMARY OF REORDERING INFORMATION TO LIST FILE
-        if (this%iprims ==  2) then
-          DO i = 1, this%neq, 6
+        !                                                                       
+        ! -- WRITE SUMMARY OF REORDERING INFORMATION TO LIST FILE                                                  
+        if (this%iprims ==  2) then 
+          DO i = 1, this%neq, 6 
             WRITE (this%iout,2030) 'ORIGINAL NODE      :',                      &
-                              (j,j=i,MIN(i+5,this%neq))
-            WRITE (this%iout,2040)
+                              (j,j=i,MIN(i+5,this%neq))                      
+            WRITE (this%iout,2040) 
             WRITE (this%iout,2030) 'REORDERED INDEX    :',                      &
-                              (this%lorder(j),j=i,MIN(i+5,this%neq))
+                              (this%lorder(j),j=i,MIN(i+5,this%neq))              
             WRITE (this%iout,2030) 'REORDERED NODE     :',                      &
-                              (this%iorder(j),j=i,MIN(i+5,this%neq))
-            WRITE (this%iout,2050)
-          END DO
-        END IF
+                              (this%iorder(j),j=i,MIN(i+5,this%neq))              
+            WRITE (this%iout,2050) 
+          END DO 
+        END IF 
       end if
       !
       ! -- return
@@ -907,7 +901,7 @@
       ! --Return
       return
     end subroutine allocate_scalars
-
+    
     subroutine IMSLINEAR_DA(this)
       use MemoryManagerModule, only: mem_deallocate
       class(IMSLINEAR_DATA), intent(inout) :: this
@@ -981,7 +975,7 @@
       ! --Return
       return
     end subroutine IMSLINEAR_DA
-
+    
     SUBROUTINE SET_IMSLINEAR_INPUT(THIS, IFDPARAM)
       IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
@@ -1084,7 +1078,7 @@
       real(DP), DIMENSION(CONVNMOD), INTENT(INOUT) :: DRMAX
       real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDVMAX
       real(DP), DIMENSION(CONVNMOD, NCONV), INTENT(INOUT) :: CONVDRMAX
-
+      
 !     + + + LOCAL DEFINITIONS + + +
       integer(I4B) :: n
       integer(I4B) :: innerit
@@ -1251,210 +1245,209 @@
 !
       END SUBROUTINE IMSLINEAR_AP
 
-
+    
 ! -- IMSLinearModule subroutines that do not depend on data stored in the IMSLinearModule class
 !    all data is passed through subroutine calls
-!
-!-------ROUTINE TO CALCULATE LORDER AND IORDER FOR REORDERING
+!                                                                       
+!-------ROUTINE TO CALCULATE LORDER AND IORDER FOR REORDERING           
       SUBROUTINE IMSLINEARSUB_CALC_ORDER(IOUT, IPRIMS, IORD, NEQ, NJA, IA, JA,  &
-     &                                   LORDER, IORDER)
+     &                                   LORDER, IORDER)                     
       use SimModule, only: ustop, store_error, count_errors
-      IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN) :: IOUT
-        integer(I4B), INTENT(IN) :: IPRIMS
-        integer(I4B), INTENT(IN) :: IORD
-        integer(I4B), INTENT(IN) :: NEQ
-        integer(I4B), INTENT(IN) :: NJA
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN)  :: IA
-        integer(I4B), DIMENSION(NJA),   INTENT(IN)  :: JA
-        integer(I4B), DIMENSION(NEQ), INTENT(INOUT) :: LORDER
-        integer(I4B), DIMENSION(NEQ), INTENT(INOUT) :: IORDER
-!       + + + LOCAL DEFINITIONS + + +
-        character (len=LINELENGTH) :: errmsg
-        integer(I4B) :: n
-        integer(I4B) :: nsp
-        integer(I4B), DIMENSION(:), ALLOCATABLE :: iwork0, iwork1
-        integer(I4B) :: iflag
-        integer(I4B) :: i,j
-!       + + + PARAMETERS + + +
-!       + + + FUNCTIONS + + +
-!       + + + FORMATS + + +
-!       + + + CODE + + +
-        DO n = 1, NEQ
-          LORDER(n) = IZERO
-          IORDER(n) = IZERO
-        END DO
-        ALLOCATE ( iwork0(NEQ)  )
-        SELECT CASE ( IORD )
-          CASE ( 1 )
-            ALLOCATE ( iwork1(NEQ) )
+      IMPLICIT NONE 
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN) :: IOUT 
+        integer(I4B), INTENT(IN) :: IPRIMS 
+        integer(I4B), INTENT(IN) :: IORD 
+        integer(I4B), INTENT(IN) :: NEQ 
+        integer(I4B), INTENT(IN) :: NJA 
+        integer(I4B), DIMENSION(NEQ+1), INTENT(IN)  :: IA 
+        integer(I4B), DIMENSION(NJA),   INTENT(IN)  :: JA 
+        integer(I4B), DIMENSION(NEQ), INTENT(INOUT) :: LORDER 
+        integer(I4B), DIMENSION(NEQ), INTENT(INOUT) :: IORDER 
+!       + + + LOCAL DEFINITIONS + + +                                     
+        character (len=LINELENGTH) :: errmsg 
+        integer(I4B) :: n 
+        integer(I4B) :: nsp 
+        integer(I4B), DIMENSION(:), ALLOCATABLE :: iwork0, iwork1 
+        integer(I4B) :: iflag 
+!       + + + PARAMETERS + + +                                            
+!       + + + FUNCTIONS + + +                                             
+!       + + + FORMATS + + +                                               
+!       + + + CODE + + +                                                  
+        DO n = 1, NEQ 
+          LORDER(n) = IZERO 
+          IORDER(n) = IZERO 
+        END DO 
+        ALLOCATE ( iwork0(NEQ)  ) 
+        SELECT CASE ( IORD ) 
+          CASE ( 1 ) 
+            ALLOCATE ( iwork1(NEQ) ) 
             CALL ims_genrcm(NEQ, NJA, IA, JA,                           &
-     &                      LORDER, iwork0, iwork1 )
-          CASE ( 2 )
-            nsp = 3 * NEQ + 4 * NJA
-            ALLOCATE ( iwork1(nsp)  )
+     &                      LORDER, iwork0, iwork1 )                        
+          CASE ( 2 ) 
+            nsp = 3 * NEQ + 4 * NJA 
+            ALLOCATE ( iwork1(nsp)  ) 
             CALL ims_odrv(NEQ, NJA, nsp, IA, JA, LORDER, iwork0,        &
-                          iwork1, iflag)
-            IF (iflag.NE.0) THEN
+                          iwork1, iflag)                           
+            IF (iflag.NE.0) THEN 
               write (errmsg,'(A)') 'ERROR CREATING MINIMUM DEGREE '//   &
-     &                   'ORDER PERMUTATION '
-              call store_error(errmsg)
-              !call ustop()
-            END IF
-        END SELECT
+     &                   'ORDER PERMUTATION '                           
+              call store_error(errmsg) 
+              !call ustop()                                             
+            END IF 
+        END SELECT 
+!                                                                       
+!         GENERATE INVERSE OF LORDER                                    
+        DO n = 1, NEQ 
+          IORDER( LORDER(n) ) = n 
+        END DO 
 !
-!         GENERATE INVERSE OF LORDER
-        DO n = 1, NEQ
-          IORDER( LORDER(n) ) = n
-        END DO
-!
-!         DEALLOCATE TEMPORARY STORAGE
-        DEALLOCATE ( iwork0, iwork1 )
+!         DEALLOCATE TEMPORARY STORAGE                                  
+        DEALLOCATE ( iwork0, iwork1 ) 
 !
         if (count_errors() > 0) then
           call parser%StoreErrorUnit()
           call ustop()
         endif
 !
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_CALC_ORDER
-!
-!-------ROUTINE TO SCALE THE COEFFICIENT MATRIX (AMAT),
-!       THE RHS (B), AND THE ESTIMATE OF X (X)
+!---------RETURN                                                        
+        RETURN 
+      END SUBROUTINE IMSLINEARSUB_CALC_ORDER 
+!                                                                       
+!-------ROUTINE TO SCALE THE COEFFICIENT MATRIX (AMAT),                 
+!       THE RHS (B), AND THE ESTIMATE OF X (X)                          
       SUBROUTINE IMSLINEARSUB_SCALE(IOPT, ISCL, NEQ, NJA, IA, JA, AMAT, X, B,   &
-     &                              DSCALE, DSCALE2)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN) :: IOPT
-        integer(I4B), INTENT(IN) :: ISCL
-        integer(I4B), INTENT(IN) :: NEQ
-        integer(I4B), INTENT(IN) :: NJA
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA
-        integer(I4B), DIMENSION(NJA),   INTENT(IN) :: JA
-        real(DP), DIMENSION(NJA),  INTENT(INOUT) :: AMAT
-        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: X
-        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: B
-        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: DSCALE
-        real(DP), DIMENSION(NEQ), INTENT(INOUT)  :: DSCALE2
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: i, n
-        integer(I4B) :: id, jc
-        integer(I4B) :: i0, i1
-        real(DP) :: v, c1, c2
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-!
-!---------SCALE SCALE AMAT, X, AND B
-        IF (IOPT ==  0) THEN
-!-----------SYMMETRIC SCALING
-          SELECT CASE ( ISCL )
-            CASE ( 1 )
-              DO n = 1, NEQ
-                id   = IA(n)
-                v    = AMAT(id)
-                c1   = DONE / SQRT( ABS( v ) )
-                DSCALE(n)  = c1
-                DSCALE2(n) = c1
-              END DO
+     &                              DSCALE, DSCALE2)                            
+        IMPLICIT NONE 
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN) :: IOPT 
+        integer(I4B), INTENT(IN) :: ISCL 
+        integer(I4B), INTENT(IN) :: NEQ 
+        integer(I4B), INTENT(IN) :: NJA 
+        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA 
+        integer(I4B), DIMENSION(NJA),   INTENT(IN) :: JA 
+        real(DP), DIMENSION(NJA),  INTENT(INOUT) :: AMAT 
+        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: X 
+        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: B 
+        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: DSCALE 
+        real(DP), DIMENSION(NEQ), INTENT(INOUT)  :: DSCALE2 
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: i, n 
+        integer(I4B) :: id, jc 
+        integer(I4B) :: i0, i1 
+        real(DP) :: v, c1, c2 
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+!                                                                       
+!---------SCALE SCALE AMAT, X, AND B                                    
+        IF (IOPT ==  0) THEN 
+!-----------SYMMETRIC SCALING                                           
+          SELECT CASE ( ISCL ) 
+            CASE ( 1 ) 
+              DO n = 1, NEQ 
+                id   = IA(n) 
+                v    = AMAT(id) 
+                c1   = DONE / SQRT( ABS( v ) ) 
+                DSCALE(n)  = c1 
+                DSCALE2(n) = c1 
+              END DO 
 !               SCALE AMAT -- AMAT = DSCALE(row) * AMAT(i) * DSCALE2(col)
-              DO n = 1, NEQ
-                c1 = DSCALE(n)
-                i0 = IA(n)
-                i1 = IA(n+1) - 1
-                DO i = i0, i1
-                  jc = JA(i)
-                  c2 = DSCALE2(jc)
-                  AMAT(i) = c1 * AMAT(i) * c2
-                END DO
-              END DO
-!-----------L-2 NORM SCALING
-            CASE ( 2 )
-!               SCALE EACH ROW SO THAT THE L-2 NORM IS 1
-              DO n = 1, NEQ
-                c1 = DZERO
-                i0 = IA(n)
-                i1 = IA(n+1) - 1
-                DO i = i0, i1
-                  c1 = c1 + AMAT(i) * AMAT(i)
-                END DO
-                c1 = SQRT( c1 )
-                IF (c1 ==  DZERO) THEN
-                  c1 = DONE
-                ELSE
-                  c1 = DONE / c1
-                END IF
-                DSCALE(n) = c1
+              DO n = 1, NEQ 
+                c1 = DSCALE(n) 
+                i0 = IA(n) 
+                i1 = IA(n+1) - 1 
+                DO i = i0, i1 
+                  jc = JA(i) 
+                  c2 = DSCALE2(jc) 
+                  AMAT(i) = c1 * AMAT(i) * c2 
+                END DO 
+              END DO 
+!-----------L-2 NORM SCALING                                            
+            CASE ( 2 ) 
+!               SCALE EACH ROW SO THAT THE L-2 NORM IS 1                
+              DO n = 1, NEQ 
+                c1 = DZERO 
+                i0 = IA(n) 
+                i1 = IA(n+1) - 1 
+                DO i = i0, i1 
+                  c1 = c1 + AMAT(i) * AMAT(i) 
+                END DO 
+                c1 = SQRT( c1 ) 
+                IF (c1 ==  DZERO) THEN 
+                  c1 = DONE 
+                ELSE 
+                  c1 = DONE / c1 
+                END IF 
+                DSCALE(n) = c1 
 !                 INITIAL SCALING OF AMAT -- AMAT = DSCALE(row) * AMAT(i)
-                DO i = i0, i1
-                  AMAT(i) = c1 * AMAT(i)
-                END DO
-              END DO
-!               SCALE EACH COLUMN SO THAT THE L-2 NORM IS 1
-              DO n = 1, NEQ
-                DSCALE2(n) = DZERO
-              END DO
-              c2 = DZERO
-              DO n = 1, NEQ
-                i0 = IA(n)
-                i1 = IA(n+1) - 1
-                DO i = i0, i1
-                  jc = JA(i)
-                  c2 = AMAT(i)
-                  DSCALE2(jc) = DSCALE2(jc) + c2 * c2
-                END DO
-              END DO
-              DO n = 1, NEQ
-                c2 = DSCALE2(n)
-                IF (c2 ==  DZERO) THEN
-                  c2 = DONE
-                ELSE
-                  c2 = DONE / SQRT( c2 )
-                END IF
-                DSCALE2(n) = c2
-              END DO
-!               FINAL SCALING OF AMAT -- AMAT = DSCALE2(col) * AMAT(i)
-              DO n = 1, NEQ
-                i0 = IA(n)
-                i1 = IA(n+1) - 1
-                DO i = i0, i1
-                  jc = JA(i)
-                  c2 = DSCALE2(jc)
-                  AMAT(i) = c2 * AMAT(i)
-                END DO
-              END DO
-          END SELECT
-!-----------SCALE X AND B
-          DO n = 1, NEQ
-            c1    = DSCALE(n)
-            c2    = DSCALE2(n)
-            X(n)  = X(n) / c2
-            B(n)  = B(n) * c1
-          END DO
-!---------UNSCALE SCALE AMAT, X, AND B
-        ELSE
-          DO n = 1, NEQ
-            c1 = DSCALE(n)
-            i0 = IA(n)
-            i1 = IA(n+1) - 1
-!             UNSCALE AMAT
-            DO i = i0, i1
-              jc = JA(i)
-              c2 = DSCALE2(jc)
-              AMAT(i) = ( DONE / c1 ) * AMAT(i) * ( DONE / c2 )
-            END DO
-!             UNSCALE X AND B
-            c2   = DSCALE2(n)
-            X(n) = X(n) * c2
-            B(n) = B(n) / c1
-          END DO
-        END IF
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_SCALE
-!
-!-------ROUTINE TO UPDATE THE PRECONDITIONER
+                DO i = i0, i1 
+                  AMAT(i) = c1 * AMAT(i) 
+                END DO 
+              END DO 
+!               SCALE EACH COLUMN SO THAT THE L-2 NORM IS 1             
+              DO n = 1, NEQ 
+                DSCALE2(n) = DZERO 
+              END DO 
+              c2 = DZERO 
+              DO n = 1, NEQ 
+                i0 = IA(n) 
+                i1 = IA(n+1) - 1 
+                DO i = i0, i1 
+                  jc = JA(i) 
+                  c2 = AMAT(i) 
+                  DSCALE2(jc) = DSCALE2(jc) + c2 * c2 
+                END DO 
+              END DO 
+              DO n = 1, NEQ 
+                c2 = DSCALE2(n) 
+                IF (c2 ==  DZERO) THEN 
+                  c2 = DONE 
+                ELSE 
+                  c2 = DONE / SQRT( c2 ) 
+                END IF 
+                DSCALE2(n) = c2 
+              END DO 
+!               FINAL SCALING OF AMAT -- AMAT = DSCALE2(col) * AMAT(i)  
+              DO n = 1, NEQ 
+                i0 = IA(n) 
+                i1 = IA(n+1) - 1 
+                DO i = i0, i1 
+                  jc = JA(i) 
+                  c2 = DSCALE2(jc) 
+                  AMAT(i) = c2 * AMAT(i) 
+                END DO 
+              END DO 
+          END SELECT 
+!-----------SCALE X AND B                                               
+          DO n = 1, NEQ 
+            c1    = DSCALE(n) 
+            c2    = DSCALE2(n) 
+            X(n)  = X(n) / c2 
+            B(n)  = B(n) * c1 
+          END DO 
+!---------UNSCALE SCALE AMAT, X, AND B                                  
+        ELSE 
+          DO n = 1, NEQ 
+            c1 = DSCALE(n) 
+            i0 = IA(n) 
+            i1 = IA(n+1) - 1 
+!             UNSCALE AMAT                                              
+            DO i = i0, i1 
+              jc = JA(i) 
+              c2 = DSCALE2(jc) 
+              AMAT(i) = ( DONE / c1 ) * AMAT(i) * ( DONE / c2 ) 
+            END DO 
+!             UNSCALE X AND B                                           
+            c2   = DSCALE2(n) 
+            X(n) = X(n) * c2 
+            B(n) = B(n) / c1 
+          END DO 
+        END IF 
+!---------RETURN                                                        
+        RETURN 
+      END SUBROUTINE IMSLINEARSUB_SCALE 
+!                                                                       
+!-------ROUTINE TO UPDATE THE PRECONDITIONER                            
       SUBROUTINE IMSLINEARSUB_PCU(IOUT, NJA, NEQ, NIAPC, NJAPC, IPC, RELAX,     &
                                   AMAT, IA, JA, APC, IAPC, JAPC, IW, W,         &
                                   LEVEL, DROPTOL, NJLU, NJW, NWLU, JLU, JW, WLU,&
@@ -1491,25 +1484,25 @@
 !       + + + LOCAL DEFINITIONS + + +
         character(len=LINELENGTH) :: errmsg
         character(len=80), dimension(3) :: cerr
-        integer(I4B) :: izero
+        integer(I4B) :: izero 
         integer(I4B) :: ierr
-        real(DP) :: delta
-!       + + + FUNCTIONS + + +
+        real(DP) :: delta 
+!       + + + FUNCTIONS + + +  
 !       + + + DATA + + +
         DATA cerr  /'INCOMPREHENSIBLE ERROR - MATRIX MUST BE WRONG.              ', &
                     'INSUFFICIENT STORAGE IN ARRAYS ALU, JLU TO STORE FACTORS.   ', &
                     'ZERO ROW ENCOUNTERED.                                       '/
-
-!       + + + FORMATS + + +
+        
+!       + + + FORMATS + + +                                               
  2000   FORMAT (/,' MATRIX IS SEVERELY NON-DIAGONALLY DOMINANT.',               &
-     &          /,' ADDING SMALL VALUE TO PIVOT (IMSLINEARSUB_PCU)')
-!       + + + CODE + + +
-        izero = 0
-        delta = DZERO
+     &          /,' ADDING SMALL VALUE TO PIVOT (IMSLINEARSUB_PCU)')           
+!       + + + CODE + + +                                                  
+        izero = 0 
+        delta = DZERO 
         PCSCALE: DO
-          SELECT CASE(IPC)
-!             ILU0 AND MILU0
-            CASE (1,2)
+          SELECT CASE(IPC) 
+!             ILU0 AND MILU0                                              
+            CASE (1,2) 
               CALL IMSLINEARSUB_PCILU0(NJA, NEQ, AMAT, IA, JA,                   &
                                        APC, IAPC, JAPC, IW, W,                   &
                                        RELAX, izero, delta,                      &
@@ -1528,19 +1521,19 @@
                 call parser%StoreErrorUnit()
                 call ustop()
               END IF
-!           ADDITIONAL PRECONDITIONERS
+!           ADDITIONAL PRECONDITIONERS                     
             CASE DEFAULT
               izero = 0
           END SELECT
-          IF (izero < 1) THEN
-            EXIT PCSCALE
-          END IF
-          delta = 1.5D0 * delta + 0.001
-          izero = 0
-          IF (delta > DHALF) THEN
-            WRITE(IOUT,2000)
-            delta = DHALF
-            izero = 2
+          IF (izero < 1) THEN 
+            EXIT PCSCALE 
+          END IF 
+          delta = 1.5D0 * delta + 0.001 
+          izero = 0 
+          IF (delta > DHALF) THEN 
+            WRITE(IOUT,2000) 
+            delta = DHALF 
+            izero = 2 
           END IF
         END DO PCSCALE
 !---------RETURN
@@ -1965,16 +1958,16 @@
           sd1 = SIGN(d,tl)
           IF (sd1.NE.d) THEN
 !             USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
-!             PIVOTS THAT CHANGE THE SIGN OF THE DIAGONAL
-            IF (IZERO > 1) THEN
-              tl = SIGN(DEM6,d)
-!             DIAGONAL SCALING CONTINUES TO BE EFFECTIVE
-            ELSE
-              IZERO = 1
-              EXIT MAIN
-            END IF
-          END IF
-          IF (ABS(tl) ==  DZERO) THEN
+!             PIVOTS THAT CHANGE THE SIGN OF THE DIAGONAL               
+            IF (IZERO > 1) THEN 
+              tl = SIGN(DEM6,d) 
+!             DIAGONAL SCALING CONTINUES TO BE EFFECTIVE                
+            ELSE 
+              IZERO = 1 
+              EXIT MAIN 
+            END IF 
+          END IF 
+          IF (ABS(tl) ==  DZERO) THEN 
 !             USE SMALL VALUE IF DIAGONAL SCALING IS NOT EFFECTIVE FOR
 !             ZERO PIVOTS
             IF (IZERO > 1) THEN
@@ -2110,17 +2103,17 @@
         real(DP),                   POINTER :: RHOTOL   => NULL() !SOL
         !
         LOGICAL :: LORTH
-        logical :: lsame
+        logical :: lsame 
         character(len=31) :: cval
-        integer(I4B) :: n
-        integer(I4B) :: iiter
+        integer(I4B) :: n 
+        integer(I4B) :: iiter 
         integer(I4B) :: xloc, rloc
         integer(I4B) :: im, im0, im1
-        real(DP) :: tv
-        real(DP) :: deltax
-        real(DP) :: rmax
-        real(DP) :: l2norm
-        real(DP) :: rcnvg
+        real(DP) :: tv 
+        real(DP) :: deltax 
+        real(DP) :: rmax 
+        real(DP) :: l2norm 
+        real(DP) :: rcnvg 
         real(DP) :: denom
         real(DP) :: alpha, beta
         real(DP) :: rho, rho0
@@ -2209,10 +2202,10 @@
           call MpiSol%mpi_global_exchange_sum(denom) !PAR
           denom = denom + SIGN(DPREC, denom)
           alpha = rho / denom
-!-----------UPDATE X AND RESIDUAL
-          deltax = DZERO
-          rmax   = DZERO
-          l2norm = DZERO
+!-----------UPDATE X AND RESIDUAL                                       
+          deltax = DZERO 
+          rmax   = DZERO 
+          l2norm = DZERO 
           DO im = 1, CONVNMOD
             DVMAX(im) = DZERO
             DRMAX(im) = DZERO
@@ -2228,8 +2221,8 @@
               im1 = CONVMODSTART(im+1)
             end if
             ! -- identify deltax and rmax
-            tv      = alpha * P(n)
-            X(n)  = X(n) + tv
+            tv      = alpha * P(n) 
+            X(n)  = X(n) + tv 
             IF (ABS(tv) > ABS(deltax)) THEN
               deltax = tv
               xloc = n
@@ -2238,9 +2231,9 @@
               DVMAX(im) = tv
               LOCDV(im) = n
             END IF
-            tv      = D(n)
-            tv      = tv - alpha * Q(n)
-            D(n)  = tv
+            tv      = D(n) 
+            tv      = tv - alpha * Q(n) 
+            D(n)  = tv 
             IF (ABS(tv) > ABS(rmax)) THEN
               rmax = tv
               rloc = n
@@ -2269,15 +2262,15 @@
               CONVDRMAX(im, n) = DRMAX(im)
             END DO
           END IF
-!-----------TEST FOR SOLVER CONVERGENCE
-          IF (ICNVGOPT ==  2 .OR. ICNVGOPT ==  3 .OR. ICNVGOPT ==  4) THEN
-            rcnvg = l2norm
-          ELSE
-            rcnvg = rmax
-          END IF
+!-----------TEST FOR SOLVER CONVERGENCE                                 
+          IF (ICNVGOPT ==  2 .OR. ICNVGOPT ==  3 .OR. ICNVGOPT ==  4) THEN 
+            rcnvg = l2norm 
+          ELSE 
+            rcnvg = rmax 
+          END IF 
           CALL IMSLINEARSUB_TESTCNVG(ICNVGOPT, ICNVG, INNERIT,                  &
                                      deltax, rcnvg,                             &
-                                     L2NORM0, EPFACT, HCLOSE, RCLOSE)
+                                     L2NORM0, EPFACT, HCLOSE, RCLOSE)         
 !
 !           CHECK FOR EXACT SOLUTION
           IF (rcnvg ==  DZERO) ICNVG = 1
@@ -2386,21 +2379,21 @@
         REAL(DP),                   POINTER :: OMEGATOL !SOL
         !
         LOGICAL :: LORTH
-        logical :: lsame
+        logical :: lsame 
         character(len=15) :: cval1, cval2
-        integer(I4B) :: n
-        integer(I4B) :: iiter
+        integer(I4B) :: n 
+        integer(I4B) :: iiter 
         integer(I4B) :: xloc, rloc
         integer(I4B) :: im, im0, im1
-        real(DP) :: tv
-        real(DP) :: deltax
+        real(DP) :: tv 
+        real(DP) :: deltax 
         real(DP) :: rmax
-        real(DP) :: l2norm
-        real(DP) :: rcnvg
-        real(DP) :: alpha, alpha0
-        real(DP) :: beta
-        real(DP) :: rho, rho0
-        real(DP) :: omega, omega0
+        real(DP) :: l2norm 
+        real(DP) :: rcnvg 
+        real(DP) :: alpha, alpha0 
+        real(DP) :: beta 
+        real(DP) :: rho, rho0 
+        real(DP) :: omega, omega0 
         real(DP) :: numer, denom
         CHARACTER(LEN=100), DIMENSION(4) :: SA !PAR
         
@@ -2452,8 +2445,8 @@
 
         alpha  = DZERO
         alpha0 = DZERO
-        beta   = DZERO
-        rho    = DZERO
+        beta   = DZERO 
+        rho    = DZERO 
         rho0   = DZERO
         omega  = DZERO
         omega0 = DZERO
@@ -2489,8 +2482,8 @@
 !----------APPLY PRECONDITIONER TO UPDATE PHAT
           SELECT CASE (IPC)
 !             ILU0 AND MILU0
-            CASE (1,2)
-              CALL IMSLINEARSUB_ILU0A(NJA, NEQ, APC, IAPC, JAPC, P, PHAT)
+            CASE (1,2) 
+              CALL IMSLINEARSUB_ILU0A(NJA, NEQ, APC, IAPC, JAPC, P, PHAT) 
 !             ILUT AND MILUT
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, P, PHAT, APC, JLU, IW)
@@ -2535,14 +2528,14 @@
 !            END DO
 !            CALL IMSLINEARSUB_TESTCNVG(ICNVGOPT, ICNVG, INNERIT,                &
 !                                       deltax, rmax,                            &
-!                                       rmax, EPFACT, HCLOSE, RCLOSE )
-!            IF (ICNVG.NE.0 ) EXIT INNER
-!          END IF
-!-----------APPLY PRECONDITIONER TO UPDATE QHAT
-          SELECT CASE (IPC)
-!            ILU0 AND MILU0
-            CASE (1,2)
-              CALL IMSLINEARSUB_ILU0A(NJA, NEQ, APC, IAPC, JAPC, Q, QHAT)
+!                                       rmax, EPFACT, HCLOSE, RCLOSE )          
+!            IF (ICNVG.NE.0 ) EXIT INNER 
+!          END IF 
+!-----------APPLY PRECONDITIONER TO UPDATE QHAT                         
+          SELECT CASE (IPC) 
+!            ILU0 AND MILU0            
+            CASE (1,2) 
+              CALL IMSLINEARSUB_ILU0A(NJA, NEQ, APC, IAPC, JAPC, Q, QHAT) 
 !             ILUT AND MILUT
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, Q, QHAT, APC, JLU, IW)
@@ -2574,19 +2567,19 @@
           im  = 1
           im0 = CONVMODSTART(1)
           im1 = CONVMODSTART(2)
-          DO n = 1, NEQ
+          DO n = 1, NEQ 
             ! -- determine current model index
             if (n == im1) then
               im = im + 1
               im0 = CONVMODSTART(im)
               im1 = CONVMODSTART(im+1)
             end if
-!-------------X AND DX
-            tv = alpha * PHAT(n) + omega * QHAT(n)
-            X(n)  = X(n) + tv
-            IF (ISCL.NE.0) THEN
-              tv = tv * DSCALE(n)
-            END IF
+!-------------X AND DX                                                  
+            tv = alpha * PHAT(n) + omega * QHAT(n) 
+            X(n)  = X(n) + tv 
+            IF (ISCL.NE.0) THEN 
+              tv = tv * DSCALE(n) 
+            END IF 
             IF (ABS(tv) > ABS(deltax)) THEN
               deltax = tv
               xloc = n
@@ -2595,12 +2588,12 @@
               DVMAX(im) = tv
               LOCDV(im) = n
             END IF
-!-------------RESIDUAL
-            tv      = Q(n) - omega * T(n)
-            D(n)  = tv
-            IF (ISCL.NE.0) THEN
-              tv = tv / DSCALE(n)
-            END IF
+!-------------RESIDUAL                                                  
+            tv      = Q(n) - omega * T(n) 
+            D(n)  = tv 
+            IF (ISCL.NE.0) THEN 
+              tv = tv / DSCALE(n) 
+            END IF 
             IF (ABS(tv) > ABS(rmax)) THEN
               rmax = tv
               rloc = n
@@ -2609,7 +2602,7 @@
               DRMAX(im) = tv
               LOCDR(im) = n
             END IF
-            l2norm = l2norm + tv * tv
+            l2norm = l2norm + tv * tv 
           END DO
           ! -- MPI parallel: collective comm. of l2norm (sum) and rmax (max)
           call MpiSol%mpi_global_exchange_sum(l2norm) !PAR
@@ -2629,19 +2622,19 @@
               CONVDRMAX(im, n) = DRMAX(im)
             END DO
           END IF
-!-----------TEST FOR SOLVER CONVERGENCE
-          IF (ICNVGOPT ==  2 .OR. ICNVGOPT ==  3 .OR. ICNVGOPT ==  4) THEN
-            rcnvg = l2norm
-          ELSE
-            rcnvg = rmax
-          END IF
+!-----------TEST FOR SOLVER CONVERGENCE                                 
+          IF (ICNVGOPT ==  2 .OR. ICNVGOPT ==  3 .OR. ICNVGOPT ==  4) THEN 
+            rcnvg = l2norm 
+          ELSE 
+            rcnvg = rmax 
+          END IF 
           CALL IMSLINEARSUB_TESTCNVG(ICNVGOPT, ICNVG, INNERIT,                  &
                                      deltax, rcnvg,                             &
-                                     L2NORM0, EPFACT, HCLOSE, RCLOSE)
-!           CHECK FOR EXACT SOLUTION
-          IF (rcnvg ==  DZERO) ICNVG = 1
+                                     L2NORM0, EPFACT, HCLOSE, RCLOSE)         
+!           CHECK FOR EXACT SOLUTION                                    
+          IF (rcnvg ==  DZERO) ICNVG = 1 
           IF (ICNVG.NE.0) EXIT INNER
-!-----------CHECK THAT CURRENT AND PREVIOUS rho, alpha, AND omega ARE
+!-----------CHECK THAT CURRENT AND PREVIOUS rho, alpha, AND omega ARE 
 !           DIFFERENT
           lsame = IS_SAME(rho, rho0, RHOTOL) !SOL
           IF (lsame) THEN
@@ -2670,7 +2663,7 @@
               !END DO
             END IF
           END IF
-!-----------SAVE CURRENT INNER ITERATES
+!-----------SAVE CURRENT INNER ITERATES                                 
           rho0   = rho
           alpha0 = alpha
           omega0 = omega
@@ -2687,148 +2680,148 @@
 !
 !---------RESET ICNVG
         IF (ICNVG < 0) ICNVG = 0
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_BCGS
-!
-!---------TEST FOR SOLVER CONVERGENCE
+!---------RETURN                                                        
+        RETURN 
+      END SUBROUTINE IMSLINEARSUB_BCGS 
+!                                                                       
+!---------TEST FOR SOLVER CONVERGENCE                                   
         SUBROUTINE IMSLINEARSUB_TESTCNVG(Icnvgopt, Icnvg, Iiter,                &
                                          Hmax, Rmax,                            &
-                                         Rmax0, Epfact, Hclose, Rclose )
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN)         :: Icnvgopt
-        integer(I4B), INTENT(INOUT)      :: Icnvg
+                                         Rmax0, Epfact, Hclose, Rclose )         
+        IMPLICIT NONE 
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN)         :: Icnvgopt 
+        integer(I4B), INTENT(INOUT)      :: Icnvg 
         integer(I4B), INTENT(IN)         :: Iiter
-        real(DP), INTENT(IN) :: Hmax
-        real(DP), INTENT(IN) :: Rmax
-        real(DP), INTENT(IN) :: Rmax0
-        real(DP), INTENT(IN) :: Epfact
-        real(DP), INTENT(IN) :: Hclose
-        real(DP), INTENT(IN) :: Rclose
-!       + + + LOCAL DEFINITIONS + + +
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        IF (Icnvgopt ==  0) THEN
-          IF (ABS(Hmax) <=  Hclose .AND. ABS(Rmax) <=  Rclose) THEN
-            Icnvg = 1
-          END IF
-        ELSE IF (Icnvgopt ==  1) THEN
+        real(DP), INTENT(IN) :: Hmax 
+        real(DP), INTENT(IN) :: Rmax 
+        real(DP), INTENT(IN) :: Rmax0 
+        real(DP), INTENT(IN) :: Epfact 
+        real(DP), INTENT(IN) :: Hclose 
+        real(DP), INTENT(IN) :: Rclose 
+!       + + + LOCAL DEFINITIONS + + +                                     
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        IF (Icnvgopt ==  0) THEN 
+          IF (ABS(Hmax) <=  Hclose .AND. ABS(Rmax) <=  Rclose) THEN 
+            Icnvg = 1 
+          END IF 
+        ELSE IF (Icnvgopt ==  1) THEN 
           IF (ABS(Hmax) <=  Hclose .AND. ABS(Rmax) <=  Rclose .AND.               &
-              iiter ==  1) THEN
-            Icnvg = 1
+              iiter ==  1) THEN 
+            Icnvg = 1 
+          END IF 
+        ELSE IF (Icnvgopt ==  2) THEN 
+          IF (ABS(Hmax) <=  Hclose .OR. Rmax <=  Rclose) THEN 
+            Icnvg = 1 
+          ELSE IF (Rmax <=  Rmax0*Epfact) THEN 
+            Icnvg = -1 
           END IF
-        ELSE IF (Icnvgopt ==  2) THEN
-          IF (ABS(Hmax) <=  Hclose .OR. Rmax <=  Rclose) THEN
-            Icnvg = 1
-          ELSE IF (Rmax <=  Rmax0*Epfact) THEN
-            Icnvg = -1
-          END IF
-        ELSE IF (Icnvgopt ==  3) THEN
+        ELSE IF (Icnvgopt ==  3) THEN 
           IF (ABS(Hmax) <=  Hclose) THEN
-            Icnvg = 1
-          ELSE IF (Rmax <=  Rmax0*Rclose) THEN
-            Icnvg = -1
+            Icnvg = 1 
+          ELSE IF (Rmax <=  Rmax0*Rclose) THEN  
+            Icnvg = -1 
           END IF
-        ELSE IF (Icnvgopt ==  4) THEN
+        ELSE IF (Icnvgopt ==  4) THEN 
           IF (ABS(Hmax) <=  Hclose .AND. Rmax <=  Rclose) THEN
-            Icnvg = 1
-          ELSE IF (Rmax <=  Rmax0*Epfact) THEN
-            Icnvg = -1
+            Icnvg = 1 
+          ELSE IF (Rmax <=  Rmax0*Epfact) THEN  
+            Icnvg = -1 
           END IF
-       END IF
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_TESTCNVG
-!
-!---------GENERATE IAPC AND JAPC FROM IA AND JA
-!         JAPC(1:NEQ) HAS THE POSITION OF THE UPPER ENTRY FOR A ROW
-!         JAPC(NEQ+1:NJA) IS THE COLUMN POSITION FOR ENTRY
-!         APC(1:NEQ) PRECONDITIONED INVERSE OF THE DIAGONAL
-!         APC(NEQ+1:NJA) PRECONDITIONED ENTRIES FOR OFF DIAGONALS
+       END IF 
+!---------RETURN                                                        
+        RETURN 
+      END SUBROUTINE IMSLINEARSUB_TESTCNVG 
+!                                                                       
+!---------GENERATE IAPC AND JAPC FROM IA AND JA                         
+!         JAPC(1:NEQ) HAS THE POSITION OF THE UPPER ENTRY FOR A ROW     
+!         JAPC(NEQ+1:NJA) IS THE COLUMN POSITION FOR ENTRY              
+!         APC(1:NEQ) PRECONDITIONED INVERSE OF THE DIAGONAL             
+!         APC(NEQ+1:NJA) PRECONDITIONED ENTRIES FOR OFF DIAGONALS       
         SUBROUTINE IMSLINEARSUB_PCCRS(NEQ, NJA, IA, JA,                         &
-                                      IAPC,JAPC)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN)         :: NEQ
-        integer(I4B), INTENT(IN)         :: NJA
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN)    :: IA
-        integer(I4B), DIMENSION(NJA), INTENT(IN)      :: JA
-        integer(I4B), DIMENSION(NEQ+1), INTENT(INOUT) :: IAPC
-        integer(I4B), DIMENSION(NJA), INTENT(INOUT)   :: JAPC
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: n, j
-        integer(I4B) :: i0, i1
-        integer(I4B) :: nlen
-        integer(I4B) :: ic,ip
-        integer(I4B) :: jcol
-        integer(I4B), DIMENSION(:), ALLOCATABLE :: iarr
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        ip = NEQ + 1
-        DO n = 1, NEQ
-          i0 = IA(n)
-          i1 = IA(n+1) - 1
-          nlen = i1 - i0
-          ALLOCATE( iarr(nlen) )
-          ic = 0
-          DO j = i0, i1
-            jcol = JA(j)
-            IF (jcol ==  n) CYCLE
-            ic = ic + 1
-            iarr(ic) = jcol
-          END DO
-          CALL IMSLINEARSUB_ISORT(nlen,iarr)
-          IAPC(n) = ip
-          DO j = 1, nlen
-            jcol = iarr(j)
-            JAPC(ip) = jcol
-            ip = ip + 1
-          END DO
-          DEALLOCATE(iarr)
-        END DO
-        IAPC(NEQ+1) = NJA + 1
-!---------POSITION OF THE FIRST UPPER ENTRY FOR ROW
-        DO n = 1, NEQ
-          i0 = IAPC(n)
-          i1 = IAPC(n+1) - 1
-          JAPC(n) = IAPC(n+1)
-          DO j = i0, i1
-            jcol = JAPC(j)
-            IF (jcol > n) THEN
-              JAPC(n) = j
-              EXIT
-            END IF
-          END DO
-        END DO
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_PCCRS
-!
-!-------SIMPLE IN-PLACE SORTING ROUTINE FOR AN INTEGER ARRAY
-      SUBROUTINE IMSLINEARSUB_ISORT(NVAL, IARRAY)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B),INTENT(IN) :: NVAL
-        integer(I4B),DIMENSION(NVAL),INTENT(INOUT) :: IARRAY
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: i, j, itemp
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        DO i = 1, NVAL-1
-            DO j = i+1, NVAL
-                if(IARRAY(i) > IARRAY(j)) then
-                    itemp = IARRAY(j)
-                    IARRAY(j) = IARRAY(i)
-                    IARRAY(i) = itemp
-                END IF
-            END DO
-        END DO
-!---------RETURN
-        RETURN
+                                      IAPC,JAPC)                               
+        IMPLICIT NONE 
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN)         :: NEQ 
+        integer(I4B), INTENT(IN)         :: NJA 
+        integer(I4B), DIMENSION(NEQ+1), INTENT(IN)    :: IA 
+        integer(I4B), DIMENSION(NJA), INTENT(IN)      :: JA 
+        integer(I4B), DIMENSION(NEQ+1), INTENT(INOUT) :: IAPC 
+        integer(I4B), DIMENSION(NJA), INTENT(INOUT)   :: JAPC 
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: n, j 
+        integer(I4B) :: i0, i1 
+        integer(I4B) :: nlen 
+        integer(I4B) :: ic,ip 
+        integer(I4B) :: jcol 
+        integer(I4B), DIMENSION(:), ALLOCATABLE :: iarr 
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        ip = NEQ + 1 
+        DO n = 1, NEQ 
+          i0 = IA(n) 
+          i1 = IA(n+1) - 1 
+          nlen = i1 - i0 
+          ALLOCATE( iarr(nlen) ) 
+          ic = 0 
+          DO j = i0, i1 
+            jcol = JA(j) 
+            IF (jcol ==  n) CYCLE 
+            ic = ic + 1 
+            iarr(ic) = jcol 
+          END DO 
+          CALL IMSLINEARSUB_ISORT(nlen,iarr) 
+          IAPC(n) = ip 
+          DO j = 1, nlen 
+            jcol = iarr(j) 
+            JAPC(ip) = jcol 
+            ip = ip + 1 
+          END DO 
+          DEALLOCATE(iarr) 
+        END DO 
+        IAPC(NEQ+1) = NJA + 1 
+!---------POSITION OF THE FIRST UPPER ENTRY FOR ROW                     
+        DO n = 1, NEQ 
+          i0 = IAPC(n) 
+          i1 = IAPC(n+1) - 1 
+          JAPC(n) = IAPC(n+1) 
+          DO j = i0, i1 
+            jcol = JAPC(j) 
+            IF (jcol > n) THEN 
+              JAPC(n) = j 
+              EXIT 
+            END IF 
+          END DO 
+        END DO 
+!---------RETURN                                                        
+        RETURN 
+      END SUBROUTINE IMSLINEARSUB_PCCRS 
+!                                                                       
+!-------SIMPLE IN-PLACE SORTING ROUTINE FOR AN INTEGER ARRAY             
+      SUBROUTINE IMSLINEARSUB_ISORT(NVAL, IARRAY) 
+        IMPLICIT NONE 
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B),INTENT(IN) :: NVAL 
+        integer(I4B),DIMENSION(NVAL),INTENT(INOUT) :: IARRAY 
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: i, j, itemp 
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        DO i = 1, NVAL-1 
+            DO j = i+1, NVAL 
+                if(IARRAY(i) > IARRAY(j)) then 
+                    itemp = IARRAY(j) 
+                    IARRAY(j) = IARRAY(i) 
+                    IARRAY(i) = itemp 
+                END IF 
+            END DO                                                      
+        END DO                                                          
+!---------RETURN                                                        
+        RETURN                                                          
       END SUBROUTINE IMSLINEARSUB_ISORT
-!
-!-------INITIALIZE REAL VECTOR
+!      
+!-------INITIALIZE REAL VECTOR      
       SUBROUTINE IMSLINEARSUB_SETX(NR, D1, C)
         IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
@@ -2846,44 +2839,44 @@
 !---------RETURN
         RETURN
       END SUBROUTINE IMSLINEARSUB_SETX
-
-!       COPY ONE real(DP) VECTOR TO ANOTHER
-      SUBROUTINE IMSLINEARSUB_DCOPY(NR, V, R)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN) :: NR
-        real(DP), DIMENSION(NR), INTENT(IN)    :: V
-        real(DP), DIMENSION(NR), INTENT(INOUT) :: R
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: n
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        DO n = 1, NR
-          R(n) = V(n)
-        END DO
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_DCOPY
-
-!       COPY ONE INTEGER VECTOR TO ANOTHER
-      SUBROUTINE IMSLINEARSUB_ICOPY(NR, V, R)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN) :: NR
-        integer(I4B), DIMENSION(NR), INTENT(IN)    :: V
-        integer(I4B), DIMENSION(NR), INTENT(INOUT) :: R
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: n
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        DO n = 1, NR
-          R(n) = V(n)
-        END DO
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_ICOPY
-!
-!-------SCALE A REAL VECTOR WITH A CONSTANT
+                                                                        
+!       COPY ONE real(DP) VECTOR TO ANOTHER                      
+      SUBROUTINE IMSLINEARSUB_DCOPY(NR, V, R)                                 
+        IMPLICIT NONE                                                   
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN) :: NR                                       
+        real(DP), DIMENSION(NR), INTENT(IN)    :: V              
+        real(DP), DIMENSION(NR), INTENT(INOUT) :: R              
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: n                                                    
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        DO n = 1, NR                                                    
+          R(n) = V(n)                                                   
+        END DO                                                          
+!---------RETURN                                                        
+        RETURN                                                          
+      END SUBROUTINE IMSLINEARSUB_DCOPY                                       
+                                                                        
+!       COPY ONE INTEGER VECTOR TO ANOTHER                              
+      SUBROUTINE IMSLINEARSUB_ICOPY(NR, V, R)                                 
+        IMPLICIT NONE                                                   
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN) :: NR                                       
+        integer(I4B), DIMENSION(NR), INTENT(IN)    :: V                      
+        integer(I4B), DIMENSION(NR), INTENT(INOUT) :: R                      
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: n                                                    
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        DO n = 1, NR                                                    
+          R(n) = V(n)                                                   
+        END DO                                                          
+!---------RETURN                                                        
+        RETURN                                                          
+      END SUBROUTINE IMSLINEARSUB_ICOPY                                       
+!      
+!-------SCALE A REAL VECTOR WITH A CONSTANT      
       SUBROUTINE IMSLINEARSUB_RSCAL(NR, C, D1)
         IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
@@ -2901,40 +2894,40 @@
         RETURN
       END SUBROUTINE IMSLINEARSUB_RSCAL
 
-
-      SUBROUTINE IMSLINEARSUB_MV(NJA, NEQ, A, D1, D2, IA, JA)
-        IMPLICIT NONE
-!       + + + DUMMY ARGUMENTS + + +
-        integer(I4B), INTENT(IN) :: NJA
-        integer(I4B), INTENT(IN) :: NEQ
-        real(DP), DIMENSION(NJA),  INTENT(IN)    :: A
-        real(DP), DIMENSION(NEQ),  INTENT(IN)    :: D1
-        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: D2
-        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA
-        integer(I4B), DIMENSION(NJA), INTENT(IN)   :: JA
-!       + + + LOCAL DEFINITIONS + + +
-        integer(I4B) :: ic0, ic1
-        integer(I4B) :: icol
-        integer(I4B) :: m, n
-        real(DP) :: tv
-!       + + + PARAMETERS + + +
-!       + + + FUNCTIONS + + +
-!       + + + CODE + + +
-        DO n = 1, NEQ
-!           ADD DIAGONAL AND OFF-DIAGONAL TERMS
-          tv     = DZERO
-          ic0   = IA(n)
-          ic1   = IA(n+1)-1
-          DO m = ic0, ic1
-            icol = JA(m)
-            tv  = tv + A(m) * D1(icol)
-          END DO
-          D2(n) = tv
-        END DO
-!---------RETURN
-        RETURN
-      END SUBROUTINE IMSLINEARSUB_MV
-
+      
+      SUBROUTINE IMSLINEARSUB_MV(NJA, NEQ, A, D1, D2, IA, JA)                        
+        IMPLICIT NONE                                                   
+!       + + + DUMMY ARGUMENTS + + +                                       
+        integer(I4B), INTENT(IN) :: NJA                                      
+        integer(I4B), INTENT(IN) :: NEQ                                      
+        real(DP), DIMENSION(NJA),  INTENT(IN)    :: A            
+        real(DP), DIMENSION(NEQ),  INTENT(IN)    :: D1           
+        real(DP), DIMENSION(NEQ),  INTENT(INOUT) :: D2           
+        integer(I4B), DIMENSION(NEQ+1), INTENT(IN) :: IA                     
+        integer(I4B), DIMENSION(NJA), INTENT(IN)   :: JA                     
+!       + + + LOCAL DEFINITIONS + + +                                     
+        integer(I4B) :: ic0, ic1                                             
+        integer(I4B) :: icol                                                 
+        integer(I4B) :: m, n                                                 
+        real(DP) :: tv                                           
+!       + + + PARAMETERS + + +                                            
+!       + + + FUNCTIONS + + +                                             
+!       + + + CODE + + +                                                  
+        DO n = 1, NEQ                                                   
+!           ADD DIAGONAL AND OFF-DIAGONAL TERMS                         
+          tv     = DZERO                                                
+          ic0   = IA(n)                                                 
+          ic1   = IA(n+1)-1                                             
+          DO m = ic0, ic1                                               
+            icol = JA(m)                                                
+            tv  = tv + A(m) * D1(icol)                                  
+          END DO                                                        
+          D2(n) = tv                                                    
+        END DO                                                          
+!---------RETURN                                                        
+        RETURN                                                          
+      END SUBROUTINE IMSLINEARSUB_MV  
+      
       SUBROUTINE IMSLINEARSUB_AXPY(NEQ, D1, DC, D2, DR)
         IMPLICIT NONE
 !     + + + DUMMY ARGUMENTS + + +
@@ -2954,7 +2947,7 @@
         RETURN
       END SUBROUTINE IMSLINEARSUB_AXPY
 
-
+      
     FUNCTION IMSLINEARSUB_DP(neq, a, b) RESULT(c)
       ! -- return variable
       real(DP) :: c
@@ -2975,7 +2968,7 @@
       return
     END FUNCTION IMSLINEARSUB_DP
 
-
+      
     FUNCTION IMSLINEARSUB_RNRM2(neq, a) RESULT(c)
       ! -- return variable
       real(DP) :: c
@@ -3016,9 +3009,9 @@
       return
     END FUNCTION IMSLINEARSUB_RNRM2
 !
-!
-!-------BEGINNING OF SUBROUTINES FROM OTHER LIBRARIES
-
+!    
+!-------BEGINNING OF SUBROUTINES FROM OTHER LIBRARIES                   
+                                                                        
       !       SUBSET OF SPARSKIT VERSION 2 SOURCE CODE
       !
       !  SPARSKIT VERSION 2 SUBROUTINES INCLUDED INCLUDE:
@@ -3096,8 +3089,8 @@
         !           ** WARNING: THE MEANING OF LFIL HAS CHANGED WITH RESPECT TO
         !           EARLIER VERSIONS.
         !
-        ! droptol = real. Sets the threshold for dropping small terms
-        !           in the factorization. See below for details on dropping
+        ! droptol = real. Sets the threshold for dropping small terms 
+        !           in the factorization. See below for details on dropping 
         !           strategy.
         !
         !
@@ -3398,37 +3391,37 @@
           !!
           !alu(ii) = DONE / w(ii)
 
-          !    diagonal - calculate inverse of diagonal for solution
-          d   = w(ii)
-          tl  = ( DONE + delta ) * d + ( relax * rs )
+          !    diagonal - calculate inverse of diagonal for solution       
+          d   = w(ii) 
+          tl  = ( DONE + delta ) * d + ( relax * rs ) 
 
           !    ensure that the sign of the diagonal has not changed
-          sd1 = SIGN(d,tl)
-          IF (sd1.NE.d) THEN
-            !  use small value if diagonal scaling is not effective for
-            !    pivots that change the sign of the diagonal
-            IF (izero > 1) THEN
-              tl = SIGN(DONE,d) * (DEM4 + droptol) * tnorm
-            !  diagonal scaling continues to be effective
-            ELSE
-              izero = 1
-              exit main
-            END IF
+          sd1 = SIGN(d,tl) 
+          IF (sd1.NE.d) THEN 
+            !  use small value if diagonal scaling is not effective for 
+            !    pivots that change the sign of the diagonal               
+            IF (izero > 1) THEN 
+              tl = SIGN(DONE,d) * (DEM4 + droptol) * tnorm 
+            !  diagonal scaling continues to be effective                
+            ELSE 
+              izero = 1 
+              exit main 
+            END IF 
           END IF
           !    ensure that the diagonal is not zero
-          IF (ABS(tl) == DZERO) THEN
+          IF (ABS(tl) == DZERO) THEN 
             !  use small value if diagonal scaling is not effective
-            !    zero pivots
-            IF (izero > 1) THEN
-              tl = SIGN(DONE,d) * (DEM4 + droptol) * tnorm
-            !  diagonal scaling continues to be effective
-            ELSE
-              izero = 1
-              exit main
-            END IF
+            !    zero pivots                                               
+            IF (izero > 1) THEN 
+              tl = SIGN(DONE,d) * (DEM4 + droptol) * tnorm 
+            !  diagonal scaling continues to be effective 
+            ELSE 
+              izero = 1 
+              exit main 
+            END IF 
           END IF
           w(ii) = tl
-          alu(ii) = DONE / w(ii)
+          alu(ii) = DONE / w(ii)           
           !
           !     update pointer to beginning of next row of U.
           !

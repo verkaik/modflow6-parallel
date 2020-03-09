@@ -703,6 +703,9 @@
       return
     end if
     !
+    !write(*,*) '@@@ BARRIER 1' 
+    !call mpiwrpbarrier(this%comm)
+    
     lpack = .true.
     lpackmeta = .true.
     !
@@ -779,7 +782,7 @@
                     call ustop()
                   end if
                   nexg = tmp
-                  call mpi_pack_mt(src_origin,  mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckhm1)
                   call mem_setptr(nodem1, 'IMAPMTOHALO', trim(halo_name)//'_M1')
                   nexg = size(nodem1)
@@ -790,7 +793,7 @@
                   call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckall)
                   call mpi_pack_mt(tgt_origin, mt, vgbuf%sndmt(is))
-                  !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank
+                  !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank,mt%memitype
               end select
               !
             end if
@@ -814,6 +817,9 @@
       end do
     end if
     !
+    !write(*,*) '@@@ BARRIER 2' 
+    !call mpiwrpbarrier(this%comm)
+    
     ! -- First point-to-point communication to exchange memory type meta-data
     !
     ! -- Allocate request arrays
@@ -860,12 +866,14 @@
               write(*,*) '=======received from',this%lxch(ixp)%xprnk
               do i = 1, this%lxch(ixp)%vgbuf(ivg)%nrcv
                 rcvmmt => this%lxch(ixp)%vgbuf(ivg)%rcvmmt(i)
+                if (rcvmmt%memitype == 0) then
                 write(*,*) 'name:     ', trim(rcvmmt%name)
-                write(*,*) 'origin:   ', trim(rcvmmt%origin)
+                write(*,*) 'origin:   ', trim(rcvmmt%origin), len(rcvmmt%origin)
                 write(*,*) 'memitype: ', rcvmmt%memitype
                 write(*,*) 'isize:    ', rcvmmt%isize
                 write(*,*) 'ncol:     ', rcvmmt%ncol
                 write(*,*) 'nrow:     ', rcvmmt%nrow
+                end if
               end do
             end do
           end if
@@ -875,7 +883,7 @@
       !
       this%lxchmeta(ivg) = .false.
     end if
-    !
+    
     ! -- Second point-to-point communication to exchange actual data
 
     ! -- Create MPI send and receive datatypes
@@ -911,7 +919,8 @@
     deallocate(sreq, rreq)
     !
     ! -- Debug
-    if (.false. .and. trim(vgname) == 'MOVER') then
+    if (.false. .and. trim(vgname) == 'HALO_INIT_CON_A') then
+      
       write(*,*) '@@@@@@ VARGROUP = '//trim(vgname)
       do irank = 0, this%nrproc-1
         if (irank == this%myrank) then
@@ -1023,9 +1032,6 @@
               !
               select case(var%unptype)
                 case(iunpmem)
-                  !if (trim(vgname)=='HALO_INIT_CON_A' .and. trim(var%name)=='CL1') then
-                  !  write(*,*) '-->Unpacking for HALO_A: '//trim(var%name)//' '//trim(vgbuf%rcvmt(is)%origin), var%unptype
-                  !end if
                   call mem_setval(vgbuf%rcvmt(is))
                 case(iunpmvr)
                   call mem_setval_id(vgbuf%rcvmt(is), var%id, 1)
@@ -1709,6 +1715,7 @@
           end do
         else
           mto%isize = mti%isize
+          !write(*,*) '@@@@@ ===>',mto%isize,trim(mto%name)
           allocate(mto%adbl1d(mto%isize))
           do i = 1, mto%isize
             mto%adbl1d(i) = mti%adbl1d(i)

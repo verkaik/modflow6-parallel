@@ -543,14 +543,20 @@ def update_latex_releaseinfo():
 
     cmd = ['python', 'mk_example_items.py']
     buff, ierr = run_command(cmd, pth)
+    msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
+                                                      cmd[1])
     assert ierr == 0, buff + msg
 
     cmd = ['python', 'mk_example_table.py']
     buff, ierr = run_command(cmd, pth)
+    msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
+                                                      cmd[1])
     assert ierr == 0, buff + msg
 
     cmd = ['python', 'mk_folder_struct.py']
     buff, ierr = run_command(cmd, pth)
+    msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
+                                                      cmd[1])
     assert ierr == 0, buff + msg
 
     for f in files:
@@ -673,6 +679,10 @@ if __name__ == '__main__':
         ['test019_VilhelmsenLGR', 'vilhelmsen-lgr'],
 
         ['test046_periodic_bc', 'periodicbc'],
+        ['test061_csub_jacob', 'csub-jacob'],
+        ['test062_csub_sub01', 'csub-sub01'],
+        ['test063_csub_holly', 'csub-holly'],
+        ['test064_csub_subwt01', 'csub-subwt01'],
     ]
 
     # Create a runall.bat file in examples
@@ -753,9 +763,11 @@ if __name__ == '__main__':
     print('Downloading published reports for inclusion in distribution')
     for url in ['https://pubs.usgs.gov/tm/06/a57/tm6a57.pdf',
                 'https://pubs.usgs.gov/tm/06/a55/tm6a55.pdf',
-                'https://pubs.usgs.gov/tm/06/a56/tm6a56.pdf']:
+                'https://pubs.usgs.gov/tm/06/a56/tm6a56.pdf',
+                'https://github.com/MODFLOW-USGS/modflow6-examples/releases/download/6.1.0/csubexamples.pdf',
+                ]:
         print('  downloading {}'.format(url))
-        download_and_unzip(url, pth=fd['doc'], delete_zip=False)
+        download_and_unzip(url, pth=fd['doc'], delete_zip=False, verify=False)
     print('\n')
 
     # Prior to zipping, enforce os line endings on all text files

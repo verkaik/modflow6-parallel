@@ -12,14 +12,16 @@ module MemoryTypeModule
   end type MemoryTSType
   
   ! -- Integer parameters
-  integer(I4B), parameter, public :: ilogicalsclr = 1 !PAR
-  integer(I4B), parameter, public :: iintsclr     = 2 !PAR
-  integer(I4B), parameter, public :: idblsclr     = 3 !PAR
-  integer(I4B), parameter, public :: iaint1d      = 4 !PAR
-  integer(I4B), parameter, public :: iaint2d      = 5 !PAR
-  integer(I4B), parameter, public :: iadbl1d      = 6 !PAR
-  integer(I4B), parameter, public :: iadbl2d      = 7 !PAR
-  integer(I4B), parameter, public :: iats1d       = 8 !PAR
+  integer(I4B), parameter, public :: ilogicalsclr =  1 !PAR
+  integer(I4B), parameter, public :: iintsclr     =  2 !PAR
+  integer(I4B), parameter, public :: idblsclr     =  3 !PAR
+  integer(I4B), parameter, public :: iaint1d      =  4 !PAR
+  integer(I4B), parameter, public :: iaint2d      =  5 !PAR
+  integer(I4B), parameter, public :: iaint3d      =  6 !PAR
+  integer(I4B), parameter, public :: iadbl1d      =  7 !PAR
+  integer(I4B), parameter, public :: iadbl2d      =  8 !PAR
+  integer(I4B), parameter, public :: iadbl3d      =  9 !PAR
+  integer(I4B), parameter, public :: iats1d       = 10 !PAR
   
   type MemoryType
     character(len=LENVARNAME)                              :: name                   !name of the array
@@ -35,8 +37,10 @@ module MemoryTypeModule
     real(DP), pointer                                      :: dblsclr     => null()  !pointer to the double
     integer(I4B), dimension(:), pointer, contiguous        :: aint1d      => null()  !pointer to 1d integer array
     integer(I4B), dimension(:, :), pointer, contiguous     :: aint2d      => null()  !pointer to 2d integer array
+    integer(I4B), dimension(:, :, :), pointer, contiguous  :: aint3d      => null()  !pointer to 3d integer array
     real(DP), dimension(:), pointer, contiguous            :: adbl1d      => null()  !pointer to 1d double array
     real(DP), dimension(:, :), pointer, contiguous         :: adbl2d      => null()  !pointer to 2d double array
+    real(DP), dimension(:, :, :), pointer, contiguous      :: adbl3d      => null()  !pointer to 3d double array
     type (MemoryTSType), dimension(:), pointer, contiguous :: ats1d       => null()  !pointer to a time series array
   contains
     procedure :: table_entry
@@ -71,8 +75,10 @@ module MemoryTypeModule
     if(associated(this%dblsclr)) al = .true.
     if(associated(this%aint1d)) al = .true.
     if(associated(this%aint2d)) al = .true.
+    if(associated(this%aint3d)) al = .true.
     if(associated(this%adbl1d)) al = .true.
     if(associated(this%adbl2d)) al = .true. 
+    if(associated(this%adbl3d)) al = .true. 
     if(associated(this%ats1d)) al = .true. 
   end function mt_associated
   

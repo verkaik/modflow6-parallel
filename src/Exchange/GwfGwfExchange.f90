@@ -658,7 +658,7 @@ contains
     !
     ! -- Fill the gnc terms in the solution matrix
     if(this%ingnc > 0) then
-      call this%gnc%gnc_fc(kiter, iasln, amatsln)
+      call this%gnc%gnc_fc(kiter, amatsln)
     endif
     !
     ! -- Call mvr fc routine
@@ -1385,6 +1385,7 @@ contains
     use BaseDisModule, only: DisBaseType !PAR
     use MpiExchangeGenModule, only: mpi_is_halo !PAR
     use MpiExchangeGwfModule, only: mpi_set_gwfhalo_world_dis !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR !@@@@
     ! -- dummy
     class(gwfExchangeType) :: this
     integer(I4B), intent(in) :: iout
@@ -2377,7 +2378,7 @@ subroutine gwf_mpi_halo_init() !PAR
     !
     ! -- set arrays
     call MpiWorld%mpi_local_exchange('', 'HALO_INIT_CON_A', .true.) !PAR
-    !
+    
     deallocate(iwrk)
     !
     ! -- return

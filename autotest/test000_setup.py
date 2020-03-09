@@ -22,7 +22,7 @@ sysinfo = platform.system()
 if sysinfo.lower() == 'windows':
     eext = '.exe'
 
-download_version = '2.0'
+download_version = '3.0'
 mfexe_pth = 'temp/mfexes'
 
 
@@ -107,7 +107,7 @@ def getmfexes(pth='.', version='', pltfrm=None):
     assets = {p: url + p for p in ['mac.zip', 'linux.zip',
                                    'win32.zip', 'win64.zip']}
     download_url = assets[zipname]
-    pymake.download_and_unzip(download_url, pth)
+    pymake.download_and_unzip(download_url, pth, verify=False)
 
     return
 
@@ -174,9 +174,10 @@ def test_build_modflow6():
     fflags = None
     if fc == 'gfortran':
         # some flags to check for errors in the code
-        # but they are not working yet, so had to deactivate
-        fflags = 'Werror Wtabs Wline-truncation'
-        fflags = None
+        # add -Werror for compilation to terminate if errors are found
+        fflags = ('-Wtabs -Wline-truncation -Wunused-label '
+                  '-Wunused-variable -pedantic -std=f2008')
+        #fflags = None
 
     pymake.main(srcdir, target, fc=fc, cc=cc, include_subdirs=True,
                 fflags=fflags)
@@ -225,7 +226,16 @@ def test_build_zonebudget():
                               'extrafiles.txt')
     fc, cc = pymake.set_compiler('mf6')
 
-    pymake.main(srcdir, target, fc=fc, cc=cc, extrafiles=extrafiles)
+    fflags = None
+    if fc == 'gfortran':
+        # some flags to check for errors in the code
+        # add -Werror for compilation to terminate if errors are found
+        fflags = ('-Wtabs -Wline-truncation -Wunused-label '
+                  '-Wunused-variable -pedantic -std=f2008')
+        #fflags = None
+
+    pymake.main(srcdir, target, fc=fc, cc=cc, extrafiles=extrafiles,
+                fflags=fflags)
 
     msg = '{} does not exist.'.format(relpath_fallback(target))
     assert os.path.isfile(target), msg
@@ -233,7 +243,7 @@ def test_build_zonebudget():
 
 if __name__ == "__main__":
     test_create_dirs()
-    test_getmfexes()
+    getmfexes(pth=mfexe_pth, version=download_version)
     test_build_modflow()
     test_build_mfnwt()
     test_build_usg()

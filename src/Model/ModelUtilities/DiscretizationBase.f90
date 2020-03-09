@@ -39,8 +39,10 @@ module BaseDisModule
     real(DP), dimension(:), pointer, contiguous     :: area       => null()      !(size:nodes) cell area, in plan view
     type(ConnectionsType), pointer                  :: con        => null()      !connections object
     type(BlockParserType)                           :: parser                    !object to read blocks
-    real(DP), dimension(:), pointer, contiguous     :: dbuff      => null()
-    integer(I4B), dimension(:), pointer, contiguous :: ibuff      => null()
+    real(DP), dimension(:), pointer, contiguous     :: dbuff      => null()      !helper double array of size nodesuser
+    integer(I4B), dimension(:), pointer, contiguous :: ibuff      => null()      !helper int array of size nodesuser
+    integer(I4B), dimension(:), pointer, contiguous :: nodereduced => null()     ! (size:nodesuser)contains reduced nodenumber (size 0 if not reduced); -1 means vertical pass through, 0 is idomain = 0
+    integer(I4B), dimension(:), pointer, contiguous :: nodeuser => null()        ! (size:nodes) given a reduced nodenumber, provide the user nodenumber (size 0 if not reduced)
   contains
     procedure :: dis_df
     procedure :: dis_ac
@@ -68,6 +70,7 @@ module BaseDisModule
     procedure :: noder_from_cellid
     procedure :: connection_normal
     procedure :: connection_vector
+    procedure :: get_cellxy
     procedure :: supports_layers
     procedure :: allocate_scalars
     procedure :: allocate_arrays
@@ -79,6 +82,9 @@ module BaseDisModule
     procedure          :: read_dbl_array
     generic, public    :: read_grid_array => read_int_array, read_dbl_array
     procedure, public  :: read_layer_array
+    procedure          :: fill_int_array
+    procedure          :: fill_dbl_array
+    generic, public    :: fill_grid_array => fill_int_array, fill_dbl_array
     procedure, public  :: read_list
     !
     procedure, public  :: record_array
@@ -92,7 +98,7 @@ module BaseDisModule
     procedure, public  :: highest_active
     procedure, public  :: get_area
   end type DisBaseType
-
+  
   contains
 
   subroutine dis_df(this)
@@ -310,8 +316,7 @@ module BaseDisModule
     return
   end subroutine nodeu_to_string
 
-  function get_nodeuser(this, noder) &
-    result(nodenumber)
+  function get_nodeuser(this, noder) result(nodenumber)
 ! ******************************************************************************
 ! get_nodeuser -- Return the user nodenumber from the reduced node number
 ! ******************************************************************************
@@ -325,10 +330,11 @@ module BaseDisModule
     integer(I4B), intent(in) :: noder
 ! ------------------------------------------------------------------------------
     !
-    nodenumber = 0
-    call store_error('Program error: DisBaseType method get_nodeuser not &
-                     &implemented.')
-    call ustop()
+    if(this%nodes < this%nodesuser) then
+      nodenumber = this%nodeuser(noder)
+    else
+      nodenumber = noder
+    endif
     !
     ! -- return
     return
@@ -476,7 +482,22 @@ module BaseDisModule
     ! -- return
     return
   end subroutine connection_vector
+                                 
+  ! return x,y coordinate for a node
+  subroutine get_cellxy(this, node, xcell, ycell)
+    class(DisBaseType), intent(in)  :: this
+    integer(I4B), intent(in)        :: node
+    real(DP), intent(out)           :: xcell, ycell
+      
+    ! suppress warning
+    xcell = -999999.0
+    ycell = -999999.0
     
+    call store_error('Program error: getcellxy not implemented.')
+    call ustop()
+    
+  end subroutine get_cellxy                             
+                               
   subroutine allocate_scalars(this, name_model, dis_type) !PAR
 ! ******************************************************************************
 ! allocate_scalars -- Allocate and initialize scalar variables in this class
@@ -890,7 +911,6 @@ module BaseDisModule
     real(DP), dimension(:), pointer, contiguous, intent(inout) :: darray
     character(len=*), intent(in)                               :: aname
     ! -- local
-    integer(I4B) :: ival
     character(len=LINELENGTH) :: ermsg
 ! ------------------------------------------------------------------------------
     !
@@ -902,6 +922,56 @@ module BaseDisModule
     ! -- return
     return
   end subroutine read_dbl_array
+
+  subroutine fill_int_array(this, ibuff1, ibuff2)
+! ******************************************************************************
+! fill_dbl_array -- Fill a GWF integer array
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    class(DisBaseType), intent(inout)                              :: this
+    integer(I4B), dimension(:), pointer, contiguous, intent(in)    :: ibuff1
+    integer(I4B), dimension(:), pointer, contiguous, intent(inout) :: ibuff2
+    ! -- local
+    integer(I4B) :: nodeu
+    integer(I4B) :: noder
+! ------------------------------------------------------------------------------
+    do nodeu = 1, this%nodesuser
+      noder = this%get_nodenumber(nodeu, 0)
+      if(noder <= 0) cycle
+      ibuff2(noder) = ibuff1(nodeu)
+    end do
+    !
+    ! -- return
+    return
+  end subroutine fill_int_array
+
+  subroutine fill_dbl_array(this, buff1, buff2)
+! ******************************************************************************
+! fill_dbl_array -- Fill a GWF double precision array
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    class(DisBaseType), intent(inout)                          :: this
+    real(DP), dimension(:), pointer, contiguous, intent(in)    :: buff1
+    real(DP), dimension(:), pointer, contiguous, intent(inout) :: buff2
+    ! -- local
+    integer(I4B) :: nodeu
+    integer(I4B) :: noder
+! ------------------------------------------------------------------------------
+    do nodeu = 1, this%nodesuser
+      noder = this%get_nodenumber(nodeu, 0)
+      if(noder <= 0) cycle
+      buff2(noder) = buff1(nodeu)
+    end do
+    !
+    ! -- return
+    return
+  end subroutine fill_dbl_array
                             
   subroutine read_list(this, in, iout, iprpak, nlist, inamedbound,             &
                         iauxmultcol, nodelist,  rlist, auxvar, auxname,        &
@@ -922,7 +992,6 @@ module BaseDisModule
     use ListReaderModule, only: ListReaderType
     use SimModule, only: store_error, store_error_unit, count_errors, ustop
     use InputOutputModule, only: urword
-    use TdisModule, only: totimsav, perlen
     use TimeSeriesLinkModule, only:  TimeSeriesLinkType
     use TimeSeriesManagerModule, only: read_value_or_time_series
     ! -- dummy
@@ -1078,8 +1147,6 @@ module BaseDisModule
     integer(I4B), intent(in) :: inunit
     integer(I4B), intent(in) :: iout
     ! -- local
-    integer(I4B) :: il, ir, ic, ncol, nrow, nlay, nval, nodeu
-    logical :: found
     character(len=LINELENGTH) :: ermsg
 ! ------------------------------------------------------------------------------
     !

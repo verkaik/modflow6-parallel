@@ -389,13 +389,14 @@ module MpiExchangeGwfModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use GwfDisModule,          only: dis_cr, GwfDisType
+    use GwfDisModule,          only: dis_cr,  GwfDisType !,dis_init_mem TODO
     use GwfDisvModule,         only: disv_cr, GwfDisvType
     use GwfDisuModule,         only: disu_cr, GwfDisuType
     use NumericalModelModule,   only: NumericalModelType
     use BaseDisModule,         only: DisBaseType !PAR
     use MpiExchangeColModule,  only: mpi_get_distype
     use MemoryManagerModule,   only: mem_setval, mem_allocate, mem_setval
+    use ConstantsModule, only: IZERO, DZERO
     ! -- dummy
     character(len=*), intent(in) :: mname
     class(NumericalModelType), pointer, intent(out) :: m2
@@ -430,7 +431,9 @@ module MpiExchangeGwfModule
         disp => bp
       end select
       call mem_allocate(disp%nodereduced, 1, 'NODEREDUCED', disname)
-      allocate(disp%botm(1,1,1), disp%idomain(1,1,1))
+      call mem_allocate(disp%idomain, 1, 1, 1, 'IDOMAIN', disname)
+      call mem_allocate(disp%top2d, 1, 1, 'TOP2D', disname)
+      call mem_allocate(disp%bot3d, 1, 1, 1, 'BOT3D', disname)
     endif  
     if (ldisu) then 
       call disu_cr(m2%dis, disname, in_dum, iout_dum)
@@ -445,7 +448,9 @@ module MpiExchangeGwfModule
         disvp => bp
       end select
       call mem_allocate(disvp%nodereduced, 1, 'NODEREDUCED', disname)
-      allocate(disp%botm(1,1,1), disp%idomain(1,1,1))
+      call mem_allocate(disp%idomain, 1, 1, 1, 'IDOMAIN', disname)
+      call mem_allocate(disp%top2d, 1, 1, 'TOP2D', disname)
+      call mem_allocate(disp%bot3d, 1, 1, 1, 'BOT3D', disname)
     endif  
     !
     ndim = mpi_set_gwfhalo_world_var_int('DNDIM', mname)

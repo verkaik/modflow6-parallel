@@ -9,7 +9,7 @@ program mf6
   ! -- modules
   use KindModule,             only: DP, I4B
   use ConstantsModule,        only: ISTDOUT
-  use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,   &
+  use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,   & 
                                     IDEVELOPMODE
   use CompilerVersion
   use CommandArguments,       only: GetCommandLineArguments
@@ -42,8 +42,8 @@ program mf6
   class(SolutionGroupType), pointer :: sgp => null()
   class(BaseSolutionType),  pointer :: sp => null()
   class(NumericalSolutionType), pointer :: nsp !PAR
-  class(BaseModelType),     pointer :: mp => null()
-  class(BaseExchangeType),  pointer :: ep => null()
+  class(BaseModelType), pointer :: mp => null()
+  class(BaseExchangeType), pointer :: ep => null()
   integer(I4B) :: im, ic, is, isg
   logical :: exit_tsloop
   character(len=80) :: compiler
@@ -101,7 +101,7 @@ program mf6
     call ep%exg_df(1) !HALO2
   enddo !HALO2
   !
-  ! -- MPI local exchange 
+ ! -- MPI local exchange 
   if (isimdd == 1) then !PAR
     call gwf_mpi_halo_init()
     call MpiWorld%mpi_local_exchange('', 'HALO_INIT_DIS', .false.)
@@ -113,6 +113,7 @@ program mf6
     call ep%exg_df(2) !HALO2
   enddo !HALO2
   !
+  
   ! -- Define each solution
   do is = 1, basesolutionlist%Count()
     sp => GetBaseSolutionFromList(basesolutionlist, is)

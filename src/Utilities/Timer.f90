@@ -11,7 +11,7 @@ module TimerModule
   
   contains
   
-  subroutine start_time(writestd)
+  subroutine start_time(writestd) !PAR
 ! ******************************************************************************
 !  Start simulation timer
 ! ******************************************************************************
@@ -157,6 +157,7 @@ module TimerModule
 !
       RETURN
   END SUBROUTINE elapsed_time
+
 !
 !-------TIMER FOR SUBROUTINES
   SUBROUTINE code_timer(it, t1, ts)

@@ -31,6 +31,7 @@ module MpiWrapper
     integer(I4B)              :: isize
     integer(I4B)              :: ncol = 0
     integer(I4B)              :: nrow = 0
+    integer(I4B)              :: nlay = 0
   end type MetaMemoryType  
   
   type ColMemoryType
@@ -936,24 +937,27 @@ module MpiWrapper
     types(4) = MPI_INTEGER
     types(5) = MPI_INTEGER
     types(6) = MPI_INTEGER
+    types(7) = MPI_INTEGER
     blocklengths(1)  = LENVARNAME
     blocklengths(2)  = LENORIGIN
     blocklengths(3)  = 1
     blocklengths(4)  = 1
     blocklengths(5)  = 1
     blocklengths(6)  = 1
+    blocklengths(7)  = 1
     call MPI_GET_ADDRESS(mmtdum%name,     displacements(1), ierr)
     call MPI_GET_ADDRESS(mmtdum%origin,   displacements(2), ierr)
     call MPI_GET_ADDRESS(mmtdum%memitype, displacements(3), ierr)
     call MPI_GET_ADDRESS(mmtdum%isize,    displacements(4), ierr)
     call MPI_GET_ADDRESS(mmtdum%ncol,     displacements(5), ierr)
     call MPI_GET_ADDRESS(mmtdum%nrow,     displacements(6), ierr)
+    call MPI_GET_ADDRESS(mmtdum%nlay,     displacements(7), ierr)
     base = displacements(1)
-    do i = 1, 6
+    do i = 1, 7
       displacements(i) = displacements(i) - base
     enddo
     ! -- create and commit datatype
-    call MPI_TYPE_CREATE_STRUCT(6, blocklengths, displacements, types, newtype, ierr)
+    call MPI_TYPE_CREATE_STRUCT(7, blocklengths, displacements, types, newtype, ierr)
     call MPI_TYPE_COMMIT(newtype, ierr)
 #else
     call mpiwrperror(comm, 'mpiwrpmmtstruct', 'invalid operation')
@@ -971,21 +975,21 @@ module MpiWrapper
     ! -- modules
     use MemoryTypeModule, only: MemoryType,                                       &
                                 ilogicalsclr, iintsclr, idblsclr,                 & 
-                                iaint1d, iaint2d,                                 & 
-                                iadbl1d, iadbl2d
+                                iaint1d, iaint2d, iaint3d,                        & 
+                                iadbl1d, iadbl2d, iadbl3d
     ! -- dummy
     integer, intent(in) :: nmt
     type(MemoryType), dimension(nmt), intent(inout) :: mt
     type(MetaMemoryType), dimension(nmt), intent(in) :: mmt
     integer, intent(out) :: newtype
     ! -- local
-    integer :: i, j, isize, ncol, nrow, ierr, ntypes
+    integer :: i, j, isize, ncol, nrow, nlay, ierr, ntypes
     integer, dimension(:), allocatable :: types, blocklengths
     integer(KIND=MPI_ADDRESS_KIND), dimension(:), allocatable :: displacements
     integer(KIND=MPI_ADDRESS_KIND) :: base
   ! ------------------------------------------------------------------------------
 #ifdef MPI_PARALLEL
-    ntypes = 11
+    ntypes = 13
     allocate(types(nmt*ntypes))
     allocate(blocklengths(nmt*ntypes))
     allocate(displacements(nmt*ntypes))
@@ -1082,6 +1086,23 @@ module MpiWrapper
         blocklengths(j) = 0
         displacements(j) = displacements(j-1)
       endif
+      ! -- aint3d
+      j = j + 1
+      types(j) = MPI_INTEGER
+      if (mmt(i)%memitype == iaint3d) then
+        isize = mmt(i)%isize
+        ncol  = mmt(i)%ncol
+        nrow  = mmt(i)%nrow
+        nlay  = mmt(i)%nlay
+        if (.not.associated(mt(i)%aint3d)) then
+          allocate(mt(i)%aint3d(ncol,nrow,nlay))
+        endif
+        blocklengths(j) = isize
+        call MPI_GET_ADDRESS(mt(i)%aint3d, displacements(j), ierr)
+      else
+        blocklengths(j) = 0
+        displacements(j) = displacements(j-1)
+      endif
       ! -- adbl1d
       j = j + 1
       types(j) = MPI_DOUBLE_PRECISION
@@ -1108,6 +1129,23 @@ module MpiWrapper
         endif
         blocklengths(j) = isize
         call MPI_GET_ADDRESS(mt(i)%adbl2d, displacements(j), ierr)
+      else
+        blocklengths(j) = 0
+        displacements(j) = displacements(j-1)
+      endif
+      ! -- adbl3d
+      j = j + 1
+      types(j) = MPI_DOUBLE_PRECISION
+      if (mmt(i)%memitype == iadbl3d) then
+        isize = mmt(i)%isize
+        ncol  = mmt(i)%ncol
+        nrow  = mmt(i)%nrow
+        nlay  = mmt(i)%nlay
+        if (.not.associated(mt(i)%adbl3d)) then
+          allocate(mt(i)%adbl3d(ncol,nrow,nlay))
+        endif
+        blocklengths(j) = isize
+        call MPI_GET_ADDRESS(mt(i)%adbl3d, displacements(j), ierr)
       else
         blocklengths(j) = 0
         displacements(j) = displacements(j-1)

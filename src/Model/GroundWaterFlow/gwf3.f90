@@ -11,6 +11,7 @@ module GwfModule
   use Xt3dModule,                  only: Xt3dType
   use GwfHfbModule,                only: GwfHfbType
   use GwfStoModule,                only: GwfStoType
+  use GwfCsubModule,               only: GwfCsubType
   use GwfMvrModule,                only: GwfMvrType
   use BudgetModule,                only: BudgetType
   use GwfOcModule,                 only: GwfOcType
@@ -32,6 +33,7 @@ module GwfModule
     type(GwfNpfType),               pointer :: npf     => null()                ! node property flow package
     type(Xt3dType),                 pointer :: xt3d    => null()                ! xt3d option for npf
     type(GwfStoType),               pointer :: sto     => null()                ! storage package
+    type(GwfCsubType),              pointer :: csub    => null()                ! subsidence package    
     type(GwfOcType),                pointer :: oc      => null()                ! output control package
     type(GhostNodeType),            pointer :: gnc     => null()                ! ghost node correction package
     type(GwfHfbType),               pointer :: hfb     => null()                ! horizontal flow barrier package
@@ -42,6 +44,7 @@ module GwfModule
     integer(I4B),                   pointer :: inoc    => null()                ! unit number OC
     integer(I4B),                   pointer :: innpf   => null()                ! unit number NPF
     integer(I4B),                   pointer :: insto   => null()                ! unit number STO
+    integer(I4B),                   pointer :: incsub  => null()                ! unit number CSUB
     integer(I4B),                   pointer :: inmvr   => null()                ! unit number MVR
     integer(I4B),                   pointer :: inhfb   => null()                ! unit number HFB
     integer(I4B),                   pointer :: ingnc   => null()                ! unit number GNC
@@ -86,7 +89,7 @@ module GwfModule
                 'GHB6 ', 'RCH6 ', 'EVT6 ', 'OBS6 ', 'GNC6 ', & ! 15
                 '     ', 'CHD6 ', '     ', '     ', '     ', & ! 20
                 '     ', 'MAW6 ', 'SFR6 ', 'LAK6 ', 'UZF6 ', & ! 25
-                'DISV6', 'MVR6 ', '     ', '     ', '     ', & ! 30
+                'DISV6', 'MVR6 ', 'CSUB6', '     ', '     ', & ! 30
                 70 * '     '/
   public :: cunit, niunit !PAR
   
@@ -117,6 +120,7 @@ module GwfModule
     use GwfNpfModule,               only: npf_cr
     use Xt3dModule,                 only: xt3d_cr
     use GwfStoModule,               only: sto_cr
+    use GwfCsubModule,              only: csub_cr
     use GwfMvrModule,               only: mvr_cr
     use GwfHfbModule,               only: hfb_cr
     use GwfIcModule,                only: ic_cr
@@ -251,6 +255,7 @@ module GwfModule
     call namefile_obj%get_unitnumber('OC6',  this%inoc, 1)
     call namefile_obj%get_unitnumber('NPF6', this%innpf, 1)
     call namefile_obj%get_unitnumber('STO6', this%insto, 1)
+    call namefile_obj%get_unitnumber('CSUB6', this%incsub, 1)
     call namefile_obj%get_unitnumber('MVR6', this%inmvr, 1)
     call namefile_obj%get_unitnumber('HFB6', this%inhfb, 1)
     call namefile_obj%get_unitnumber('GNC6', this%ingnc, 1)
@@ -282,8 +287,10 @@ module GwfModule
     call gnc_cr(this%gnc, this%name, this%ingnc, this%iout)
     call hfb_cr(this%hfb, this%name, this%inhfb, this%iout)
     call sto_cr(this%sto, this%name, this%insto, this%iout)
+    call csub_cr(this%csub, this%name, this%insto, this%sto%name,               &
+                 this%incsub, this%iout)
     call ic_cr(this%ic, this%name, this%inic, this%iout, this%dis)
-    call mvr_cr(this%mvr, this%name, this%inmvr, this%iout)
+    call mvr_cr(this%mvr, this%name, this%inmvr, this%iout, dis=this%dis)
     call oc_cr(this%oc, this%name, this%inoc, this%iout)
     call gwf_obs_cr(this%obs, this%inobs)
     !
@@ -324,22 +331,24 @@ module GwfModule
     !
     ! -- Define packages and utility objects
     call this%dis%dis_df()
-    call this%npf%npf_df(this%xt3d, this%ingnc)
+    call this%npf%npf_df(this%dis, this%xt3d, this%ingnc)
     call this%oc%oc_df()
+    ! -- todo: niunit is not a good indicator of budterm size
     call this%budget%budget_df(niunit, 'VOLUME', 'L**3')
     if(this%ingnc > 0) call this%gnc%gnc_df(this)
     !
     ! -- Assign or point model members to dis members
+    !    this%neq will be incremented if packages add additional unknowns
     this%neq = this%dis%nodes
     this%nja = this%dis%nja
     this%ia  => this%dis%con%ia
     this%ja  => this%dis%con%ja
     !
-    ! -- Allocate model arrays, now that neq and nja are assigned
+    ! -- Allocate model arrays, now that neq and nja are known
     call this%allocate_arrays()
     !
     ! -- Define packages and assign iout for time series managers
-    do ip=1,this%bndlist%Count()
+    do ip = 1, this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
       call packobj%bnd_df(this%neq, this%dis)
     enddo
@@ -368,12 +377,11 @@ module GwfModule
     integer(I4B) :: ip
 ! ------------------------------------------------------------------------------
     !
-    ! -- Add the internal connections of this model to sparse
+    ! -- Add the primary grid connections of this model to sparse
     call this%dis%dis_ac(this%moffset, sparse)
     !
     ! -- Add any additional connections that NPF may need
-    if(this%innpf > 0) call this%npf%npf_ac(this%moffset, sparse,              &
-      this%dis%nodes, this%ia, this%ja)
+    if(this%innpf > 0) call this%npf%npf_ac(this%moffset, sparse)
     !
     ! -- Add any package connections
     do ip = 1, this%bndlist%Count()
@@ -410,8 +418,7 @@ module GwfModule
     call this%dis%dis_mc(this%moffset, this%idxglo, iasln, jasln)
     !
     ! -- Map any additional connections that NPF may need
-    if(this%innpf > 0) call this%npf%npf_mc(this%moffset, this%dis%nodes,      &
-      this%ia, this%ja, iasln, jasln)
+    if(this%innpf > 0) call this%npf%npf_mc(this%moffset, iasln, jasln)
     !
     ! -- Map any package connections
     do ip=1,this%bndlist%Count()
@@ -451,11 +458,12 @@ module GwfModule
     !
     ! -- Allocate and read modules attached to model
     if(this%inic  > 0) call this%ic%ic_ar(this%x, flag_halo) !PAR
-    if(this%innpf > 0) call this%npf%npf_ar(this%dis, this%ic,                 &
+    if(this%innpf > 0) call this%npf%npf_ar(this%ic,                           &
                                             this%ibound, this%x,               &
                                             flag_halo) !PAR
     if(this%inhfb > 0) call this%hfb%hfb_ar(this%ibound, this%xt3d, this%dis)
     if(this%insto > 0) call this%sto%sto_ar(this%dis, this%ibound)
+    if(this%incsub > 0) call this%csub%csub_ar(this%dis, this%ibound)
     if(this%inmvr > 0) call this%mvr%mvr_ar()
     if(this%inobs > 0) call this%obs%gwf_obs_ar(this%ic, this%x, this%flowja)
     !
@@ -470,7 +478,7 @@ module GwfModule
     endif !PAR
     !
     ! -- Package input files now open, so allocate and read
-    do ip=1,this%bndlist%Count()
+    do ip = 1,this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
       if (.not.packobj%p_ishalo) then !PAR
         call packobj%set_pointers(this%dis%nodes, this%ibound, this%x,         &
@@ -508,6 +516,7 @@ module GwfModule
     if(this%inhfb > 0) call this%hfb%hfb_rp()
     if(this%inoc > 0)  call this%oc%oc_rp()
     if(this%insto > 0) call this%sto%sto_rp()
+    if(this%incsub > 0) call this%csub%csub_rp()
     if(this%inmvr > 0) call this%mvr%mvr_rp()
     do ip = 1, this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
@@ -546,6 +555,7 @@ module GwfModule
     ! -- Advance
     if(this%innpf > 0) call this%npf%npf_ad(this%dis%nodes, this%xold)
     if(this%insto > 0) call this%sto%sto_ad()
+    if(this%incsub > 0)  call this%csub%csub_ad(this%dis%nodes, this%x)
     if(this%inmvr > 0) call this%mvr%mvr_ad()
     if(.not.this%ishalo) then !PAR
       do ip=1,this%bndlist%Count()
@@ -580,9 +590,7 @@ module GwfModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Call package cf routines
-    if(this%innpf > 0) then
-      call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
-    endif !PAR
+    if(this%innpf > 0) call this%npf%npf_cf(kiter, this%dis%nodes, this%x)
     do ip = 1, this%bndlist%Count()
       packobj => GetBndFromList(this%bndlist, ip)
       call packobj%bnd_cf()
@@ -608,7 +616,7 @@ module GwfModule
     ! -- local
     class(BndType), pointer :: packobj
     integer(I4B) :: ip
-    integer(I4B) :: inwt, inwtsto, inwtpak
+    integer(I4B) :: inwt, inwtsto, inwtcsub, inwtpak
 ! ------------------------------------------------------------------------------
     !
     ! -- newton flags
@@ -618,19 +626,26 @@ module GwfModule
     if(this%insto > 0) then
       if(inwtflag == 1) inwtsto = this%sto%inewton
     endif
+    inwtcsub = inwtflag
+    if(this%incsub > 0) then
+      if(inwtflag == 1) inwtcsub = this%csub%inewton
+    endif
     !
     ! -- Fill standard conductance terms
-    if(this%innpf > 0) call this%npf%npf_fc(kiter, this%dis%nodes,             &
-                                                this%nja, njasln, amatsln,     &
-                                                this%idxglo, this%rhs, this%x)
-    if(this%inhfb > 0) call this%hfb%hfb_fc(kiter, this%dis%nodes,             &
-                                                this%nja, njasln, amatsln,     &
-                                                this%idxglo, this%rhs, this%x)
-    if(this%ingnc > 0) call this%gnc%gnc_fc(kiter, this%ia, amatsln)
+    if(this%innpf > 0) call this%npf%npf_fc(kiter, njasln, amatsln,            &
+                                            this%idxglo, this%rhs, this%x)
+    if(this%inhfb > 0) call this%hfb%hfb_fc(kiter, njasln, amatsln,            &
+                                            this%idxglo, this%rhs, this%x)
+    if(this%ingnc > 0) call this%gnc%gnc_fc(kiter, amatsln)
+    ! -- storage
     if(this%insto > 0) then
-      call this%sto%sto_fc(kiter, this%dis%nodes, this%xold,                   &
-                            this%x, this%nja, njasln,                          &
-                            amatsln, this%idxglo, this%rhs)
+      call this%sto%sto_fc(kiter, this%xold, this%x, njasln, amatsln,          &
+                           this%idxglo, this%rhs)
+    end if
+    ! -- skeletal storage, compaction, and land subsidence 
+    if(this%incsub > 0) then
+      call this%csub%csub_fc(kiter, this%xold, this%x, njasln, amatsln,        &
+                             this%idxglo, this%rhs)
     end if
     if(this%inmvr > 0) call this%mvr%mvr_fc()
     do ip = 1, this%bndlist%Count()
@@ -641,8 +656,8 @@ module GwfModule
     !--Fill newton terms
     if(this%innpf > 0) then
       if(inwt /= 0) then
-        call this%npf%npf_fn(kiter, this%dis%nodes, this%nja, njasln,          &
-                             amatsln, this%idxglo, this%rhs, this%x)
+        call this%npf%npf_fn(kiter, njasln, amatsln, this%idxglo, this%rhs,    &
+                             this%x)
       endif
     endif
     !
@@ -659,8 +674,16 @@ module GwfModule
     ! -- Fill newton terms for storage
     if(this%insto > 0) then
       if (inwtsto /= 0) then
-        call this%sto%sto_fn(kiter, this%dis%nodes, this%xold, this%x,         &
-                              this%nja, njasln, amatsln, this%idxglo, this%rhs)
+        call this%sto%sto_fn(kiter, this%xold, this%x, njasln, amatsln,        &
+                             this%idxglo, this%rhs)
+      end if
+    end if
+    !
+    ! -- Fill newton terms for skeletal storage, compaction, and land subsidence 
+    if(this%incsub > 0) then
+      if (inwtcsub /= 0) then
+        call this%csub%csub_fn(kiter, this%xold, this%x, njasln, amatsln,      &
+                               this%idxglo, this%rhs)
       end if
     end if
     !
@@ -701,6 +724,12 @@ module GwfModule
     !
     ! -- If mover is on, then at least 2 outers required
     if (this%inmvr > 0) call this%mvr%mvr_cc(kiter, iend, icnvg)
+    !
+    ! -- csub convergence check
+    if (this%incsub > 0) then
+      call this%csub%csub_cc(iend, icnvg, this%dis%nodes, this%x, this%xold,     &
+                             hclose, rclose)
+    end if
     !
     ! -- Call package cc routines
     do ip = 1, this%bndlist%Count()
@@ -927,10 +956,8 @@ module GwfModule
     do i = 1, this%nja
       this%flowja(i) = DZERO
     enddo
-    if(this%innpf > 0) call this%npf%npf_flowja(this%neq, this%nja, this%x,    &
-                                                this%flowja)
-    if(this%inhfb > 0) call this%hfb%hfb_flowja(this%neq, this%nja, this%x,    &
-                                                this%flowja)
+    if(this%innpf > 0) call this%npf%npf_flowja(this%x, this%flowja)
+    if(this%inhfb > 0) call this%hfb%hfb_flowja(this%x, this%flowja)
     if(this%ingnc > 0) call this%gnc%flowja(this%flowja)
     !
     ! -- Return
@@ -986,10 +1013,16 @@ module GwfModule
                            isuppress_output, this%budget)
       call this%sto%bdsav(icbcfl, icbcun)
     endif
+    ! -- Skeletal storage, compaction and subsidence
+    if (this%incsub > 0) then
+      call this%csub%bdcalc(this%dis%nodes, this%x, this%xold,                 &
+                            isuppress_output, this%budget)
+      call this%csub%bdsav(idvfl, icbcfl, icbcun)
+    end if
     !
     ! -- Node Property Flow
     if(this%innpf > 0) then
-      call this%npf%npf_bdadj(this%nja, this%flowja, icbcfl, icbcun)
+      call this%npf%npf_bdadj(this%flowja, icbcfl, icbcun)
     endif
     !
     ! -- Clear obs
@@ -1054,7 +1087,7 @@ module GwfModule
     if(ibudfl /= 0) then
       !
       ! -- NPF output
-      if(this%innpf > 0) call this%npf%npf_ot(this%neq, this%nja, this%flowja)
+      if(this%innpf > 0) call this%npf%npf_ot(this%flowja)
       !
       ! -- GNC output
       if(this%ingnc > 0) &
@@ -1115,8 +1148,12 @@ module GwfModule
     ! -- dummy
     class(GwfModelType) :: this
     ! -- local
-    class(BndType), pointer :: packobj
 ! ------------------------------------------------------------------------------
+    !
+    ! -- csub final processing
+    if (this%incsub > 0) then
+      call this%csub%csub_fp()
+    end if
     !
     return
   end subroutine gwf_fp
@@ -1144,6 +1181,7 @@ module GwfModule
     call this%xt3d%xt3d_da()
     call this%gnc%gnc_da()
     call this%sto%sto_da()
+    call this%csub%csub_da()
     call this%budget%budget_da()
     call this%hfb%hfb_da()
     call this%mvr%mvr_da()
@@ -1157,6 +1195,7 @@ module GwfModule
     deallocate(this%xt3d)
     deallocate(this%gnc)
     deallocate(this%sto)
+    deallocate(this%csub)
     deallocate(this%budget)
     deallocate(this%hfb)
     deallocate(this%mvr)
@@ -1176,6 +1215,7 @@ module GwfModule
     call mem_deallocate(this%inobs)
     call mem_deallocate(this%innpf)
     call mem_deallocate(this%insto)
+    call mem_deallocate(this%incsub)
     call mem_deallocate(this%inmvr)
     call mem_deallocate(this%inhfb)
     call mem_deallocate(this%ingnc)
@@ -1297,6 +1337,7 @@ module GwfModule
     call mem_allocate(this%inoc,  'INOC',  modelname)
     call mem_allocate(this%innpf, 'INNPF', modelname)
     call mem_allocate(this%insto, 'INSTO', modelname)
+    call mem_allocate(this%incsub, 'INCSUB', modelname)
     call mem_allocate(this%inmvr, 'INMVR', modelname)
     call mem_allocate(this%inhfb, 'INHFB', modelname)
     call mem_allocate(this%ingnc, 'INGNC', modelname)
@@ -1308,6 +1349,7 @@ module GwfModule
     this%inoc = 0
     this%innpf = 0
     this%insto = 0
+    this%incsub = 0
     this%inmvr = 0
     this%inhfb = 0
     this%ingnc = 0
