@@ -448,9 +448,9 @@ module MpiExchangeGwfModule
         disvp => bp
       end select
       call mem_allocate(disvp%nodereduced, 1, 'NODEREDUCED', disname)
-      call mem_allocate(disp%idomain, 1, 1, 1, 'IDOMAIN', disname)
-      call mem_allocate(disp%top2d, 1, 1, 'TOP2D', disname)
-      call mem_allocate(disp%bot3d, 1, 1, 1, 'BOT3D', disname)
+      call mem_allocate(disvp%idomain, 1, 1, 1, 'IDOMAIN', disname)
+      call mem_allocate(disvp%top2d, 1, 1, 'TOP2D', disname)
+      call mem_allocate(disvp%bot3d, 1, 1, 1, 'BOT3D', disname)
     endif  
     !
     ndim = mpi_set_gwfhalo_world_var_int('DNDIM', mname)
