@@ -733,10 +733,10 @@ module SimulationCreateModule
         end select
       end do
       !
-      if (allocated(model_topol_m1)) then !GCG
+      if (allocated(model_topol_m1)) then !CGC
         model_topol_m1 = abs(model_topol_m1) !CGC
-      end if !GCG
-      if (allocated(model_topol_m2)) then !GCG
+      end if !CGC
+      if (allocated(model_topol_m2)) then !CGC
         model_topol_m2 = abs(model_topol_m2) !CGC
       end if
       !
