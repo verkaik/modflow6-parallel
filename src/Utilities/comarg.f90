@@ -105,6 +105,7 @@ module CommandArguments
             simlstfile = trim(simfile)//'.lst' !SIM
           end if !SIM
           iterm = 0 !SIM
+          if (jarg == icountcmd) exit !SIM
         case default 
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
           write(errmsg, '(2a,1x,a)') &
