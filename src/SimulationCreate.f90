@@ -3,16 +3,17 @@ module SimulationCreateModule
   use KindModule,             only: DP, I4B, write_kindinfo
   use ConstantsModule,        only: LINELENGTH, LENMODELNAME, LENBIGLINE, DZERO
   use SimVariablesModule,     only: simfile, simlstfile, iout
-  use SimModule,              only: ustop, store_error, count_errors,          &
+  use GenericUtilitiesModule, only: sim_message, write_centered
+  use SimModule,              only: ustop, store_error, count_errors,            &
                                     store_error_unit, maxerrors
   use InputOutputModule,      only: getunit, urword, openfile
   use ArrayHandlersModule,    only: expandarray, ifind
   use BaseModelModule,        only: BaseModelType
-  use BaseSolutionModule,     only: BaseSolutionType, AddBaseSolutionToList,   &
+  use BaseSolutionModule,     only: BaseSolutionType, AddBaseSolutionToList,     &
                                     GetBaseSolutionFromList
   use SolutionGroupModule,    only: SolutionGroupType, AddSolutionGroupToList
   use BaseExchangeModule,     only: BaseExchangeType
-  use ListsModule,            only: basesolutionlist, basemodellist,           &
+  use ListsModule,            only: basesolutionlist, basemodellist,             &
                                     solutiongrouplist
   use BaseModelModule,        only: GetBaseModelFromList
   use BlockParserModule,      only: BlockParserType
@@ -43,24 +44,21 @@ module SimulationCreateModule
     ! -- modules
     use MpiExchangeModule, only: MpiWorld !PAR
     ! -- local
-    !character(len=LINELENGTH) :: simfile
-    !character(len=LINELENGTH) :: simlstfile
+    character(len=LINELENGTH) :: line
 ! ------------------------------------------------------------------------------
-    !!
-    !! -- set default simfile and simlstfile
-    !simfile    = 'mfsim.nam'
-    !simlstfile = 'mfsim.lst'
     !
     ! -- initialize iout 
     iout = 0
     !
     ! -- Open simulation list file
     iout = getunit()
-    call openfile(iout, 0, simlstfile, 'LIST', filstat_opt='REPLACE',          &
+    call openfile(iout, 0, simlstfile, 'LIST', filstat_opt='REPLACE',            &
                   master_write=.true.) !PAR
     call MpiWorld%mpi_barrier() !PAR 
-    write(*,'(A,A)') ' Writing simulation list file: ', &
-                     trim(adjustl(simlstfile))
+    ! -- write simlstfile to stdout
+    write(line,'(2(1x,A))') 'Writing simulation list file:',                     &
+                            trim(adjustl(simlstfile))
+    call sim_message(line)
     call write_simulation_header()
     !
     ! -- Read the simulation name file and create objects
@@ -108,7 +106,7 @@ module SimulationCreateModule
     use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,  & 
                                       IDEVELOPMODE
     use CompilerVersion
-    use InputOutputModule,      only: write_centered
+    use GenericUtilitiesModule, only: write_centered
     ! -- dummy
     ! -- local
     character(len=LENBIGLINE) :: syscmd
@@ -116,18 +114,20 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Write header lines to simulation list file.
-    call write_centered('MODFLOW'//MFVNAM, iout, 80, force_write=.true.) !PAR
-    call write_centered(MFTITLE, iout, 80, force_write=.true.) !PAR
-    call write_centered('VERSION '//VERSION, iout, 80, force_write=.true.) !PAR
+    call write_centered('MODFLOW'//MFVNAM, 80, iunit=iout, force_write=.true.) !PAR
+    call write_centered(MFTITLE, 80, iunit=iout, force_write=.true.) !PAR
+    call write_centered('VERSION '//VERSION, 80, iunit=iout, force_write=.true.) !PAR
     !
     ! -- Write if develop mode
-    if (IDEVELOPMODE == 1) call write_centered('***DEVELOP MODE***', iout, 80, &
+    if (IDEVELOPMODE == 1) then
+      call write_centered('***DEVELOP MODE***', 80, iunit=iout, &
                                                force_write=.true.) !PAR
+    end if
     !
     ! -- Write compiler version
     call get_compiler(compiler)
-    call write_centered(' ', iout, 80, force_write=.true.) !PAR
-    call write_centered(trim(adjustl(compiler)), iout, 80, force_write=.true.) !PAR
+    call write_centered(' ', 80, iunit=iout, force_write=.true.) !PAR
+    call write_centered(trim(adjustl(compiler)), 80, iunit=iout, force_write=.true.) !PAR
     !
     ! -- Write disclaimer
     write(iout, FMTDISCLAIMER)
@@ -162,6 +162,7 @@ module SimulationCreateModule
     ! -- dummy
     character(len=*),intent(inout) :: simfile !PAR
     ! -- local
+    character(len=LINELENGTH) :: line
     character(len=LINELENGTH) :: errmsg
     class(BaseSolutionType), pointer :: sp
     class(BaseModelType), pointer :: mp
@@ -172,7 +173,10 @@ module SimulationCreateModule
     inunit = getunit()
     call openfile(inunit, iout, simfile, 'NAM')
     call MpiWorld%mpi_barrier() !PAR
-    if (writestd) write(*,'(A,A)') ' Using Simulation name file: ', simfile !PAR
+    if (writestd) then !PAR
+      write(line,'(2(1x,a))') 'Using Simulation name file:', trim(simfile) !PAR
+      call sim_message(line, skipafter=1)
+    end if !PAR
     !
     ! -- Initialize block parser
     call parser%Initialize(inunit, iout)
@@ -453,7 +457,6 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use GwfGwfExchangeModule,    only: gwfexchange_create
-!    use GwfpGwfpExchangeModule,  only: gwfpexchange_create !PAR
     ! -- dummy
     ! -- local
     integer(I4B) :: ierr
@@ -511,22 +514,22 @@ module SimulationCreateModule
               call ustop()
             endif
             !
-            s1 = model_sub(m1)
-            s2 = model_sub(m2)
-            if (s1 /= s2) then
-              m2_bympi = .true.
-            else
-              m2_bympi = .false.
-            endif
+            s1 = model_sub(m1) !PAR
+            s2 = model_sub(m2) !PAR
+            if (s1 /= s2) then !PAR
+              m2_bympi = .true. !PAR
+            else !PAR
+              m2_bympi = .false. !PAR
+            endif !PAR
             !
             ! -- get model id
-            m1 = ifind(modelname, name1)
-            m2 = ifind(modelname, name2)
+            m1 = ifind(modelname, name1) !PAR
+            m2 = ifind(modelname, name2) !PAR
             !
             ! -- Create the exchange object.
             write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWF6 exchange ', id,      &
               ' will be created to connect model ', m1, ' with model ', m2
-            call gwfexchange_create(fname, id, m1, m2, name1, name2, m2_bympi)
+            call gwfexchange_create(fname, id, m1, m2, name1, name2, m2_bympi) !PAR
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SIMULATION EXCHANGES: ',                 &

@@ -5,7 +5,9 @@ module GwfGwfExchangeModule
   use ArrayHandlersModule,     only: ExpandArray
   use BaseModelModule,         only: GetBaseModelFromList
   use BaseExchangeModule,      only: BaseExchangeType, AddBaseExchangeToList
-  use ConstantsModule,         only: LENBOUNDNAME, NAMEDBOUNDFLAG, LENMODELNAME !HALO2
+  use ConstantsModule,         only: LENBOUNDNAME, NAMEDBOUNDFLAG, LINELENGTH, &
+                                     TABCENTER, TABLEFT,                       &
+                                     LENMODELNAME !HALO2
   use ListsModule,             only: basemodellist
   use NumericalExchangeModule, only: NumericalExchangeType
   use NumericalModelModule,    only: NumericalModelType
@@ -18,6 +20,7 @@ module GwfGwfExchangeModule
   use SimModule,               only: count_errors, store_error,                &
                                      store_error_unit, ustop
   use BlockParserModule,       only: BlockParserType
+  use TableModule,             only: TableType, table_cr
 
   implicit none
 
@@ -27,33 +30,39 @@ module GwfGwfExchangeModule
   public :: gwf_mpi_halo_init !HALO2
 
   type, extends(NumericalExchangeType) :: GwfExchangeType
-    type(GwfHaloModelType), pointer                  :: gwfhalo   => null()     ! pointer to halo model !HALO2
-    type(GwfModelType), pointer                      :: gwfmodel1 => null()     ! pointer to GWF Model 1
-    type(GwfModelType), pointer                      :: gwfmodel2 => null()     ! pointer to GWF Model 2
-    integer(I4B), pointer                            :: m1id => null() !HALO2
-    integer(I4B), pointer                            :: m2id => null() !HALO2
-    integer(I4B), pointer                            :: inewton   => null()     ! newton flag (1 newton is on)
-    integer(I4B), pointer                            :: icellavg  => null()     ! cell averaging
-    integer(I4B), pointer                            :: ivarcv    => null()     ! variable cv
-    integer(I4B), pointer                            :: idewatcv  => null()     ! dewatered cv
-    integer(I4B), pointer                            :: ianglex   => null()     ! flag indicating anglex was read, if read, ianglex is index in auxvar
-    integer(I4B), pointer                            :: icdist    => null()     ! flag indicating cdist was read, if read, icdist is index in auxvar
-    integer(I4B), pointer                            :: inamedbound => null()   ! flag to read boundnames
-    real(DP), pointer                                :: satomega  => null()     ! saturation smoothing
-    integer(I4B), dimension(:), pointer, contiguous  :: ihc       => null()     ! horizontal connection indicator array
-    real(DP), dimension(:), pointer, contiguous      :: condsat   => null()     ! saturated conductance
-    real(DP), dimension(:), pointer, contiguous      :: cl1       => null()     ! connection length 1
-    real(DP), dimension(:), pointer, contiguous      :: cl2       => null()     ! connection length 2
-    real(DP), dimension(:), pointer, contiguous      :: hwva      => null()     ! horizontal widths, vertical flow areas
-    integer(I4B), pointer                            :: ingnc     => null()     ! unit number for gnc (0 if off)
-    type(GhostNodeType), pointer                     :: gnc       => null()     ! gnc object
-    integer(I4B), pointer                            :: inmvr     => null()     ! unit number for mover (0 if off)
-    type(GwfMvrType), pointer                        :: mvr       => null()     ! water mover object
-    integer(I4B), pointer                            :: inobs     => null()     ! unit number for GWF-GWF observations
-    type(ObsType), pointer                           :: obs       => null()     ! observation object
+    type(GwfHaloModelType), pointer                  :: gwfhalo     => null()    ! pointer to halo model !HALO2
+    integer(I4B), pointer                            :: m1id        => null()    !HALO2
+    integer(I4B), pointer                            :: m2id        => null()    !HALO2
+    type(GwfModelType), pointer                      :: gwfmodel1   => null()    ! pointer to GWF Model 1
+    type(GwfModelType), pointer                      :: gwfmodel2   => null()    ! pointer to GWF Model 2
+    integer(I4B), pointer                            :: inewton     => null()    ! newton flag (1 newton is on)
+    integer(I4B), pointer                            :: icellavg    => null()    ! cell averaging
+    integer(I4B), pointer                            :: ivarcv      => null()    ! variable cv
+    integer(I4B), pointer                            :: idewatcv    => null()    ! dewatered cv
+    integer(I4B), pointer                            :: ianglex     => null()    ! flag indicating anglex was read, if read, ianglex is index in auxvar
+    integer(I4B), pointer                            :: icdist      => null()    ! flag indicating cdist was read, if read, icdist is index in auxvar
+    integer(I4B), pointer                            :: inamedbound => null()    ! flag to read boundnames
+    real(DP), pointer                                :: satomega    => null()    ! saturation smoothing
+    integer(I4B), dimension(:), pointer, contiguous  :: ihc         => null()    ! horizontal connection indicator array
+    real(DP), dimension(:), pointer, contiguous      :: condsat     => null()    ! saturated conductance
+    real(DP), dimension(:), pointer, contiguous      :: cl1         => null()    ! connection length 1
+    real(DP), dimension(:), pointer, contiguous      :: cl2         => null()    ! connection length 2
+    real(DP), dimension(:), pointer, contiguous      :: hwva        => null()    ! horizontal widths, vertical flow areas
+    integer(I4B), pointer                            :: ingnc       => null()    ! unit number for gnc (0 if off)
+    type(GhostNodeType), pointer                     :: gnc         => null()    ! gnc object
+    integer(I4B), pointer                            :: inmvr       => null()    ! unit number for mover (0 if off)
+    type(GwfMvrType), pointer                        :: mvr         => null()    ! water mover object
+    integer(I4B), pointer                            :: inobs       => null()    ! unit number for GWF-GWF observations
+    type(ObsType), pointer                           :: obs         => null()    ! observation object
     character(len=LENBOUNDNAME), dimension(:),                                  &
                                  pointer, contiguous :: boundname   => null()    ! boundnames
+    !
+    ! -- table objects
+    type(TableType), pointer :: outputtab1 => null()
+    type(TableType), pointer :: outputtab2 => null()
+
   contains
+
     procedure          :: exg_df      => gwf_gwf_df
     procedure          :: exg_ac      => gwf_gwf_ac
     procedure          :: exg_mc      => gwf_gwf_mc
@@ -101,7 +110,7 @@ contains
     use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
     character(len=*),intent(in) :: filename
-    integer(I4B), intent(in) :: id, m1i, m2i
+    integer(I4B), intent(in) :: id, m1i, m2i !PAR
     character(len=*), intent(in) :: mname1i, mname2i !PAR
     logical, intent(in) :: m2_bympi !PAR
     ! -- local
@@ -294,7 +303,7 @@ contains
     ! -- return
     return
   end subroutine gwf_gwf_df
-  
+
   subroutine gwf_gwf_ac(this, sparse)
 ! ******************************************************************************
 ! gwf_gwf_ac -- override parent exg_ac so that gnc can add
@@ -903,7 +912,7 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ConstantsModule, only: DZERO, LENBUDTXT, LENPACKAGENAME
-    use TdisModule, only: kstp, kper
+    !use TdisModule, only: kstp, kper
     ! -- dummy
     class(GwfExchangeType) :: this
     integer(I4B), intent(inout) :: icnvg
@@ -914,21 +923,52 @@ contains
     character(len=LENPACKAGENAME+4) :: packname1
     character(len=LENPACKAGENAME+4) :: packname2
     character(len=LENBUDTXT), dimension(1) :: budtxt
+    character(len=20) :: nodestr
+    integer(I4B) :: ntabrows
+    integer(I4B) :: nodeu
     real(DP), dimension(2, 1) :: budterm
     integer(I4B) :: i, n1, n2, n1u, n2u, n1h, n2h !HALO2
     integer(I4B) :: ibinun1, ibinun2
-    integer(I4B) :: ibdlbl
     integer(I4B) :: icbcfl, ibudfl
     real(DP) :: ratin, ratout, rrate, deltaqgnc
     ! -- formats
-    character(len=*), parameter :: fmttkk =                                    &
-      "(1X,/1X,A,'   PERIOD ',I0,'   STEP ',I0)"
 ! ------------------------------------------------------------------------------
+    !
+    ! -- initialize local variables
     budtxt(1) = '    FLOW-JA-FACE'
     packname1 = 'EXG '//this%name
     packname1 = adjustr(packname1)
     packname2 = 'EXG '//this%name
     packname2 = adjustr(packname2)
+    !
+    ! -- update output tables
+    if (this%iprflow /= 0) then
+      !
+      ! -- update titles
+      if (this%gwfmodel1%oc%oc_save('BUDGET')) then
+        call this%outputtab1%set_title(packname1)
+      end if
+      if (this%gwfmodel2%oc%oc_save('BUDGET')) then 
+        call this%outputtab2%set_title(packname2)
+      end if
+      !
+      ! -- update maxbound of tables
+      ntabrows = 0
+      do i = 1, this%nexg
+        n1 = this%nodem1(i)
+        n2 = this%nodem2(i)
+        !
+        ! -- If both cells are active then calculate flow rate
+        if (this%gwfmodel1%ibound(n1) /= 0 .and.                                  &
+            this%gwfmodel2%ibound(n2) /= 0) then
+          ntabrows = ntabrows + 1
+        end if
+      end do
+      if (ntabrows > 0) then
+        call this%outputtab1%set_maxbound(ntabrows)
+        call this%outputtab2%set_maxbound(ntabrows)
+      end if
+    end if
     !
     ! -- Print and write budget terms for model 1
     !
@@ -958,7 +998,6 @@ contains
     ! Initialize accumulators
     ratin = DZERO
     ratout = DZERO
-    ibdlbl = 0
     !
     ! -- Loop through all exchanges
     do i = 1, this%nexg
@@ -991,12 +1030,13 @@ contains
         ! -- Print the individual rates to model list files if requested
         if(this%iprflow /= 0) then
           if(this%gwfmodel1%oc%oc_save('BUDGET')) then
-            if(ibdlbl == 0) write(this%gwfmodel1%iout,fmttkk) packname1,       &
-                kper, kstp
-            call this%gwfmodel1%dis%print_list_entry(i, n1, rrate,             &
-                this%gwfmodel1%iout, bname)
-          endif
-          ibdlbl = 1
+            !
+            ! -- set nodestr and write outputtab table
+            nodeu = this%gwfmodel1%dis%get_nodeuser(n1)
+            call this%gwfmodel1%dis%nodeu_to_string(nodeu, nodestr)
+            call this%outputtab1%print_list_entry(i, trim(adjustl(nodestr)),     &
+                                                  rrate, bname)
+          end if
         endif
         if(rrate < DZERO) then
           ratout = ratout - rrate
@@ -1026,95 +1066,95 @@ contains
     call this%m1%model_bdentry(budterm, budtxt, this%name)
     !
     if(.not.this%m2_bympi) then !PAR
+    !
+    ! -- Print and write budget terms for model 2
+    !
+    ! -- Set binary unit numbers for saving flows
+    if(this%ipakcb /= 0) then
+      ibinun2 = this%gwfmodel2%oc%oc_save_unit('BUDGET')
+    else
+      ibinun2 = 0
+    endif
+    !
+    ! -- If save budget flag is zero for this stress period, then
+    !    shut off saving
+    if(.not. this%gwfmodel2%oc%oc_save('BUDGET')) ibinun2 = 0
+    if(isuppress_output /= 0) then
+      ibinun2 = 0
+    endif
+    !
+    ! -- If cell-by-cell flows will be saved as a list, write header.
+    if(ibinun2 /= 0) then
+      call this%gwfmodel2%dis%record_srcdst_list_header(budtxt(1),             &
+                                       this%gwfhalo%m2name, this%name,         & !HALO2
+                                       this%gwfhalo%m1name, this%name,         & !HALO2
+                                       this%naux, this%auxname,                &
+                                       ibinun2, this%nexg, this%gwfmodel2%iout)
+    endif
+    !
+    ! Initialize accumulators
+    ratin = DZERO
+    ratout = DZERO
+    !
+    ! -- Loop through all exchanges
+    do i = 1, this%nexg
       !
-      ! -- Print and write budget terms for model 2
-      !
-      ! -- Set binary unit numbers for saving flows
-      if(this%ipakcb /= 0) then
-        ibinun2 = this%gwfmodel2%oc%oc_save_unit('BUDGET')
+      ! -- Assign boundary name
+      if (this%inamedbound>0) then
+        bname = this%boundname(i)
       else
-        ibinun2 = 0
+        bname = ''
       endif
       !
-      ! -- If save budget flag is zero for this stress period, then
-      !    shut off saving
-      if(.not. this%gwfmodel2%oc%oc_save('BUDGET')) ibinun2 = 0
-      if(isuppress_output /= 0) then
-        ibinun2 = 0
-      endif
+      ! -- Calculate the flow rate between n1 and n2
+      rrate = DZERO
+      n1 = this%nodem1(i)
+      n2 = this%nodem2(i)
       !
-      ! -- If cell-by-cell flows will be saved as a list, write header.
-      if(ibinun2 /= 0) then
-        call this%gwfmodel2%dis%record_srcdst_list_header(budtxt(1),             &
-                                         this%gwfhalo%m2name, this%name,         & !HALO2
-                                         this%gwfhalo%m1name, this%name,         & !HALO2
-                                         this%naux, this%auxname,                &
-                                         ibinun2, this%nexg, this%gwfmodel2%iout)
-      endif
-      !
-      ! Initialize accumulators
-      ratin = DZERO
-      ratout = DZERO
-      ibdlbl = 0
-      !
-      ! -- Loop through all exchanges
-      do i = 1, this%nexg
+      ! -- If both cells are active then calculate flow rate
+      if(this%gwfmodel1%ibound(n1) /= 0 .and. &
+          this%gwfmodel2%ibound(n2) /= 0) then
+        rrate = this%cond(i) * this%m2%x(n2) - this%cond(i) * this%m1%x(n1)
         !
-        ! -- Assign boundary name
-        if (this%inamedbound>0) then
-          bname = this%boundname(i)
+        ! -- add ghost node contribution
+        if(this%ingnc > 0) then
+          deltaqgnc = this%gnc%deltaqgnc(i)
+          rrate = rrate + deltaqgnc
+        endif
+        !
+        ! -- Print the individual rates to model list files if requested
+        if(this%iprflow /= 0) then
+          if(this%gwfmodel2%oc%oc_save('BUDGET')) then
+            !
+            ! -- set nodestr and write outputtab table
+            nodeu = this%gwfmodel2%dis%get_nodeuser(n2)
+            call this%gwfmodel2%dis%nodeu_to_string(nodeu, nodestr)
+            call this%outputtab2%print_list_entry(i, trim(adjustl(nodestr)),     &
+                                                  -rrate, bname)
+          end if
+        endif
+        if(rrate < DZERO) then
+          ratout = ratout - rrate
         else
-          bname = ''
+          ratin = ratin + rrate
         endif
-        !
-        ! -- Calculate the flow rate between n1 and n2
-        rrate = DZERO
-        n1 = this%nodem1(i)
-        n2 = this%nodem2(i)
-        !
-        ! -- If both cells are active then calculate flow rate
-        if(this%gwfmodel1%ibound(n1) /= 0 .and. &
-            this%gwfmodel2%ibound(n2) /= 0) then
-          rrate = this%cond(i) * this%m2%x(n2) - this%cond(i) * this%m1%x(n1)
-          !
-          ! -- add ghost node contribution
-          if(this%ingnc > 0) then
-            deltaqgnc = this%gnc%deltaqgnc(i)
-            rrate = rrate + deltaqgnc
-          endif
-          !
-          ! -- Print the individual rates to model list files if requested
-          if(this%iprflow /= 0) then
-            if(this%gwfmodel2%oc%oc_save('BUDGET')) then
-              if(ibdlbl == 0) write(this%gwfmodel2%iout,fmttkk) packname2,     &
-                  kper, kstp
-              call this%gwfmodel2%dis%print_list_entry(i, n2, -rrate,          &
-                  this%gwfmodel2%iout, bname)
-            endif
-            ibdlbl = 1
-          endif
-          if(rrate < DZERO) then
-            ratout = ratout - rrate
-          else
-            ratin = ratin + rrate
-          endif
-        endif
-        !
-        ! -- If saving cell-by-cell flows in list, write flow
-        n1u = this%gwfmodel1%dis%get_nodeuser(n1)
-        n2u = this%gwfmodel2%dis%get_nodeuser(n2)
-        if(ibinun2 /= 0)                                                       &
-          call this%gwfmodel2%dis%record_mf6_list_entry(                       &
-            ibinun2, n2u, n1u, -rrate, this%naux, this%auxvar(:, i),           &
-            .false., .false.)
-        !
-      enddo
+      endif
       !
-      ! -- Add the budget terms to model 2
-      budterm(1, 1) = ratout
-      budterm(2, 1) = ratin
-      call this%m2%model_bdentry(budterm, budtxt, this%name)
+      ! -- If saving cell-by-cell flows in list, write flow
+      n1u = this%gwfmodel1%dis%get_nodeuser(n1)
+      n2u = this%gwfmodel2%dis%get_nodeuser(n2)
+      if(ibinun2 /= 0)                                                         &
+        call this%gwfmodel2%dis%record_mf6_list_entry(                         &
+          ibinun2, n2u, n1u, -rrate, this%naux, this%auxvar(:, i),             &
+          .false., .false.)
       !
+    enddo
+    !
+    ! -- Add the budget terms to model 2
+    budterm(1, 1) = ratout
+    budterm(2, 1) = ratin
+    call this%m2%model_bdentry(budterm, budtxt, this%name)
+    !
     endif !PAR
     !
     ! -- Set icbcfl, ibudfl to zero so that flows will be printed and
@@ -1581,47 +1621,46 @@ contains
       "('EXCHANGE NODES ', i0, ' AND ', i0,"  // &
       "' NOT CONSISTENT WITH GNC NODES ', i0, ' AND ', i0)"
 ! ------------------------------------------------------------------------------
-    !TODO
-    
-    !! -- If exchange has ghost nodes, then initialize ghost node object
-    !!    This will read the ghost node blocks from the gnc input file.
-    !call this%gnc%gnc_df(this%m1, m2=this%m2)
-    !!
-    !! -- Verify gnc is implicit if exchange has Newton Terms
-    !if(.not. this%gnc%implicit .and. this%inewton /= 0) then
-    !  call store_error('GNC IS EXPLICIT, BUT GWF EXCHANGE HAS ACTIVE NEWTON.')
-    !  call store_error('ADD IMPLICIT OPTION TO GNC OR REMOVE NEWTON FROM ' // &
-    !    'GWF EXCHANGE.')
-    !  call store_error_unit(this%ingnc)
-    !  call ustop()
-    !endif
-    !!
-    !! -- Perform checks to ensure GNCs match with GWF-GWF nodes
-    !if(this%nexg /= this%gnc%nexg) then
-    !  call store_error('NUMBER OF EXCHANGES DOES NOT MATCH NUMBER OF GNCs')
-    !  call store_error_unit(this%ingnc)
-    !  call ustop()
-    !endif
-    !!
-    !! -- Go through each entry and confirm
-    !do i = 1, this%nexg
-    !  if(this%nodem1(i) /= this%gnc%nodem1(i) .or.                             &
-    !      this%nodem2(i) /= this%gnc%nodem2(i) ) then
-    !    nm1 = this%gwfmodel1%dis%get_nodeuser(this%nodem1(i))
-    !    nm2 = this%gwfmodel2%dis%get_nodeuser(this%nodem2(i))
-    !    nmgnc1 = this%gwfmodel1%dis%get_nodeuser(this%gnc%nodem1(i))
-    !    nmgnc2 = this%gwfmodel2%dis%get_nodeuser(this%gnc%nodem2(i))
-    !    write(errmsg, fmterr) nm1, nm2, nmgnc1, nmgnc2
-    !    call store_error(errmsg)
-    !  endif
-    !enddo
-    !if(count_errors() > 0) then
-    !  call store_error_unit(this%ingnc)
-    !  call ustop()
-    !endif
-    !!
-    !! -- close the file
-    !close(this%ingnc)
+    !
+    ! -- If exchange has ghost nodes, then initialize ghost node object
+    !    This will read the ghost node blocks from the gnc input file.
+    call this%gnc%gnc_df(this%m1, m2=this%m2)
+    !
+    ! -- Verify gnc is implicit if exchange has Newton Terms
+    if(.not. this%gnc%implicit .and. this%inewton /= 0) then
+      call store_error('GNC IS EXPLICIT, BUT GWF EXCHANGE HAS ACTIVE NEWTON.')
+      call store_error('ADD IMPLICIT OPTION TO GNC OR REMOVE NEWTON FROM ' // &
+        'GWF EXCHANGE.')
+      call store_error_unit(this%ingnc)
+      call ustop()
+    endif
+    !
+    ! -- Perform checks to ensure GNCs match with GWF-GWF nodes
+    if(this%nexg /= this%gnc%nexg) then
+      call store_error('NUMBER OF EXCHANGES DOES NOT MATCH NUMBER OF GNCs')
+      call store_error_unit(this%ingnc)
+      call ustop()
+    endif
+    !
+    ! -- Go through each entry and confirm
+    do i = 1, this%nexg
+      if(this%nodem1(i) /= this%gnc%nodem1(i) .or.                             &
+          this%nodem2(i) /= this%gnc%nodem2(i) ) then
+        nm1 = this%gwfmodel1%dis%get_nodeuser(this%nodem1(i))
+        nm2 = this%gwfmodel2%dis%get_nodeuser(this%nodem2(i))
+        nmgnc1 = this%gwfmodel1%dis%get_nodeuser(this%gnc%nodem1(i))
+        nmgnc2 = this%gwfmodel2%dis%get_nodeuser(this%gnc%nodem2(i))
+        write(errmsg, fmterr) nm1, nm2, nmgnc1, nmgnc2
+        call store_error(errmsg)
+      endif
+    enddo
+    if(count_errors() > 0) then
+      call store_error_unit(this%ingnc)
+      call ustop()
+    endif
+    !
+    ! -- close the file
+    close(this%ingnc)
     !
     ! -- return
     return
@@ -1802,6 +1841,26 @@ contains
     call this%obs%obs_da()
     deallocate(this%obs)
     !
+    ! -- arrays
+    call mem_deallocate(this%ihc)
+    call mem_deallocate(this%cl1)
+    call mem_deallocate(this%cl2)
+    call mem_deallocate(this%hwva)
+    call mem_deallocate(this%condsat)
+    deallocate(this%boundname)
+    !
+    ! -- output table objects
+    if (associated(this%outputtab1)) then
+      call this%outputtab1%table_da()
+      deallocate(this%outputtab1)
+      nullify(this%outputtab1)
+    end if
+    if (associated(this%outputtab2)) then
+      call this%outputtab2%table_da()
+      deallocate(this%outputtab2)
+      nullify(this%outputtab2)
+    end if
+    !
     ! -- scalars
     call mem_deallocate(this%icellavg)
     call mem_deallocate(this%ivarcv)
@@ -1814,14 +1873,6 @@ contains
     call mem_deallocate(this%inobs)
     call mem_deallocate(this%inamedbound)
     call mem_deallocate(this%satomega)
-    !
-    ! -- arrays
-    call mem_deallocate(this%ihc)
-    call mem_deallocate(this%cl1)
-    call mem_deallocate(this%cl2)
-    call mem_deallocate(this%hwva)
-    call mem_deallocate(this%condsat)
-    deallocate(this%boundname)
     !
     ! -- return
     return
@@ -1840,7 +1891,9 @@ contains
     ! -- dummy
     class(GwfExchangeType) :: this
     ! -- local
+    character(len=LINELENGTH) :: text
     character(len=LENORIGIN) :: origin
+    integer(I4B) :: ntabcol
 ! ------------------------------------------------------------------------------
     !
     ! -- create the origin name
@@ -1862,6 +1915,46 @@ contains
       allocate(this%boundname(1))
     endif
     this%boundname(:) = ''
+    !
+    ! -- allocate and initialize the output table
+    if (this%iprflow /= 0) then
+      !
+      ! -- dimension table
+      ntabcol = 3
+      if (this%inamedbound > 0) then
+        ntabcol = ntabcol + 1
+      end if
+      !
+      ! -- initialize the output table objects
+      !    outouttab1
+      call table_cr(this%outputtab1, this%name, '    ')
+      call this%outputtab1%table_df(this%nexg, ntabcol, this%gwfmodel1%iout,     &
+                                    transient=.TRUE.)
+      text = 'NUMBER'
+      call this%outputtab1%initialize_column(text, 10, alignment=TABCENTER)
+      text = 'CELLID'
+      call this%outputtab1%initialize_column(text, 20, alignment=TABLEFT)
+      text = 'RATE'
+      call this%outputtab1%initialize_column(text, 15, alignment=TABCENTER)
+      if (this%inamedbound > 0) then
+        text = 'NAME'
+        call this%outputtab1%initialize_column(text, 20, alignment=TABLEFT)
+      end if
+      !    outouttab2
+      call table_cr(this%outputtab2, this%name, '    ')
+      call this%outputtab2%table_df(this%nexg, ntabcol, this%gwfmodel2%iout,     &
+                                    transient=.TRUE.)
+      text = 'NUMBER'
+      call this%outputtab2%initialize_column(text, 10, alignment=TABCENTER)
+      text = 'CELLID'
+      call this%outputtab2%initialize_column(text, 20, alignment=TABLEFT)
+      text = 'RATE'
+      call this%outputtab2%initialize_column(text, 15, alignment=TABCENTER)
+      if (this%inamedbound > 0) then
+        text = 'NAME'
+        call this%outputtab2%initialize_column(text, 20, alignment=TABLEFT)
+      end if
+    end if
     !
     ! -- return
     return

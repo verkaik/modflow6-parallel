@@ -31,6 +31,7 @@ module GwfDisModule
     procedure :: dis_df => dis3d_df
     procedure :: dis_da => dis3d_da
     procedure :: get_cellxy => get_cellxy_dis3d
+    procedure :: get_dis_type => get_dis_type
     procedure, public :: record_array
     procedure, public :: read_layer_array
     procedure, public :: record_srcdst_list_header
@@ -39,6 +40,7 @@ module GwfDisModule
     procedure :: get_nodenumber_idx1
     procedure :: get_nodenumber_idx3
     procedure :: nodeu_to_string
+    procedure :: nodeu_to_array
     procedure :: nodeu_from_string
     procedure :: nodeu_from_cellid
     procedure :: supports_layers
@@ -73,10 +75,12 @@ module GwfDisModule
     integer(I4B), intent(in) :: inunit
     integer(I4B), intent(in) :: iout
     type(GwfDisType), pointer :: disnew
+    character(len=4) :: dis_type !PAR
 ! ------------------------------------------------------------------------------
     allocate(disnew)
     dis => disnew
-    call disnew%allocate_scalars(name_model, 'DIS') !PAR
+    call dis%get_dis_type(dis_type) !PAR
+    call disnew%allocate_scalars(name_model, dis_type) !PAR
     dis%inunit = inunit
     dis%iout = iout
     !
@@ -86,7 +90,7 @@ module GwfDisModule
     ! -- Return
     return
   end subroutine dis_cr
-
+  
   subroutine dis_init_mem(dis, name_model, iout, nlay, nrow, ncol,       &
                           delr, delc, top2d, bot3d, idomain)
 ! ******************************************************************************
@@ -113,11 +117,12 @@ module GwfDisModule
     integer(I4B) :: j
     integer(I4B) :: k
     integer(I4B) :: ival
-    ! -- local
+    character(len=4) :: dis_type !PAR
 ! ------------------------------------------------------------------------------
     allocate(disext)
     dis => disext
-    call disext%allocate_scalars(name_model, 'DIS') !PAR
+    call dis%get_dis_type(dis_type) !PAR
+    call disext%allocate_scalars(name_model, dis_type) !PAR
     dis%inunit = 0
     dis%iout = iout
     !
@@ -863,6 +868,47 @@ module GwfDisModule
     return
   end subroutine nodeu_to_string
 
+  subroutine nodeu_to_array(this, nodeu, arr)
+! ******************************************************************************
+! nodeu_to_array -- Convert user node number to cellid and fill array with
+!                   (nodenumber) or (k,j) or (k,i,j)
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    use InputOutputModule, only: get_ijk
+    implicit none
+    class(GwfDisType) :: this
+    integer(I4B), intent(in) :: nodeu
+    integer(I4B), dimension(:), intent(inout) :: arr
+    ! -- local
+    character(len=LINELENGTH) :: errmsg
+    integer(I4B) :: isize
+    integer(I4B) :: i, j, k
+! ------------------------------------------------------------------------------
+    !
+    ! -- check the size of arr
+    isize = size(arr)
+    if (isize /= this%ndim) then
+      write(errmsg,'(a,i0,a,i0,a)')                                              &
+        'Program error: nodeu_to_array size of array (', isize,                  &
+        ') is not equal to the discretization dimension (', this%ndim, ')'
+      call store_error(errmsg)
+      call ustop()
+    end if
+    !
+    ! -- get k, i, j
+    call get_ijk(nodeu, this%nrow, this%ncol, this%nlay, i, j, k)
+    !
+    ! -- fill array
+    arr(1) = k
+    arr(2) = i
+    arr(3) = j
+    !
+    ! -- return
+    return
+  end subroutine nodeu_to_array
+
   function get_nodenumber_idx1(this, nodeu, icheck) result(nodenumber)
 ! ******************************************************************************
 ! get_nodenumber -- Return a nodenumber from the user specified node number
@@ -974,6 +1020,7 @@ module GwfDisModule
     class(GwfDisType) :: this
     character(len=*), intent(in) :: name_model
     character(len=*), intent(in) :: dis_type !PAR
+    ! -- local
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate parent scalars
@@ -1347,10 +1394,6 @@ module GwfDisModule
     integer(I4B) :: nodeu1, nodeu2, ipos
 ! ------------------------------------------------------------------------------
     !
-    ! -- Calculate cell center z values
-    z1 = this%bot(noden) + DHALF * (this%top(noden) - this%bot(noden))
-    z2 = this%bot(nodem) + DHALF * (this%top(nodem) - this%bot(nodem))
-    !
     ! -- Set vector components based on ihc
     if(ihc == 0) then
       !
@@ -1362,6 +1405,8 @@ module GwfDisModule
       else
         zcomp = -DONE
       endif
+      z1 = this%bot(noden) + DHALF * (this%top(noden) - this%bot(noden))
+      z2 = this%bot(nodem) + DHALF * (this%top(nodem) - this%bot(nodem))
       conlen = abs(z2 - z1)
     else
       !
@@ -1369,8 +1414,8 @@ module GwfDisModule
         z1 = DZERO
         z2 = DZERO
       else
-        z1 = z1 * satn
-        z2 = z2 * satm
+        z1 = this%bot(noden) + DHALF * satn * (this%top(noden) - this%bot(noden))
+        z2 = this%bot(nodem) + DHALF * satm * (this%top(nodem) - this%bot(nodem))
       endif
       ipos = this%con%getjaindex(noden, nodem)
       ds = this%con%cl1(this%con%jas(ipos)) + this%con%cl2(this%con%jas(ipos))
@@ -1414,6 +1459,15 @@ module GwfDisModule
     ycell = this%celly(i)
     
   end subroutine get_cellxy_dis3d
+  
+  ! return discretization type
+  subroutine get_dis_type(this, dis_type)
+    class(GwfDisType), intent(in)  :: this
+    character(len=*), intent(out)  :: dis_type
+      
+    dis_type = "DIS"
+    
+  end subroutine get_dis_type
                                
   subroutine read_int_array(this, line, lloc, istart, istop, iout, in, &
                             iarray, aname)

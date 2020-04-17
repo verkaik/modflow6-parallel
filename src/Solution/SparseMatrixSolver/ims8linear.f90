@@ -4,8 +4,9 @@
   use ConstantsModule, only: LINELENGTH, LENSOLUTIONNAME,                      &
                              IZERO, DZERO, DPREC, DSAME,                       &
                              DEM8, DEM6, DEM5, DEM4, DEM3, DEM2, DEM1,         &
-                             DHALF, DONE, DTWO
-  use GenericUtilities, only: IS_SAME
+                             DHALF, DONE, DTWO,                                &
+                             VDEBUG
+  use GenericUtilitiesModule, only: sim_message, IS_SAME
   use IMSReorderingModule, only: ims_genrcm, ims_odrv, ims_dperm, ims_vperm
   use BlockParserModule, only: BlockParserType
   use MpiExchangeModule,  only: MpiExchangeType !PAR
@@ -148,7 +149,7 @@
       use MemoryManagerModule, only: mem_allocate
       use SimModule, only: ustop, store_error, count_errors
       use MpiExchangeGenModule, only: parallelrun !PAR
-      IMPLICIT NONE
+      !IMPLICIT NONE
 !     + + + DUMMY VARIABLES + + +
       CLASS(IMSLINEAR_DATA), INTENT(INOUT) :: THIS
       CHARACTER (LEN=LENSOLUTIONNAME), INTENT(IN) :: NAME
@@ -238,7 +239,7 @@
       THIS%ICNVGOPT = 0
 !
 !-------PRINT A MESSAGE IDENTIFYING IMSLINEAR SOLVER PACKAGE
-      WRITE (iout,2000)
+      write(iout,2000)
 02000 FORMAT (1X,/1X,'IMSLINEAR -- UNSTRUCTURED LINEAR SOLUTION',               &
      &        ' PACKAGE, VERSION 8, 04/28/2017')
 !
@@ -347,7 +348,7 @@
      &            'MUST BE GREATER THAN OR EQUAL TO ZERO'
                 call store_error(errmsg)
               end if
-              !write (clevel, '(i15)') i
+              !write(clevel, '(i15)') i
             case ('PRECONDITIONER_DROP_TOLERANCE')
               r = parser%GetDouble()
               THIS%DROPTOL = r
@@ -698,16 +699,16 @@
                         THIS%RHOTOL, THIS%ALPHATOL,THIS%OMEGATOL,   & !SOL
                         THIS%IRCLOSEPRECHK !SOL
       if (this%level > 0) then
-        write (clevel, '(i15)') this%level
+        write(clevel, '(i15)') this%level
       end if
       if (this%droptol > DZERO) then
-        write (cdroptol, '(e15.5)') this%droptol
+        write(cdroptol, '(e15.5)') this%droptol
       end if
       IF (this%level > 0 .or. this%droptol > DZERO) THEN
-        write (this%iout,2015) trim(adjustl(clevel)),               &
+        write(this%iout,2015) trim(adjustl(clevel)),               &
                                trim(adjustl(cdroptol))
       ELSE
-         WRITE (this%iout,'(//)')
+         write(this%iout,'(//)')
       END IF
       
       if (this%iord /= 0) then
@@ -715,14 +716,14 @@
         ! -- WRITE SUMMARY OF REORDERING INFORMATION TO LIST FILE                                                  
         if (this%iprims ==  2) then 
           DO i = 1, this%neq, 6 
-            WRITE (this%iout,2030) 'ORIGINAL NODE      :',                      &
+            write(this%iout,2030) 'ORIGINAL NODE      :',                      &
                               (j,j=i,MIN(i+5,this%neq))                      
-            WRITE (this%iout,2040) 
-            WRITE (this%iout,2030) 'REORDERED INDEX    :',                      &
+            write(this%iout,2040) 
+            write(this%iout,2030) 'REORDERED INDEX    :',                      &
                               (this%lorder(j),j=i,MIN(i+5,this%neq))              
-            WRITE (this%iout,2030) 'REORDERED NODE     :',                      &
+            write(this%iout,2030) 'REORDERED NODE     :',                      &
                               (this%iorder(j),j=i,MIN(i+5,this%neq))              
-            WRITE (this%iout,2050) 
+            write(this%iout,2050) 
           END DO 
         END IF 
       end if
@@ -1290,7 +1291,7 @@
             CALL ims_odrv(NEQ, NJA, nsp, IA, JA, LORDER, iwork0,        &
                           iwork1, iflag)                           
             IF (iflag.NE.0) THEN 
-              write (errmsg,'(A)') 'ERROR CREATING MINIMUM DEGREE '//   &
+              write(errmsg,'(A)') 'ERROR CREATING MINIMUM DEGREE '//   &
      &                   'ORDER PERMUTATION '                           
               call store_error(errmsg) 
               !call ustop()                                             

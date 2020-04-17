@@ -41,6 +41,7 @@ module GwfNpfModule
     integer(I4B), pointer                           :: inwtupw      => null()    ! MODFLOW-NWT upstream weighting option flag
     integer(I4B), pointer                           :: icalcspdis   => null()    ! Calculate specific discharge at cell centers
     integer(I4B), pointer                           :: isavspdis    => null()    ! Save specific discharge at cell centers
+    integer(I4B), pointer                           :: isavsat      => null()    ! Save sat to budget file
     real(DP), pointer                               :: hnoflo       => null()    ! default is 1.e30
     real(DP), pointer                               :: satomega     => null()    ! newton-raphson saturation omega
     integer(I4B),pointer                            :: irewet       => null()    ! rewetting (0:off, 1:on)
@@ -113,6 +114,7 @@ module GwfNpfModule
     procedure, public                       :: hy_eff
     procedure, public                       :: calc_spdis
     procedure, public                       :: sav_spdis
+    procedure, public                       :: sav_sat
     procedure, public                       :: increase_edge_count
     procedure, public                       :: set_edge_properties
   endtype
@@ -821,7 +823,7 @@ module GwfNpfModule
     return
   end subroutine npf_fn_calc
 
-  subroutine npf_nur(this, neqmod, x, xtemp, dx, inewtonur)
+  subroutine npf_nur(this, neqmod, x, xtemp, dx, inewtonur, dxmax, locmax)
 ! ******************************************************************************
 ! bnd_nur -- under-relaxation
 ! Subroutine: (1) Under-relaxation of Groundwater Flow Model Heads for current
@@ -838,9 +840,13 @@ module GwfNpfModule
     real(DP), dimension(neqmod), intent(in) :: xtemp
     real(DP), dimension(neqmod), intent(inout) :: dx
     integer(I4B), intent(inout) :: inewtonur
+    real(DP), intent(inout) :: dxmax
+    integer(I4B), intent(inout) :: locmax
     ! -- local
     integer(I4B) :: n
     real(DP) :: botm
+    real(DP) :: xx
+    real(DP) :: dxx
 ! ------------------------------------------------------------------------------
 
     !
@@ -853,7 +859,13 @@ module GwfNpfModule
         !    solution head is below the bottom of the model
         if (x(n) < botm) then
           inewtonur = 1
-          x(n) = xtemp(n)*(DONE-DP9) + botm*DP9
+          xx = xtemp(n)*(DONE-DP9) + botm*DP9
+          dxx = x(n) - xx
+          if (abs(dxx) > abs(dxmax)) then
+            locmax = n
+            dxmax = dxx
+          end if
+          x(n) = xx
           dx(n) = DZERO
         end if
       end if
@@ -1052,6 +1064,11 @@ module GwfNpfModule
       if(ibinun /= 0) call this%sav_spdis(ibinun)
     endif
     !
+    ! -- Save saturation, if requested
+    if (this%isavsat /= 0) then
+      if(ibinun /= 0) call this%sav_sat(ibinun)
+    endif
+    !
     ! -- Return
     return
   end subroutine npf_bdadj
@@ -1133,6 +1150,7 @@ module GwfNpfModule
     call mem_deallocate(this%iusgnrhc)
     call mem_deallocate(this%inwtupw)
     call mem_deallocate(this%isavspdis)
+    call mem_deallocate(this%isavsat)
     call mem_deallocate(this%icalcspdis)
     call mem_deallocate(this%irewet)
     call mem_deallocate(this%wetfct)
@@ -1207,6 +1225,7 @@ module GwfNpfModule
     call mem_allocate(this%inwtupw, 'INWTUPW', this%origin)
     call mem_allocate(this%icalcspdis, 'ICALCSPDIS', this%origin)
     call mem_allocate(this%isavspdis, 'ISAVSPDIS', this%origin)
+    call mem_allocate(this%isavsat, 'ISAVSAT', this%origin)
     call mem_allocate(this%irewet, 'IREWET', this%origin)
     call mem_allocate(this%wetfct, 'WETFCT', this%origin)
     call mem_allocate(this%iwetit, 'IWETIT', this%origin)
@@ -1241,6 +1260,7 @@ module GwfNpfModule
     this%inwtupw = 0
     this%icalcspdis = 0
     this%isavspdis = 0
+    this%isavsat = 0
     this%irewet = 0
     this%wetfct = DONE
     this%iwetit = 1
@@ -1432,6 +1452,11 @@ module GwfNpfModule
             write(this%iout,'(4x,a)')                                          &
               'SPECIFIC DISCHARGE WILL BE CALCULATED AT CELL CENTERS ' //      &
               'AND WRITTEN TO DATA-SPDIS IN BUDGET FILE WHEN REQUESTED.'
+          case ('SAVE_SATURATION')
+            this%isavsat = 1
+            write(this%iout,'(4x,a)')                                          &
+              'SATURATION WILL BE WRITTEN TO DATA-SAT IN BUDGET FILE ' //      &
+              'WHEN REQUESTED.'
           case ('K22OVERK')
             this%ik22overk = 1
             write(this%iout,'(4x,a)')                                          &
@@ -3393,6 +3418,43 @@ module GwfNpfModule
     ! -- return
     return
   end subroutine sav_spdis
+
+  subroutine sav_sat(this, ibinun)
+! ******************************************************************************
+! sav_sat -- save saturation in binary format to ibinun
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(GwfNpfType) :: this
+    integer(I4B), intent(in) :: ibinun
+    ! -- local
+    character(len=16) :: text
+    character(len=16), dimension(1) :: auxtxt
+    real(DP), dimension(1) :: a
+    integer(I4B) :: n
+    integer(I4B) :: naux
+! ------------------------------------------------------------------------------
+    !
+    ! -- Write the header
+    text = '        DATA-SAT'
+    naux = 1
+    auxtxt(:) = ['             sat']
+    call this%dis%record_srcdst_list_header(text, this%name_model, this%name,  &
+      this%name_model, this%name, naux, auxtxt, ibinun, this%dis%nodes,        &
+      this%iout)
+    !
+    ! -- Write a zero for Q, and then write saturation as an aux variables
+    do n = 1, this%dis%nodes
+      a(1) = this%sat(n)
+      call this%dis%record_mf6_list_entry(ibinun, n, n, DZERO, naux, a)
+    end do
+    !
+    ! -- return
+    return
+  end subroutine sav_sat
 
   subroutine increase_edge_count(this, nedges)
 ! ******************************************************************************

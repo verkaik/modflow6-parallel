@@ -1,7 +1,6 @@
 module MpiExchangeGenModule
   use KindModule, only: DP, I4B  
   use ConstantsModule, only: LENMODELNAME, LINELENGTH
-  use ArrayHandlersModule, only: ifind
   use MpiWrapper, only: mpiwrpinit, mpiwrpfinalize
   
   implicit none
@@ -128,7 +127,7 @@ module MpiExchangeGenModule
     ! -- dummy
     character(len=*), intent(in) :: modelname
     ! -- local
-    integer(I4B) :: m
+    integer(I4B) :: m, i
 ! ------------------------------------------------------------------------------
     !
     flag_halo = .false.
@@ -143,7 +142,14 @@ module MpiExchangeGenModule
       !call ustop()
     end if
     !
-    m = ifind(modelname_halo, modelname) 
+    m = -1
+    findloop: do i=1,size(modelname_halo)
+      if(modelname_halo(i) == modelname) then
+        m = i
+        exit findloop
+      endif
+    enddo findloop
+    !
     if (m > 0) then
       flag_halo = .true.
     end if

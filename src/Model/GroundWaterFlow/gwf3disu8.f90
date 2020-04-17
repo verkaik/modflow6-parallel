@@ -39,10 +39,12 @@ module GwfDisuModule
     procedure :: dis_df => disu_df
     procedure :: dis_da => disu_da
     procedure :: get_cellxy => get_cellxy_disu
+    procedure :: get_dis_type => get_dis_type
     procedure :: disu_ck
     procedure :: grid_finalize
     procedure :: get_nodenumber_idx1
     procedure :: nodeu_to_string
+    procedure :: nodeu_to_array
     procedure :: nodeu_from_string
     procedure :: nodeu_from_cellid
     procedure :: connection_normal
@@ -83,6 +85,7 @@ module GwfDisuModule
     integer(I4B), intent(in) :: iout
     ! -- local
     type(GwfDisuType), pointer :: disnew
+    character(len=4) :: dis_type !PAR
 ! ------------------------------------------------------------------------------
     !
     ! -- Create a new discretization object
@@ -90,7 +93,8 @@ module GwfDisuModule
     dis => disnew
     !
     ! -- Allocate scalars and assign data
-    call dis%allocate_scalars(name_model, 'DISU') !PAR
+    call dis%get_dis_type(dis_type) !PAR
+    call dis%allocate_scalars(name_model, dis_type) !PAR
     dis%inunit = inunit
     dis%iout = iout
     !
@@ -137,10 +141,12 @@ module GwfDisuModule
     integer(I4B) :: j
     integer(I4B) :: ival
     real(DP), dimension(:), pointer, contiguous :: atemp
+    character(len=4) :: dis_type !PAR
 ! ------------------------------------------------------------------------------
     allocate(disext)
     dis => disext
-    call disext%allocate_scalars(name_model, 'DISU') !PAR
+    call dis%get_dis_type(dis_type) !PAR
+    call disext%allocate_scalars(name_model, dis_type) !PAR
     dis%inunit = 0
     dis%iout = iout
     !
@@ -472,6 +478,10 @@ module GwfDisuModule
     call mem_deallocate(this%bot1d)
     call mem_deallocate(this%area1d)
     call mem_deallocate(this%idomain)
+    if (associated(this%iavert)) then
+      call mem_deallocate(this%iavert)
+      call mem_deallocate(this%javert)
+    end if
     call mem_deallocate(this%vertices)
     call mem_deallocate(this%iainp)
     call mem_deallocate(this%jainp)
@@ -512,6 +522,41 @@ module GwfDisuModule
     ! -- return
     return
   end subroutine nodeu_to_string
+
+  subroutine nodeu_to_array(this, nodeu, arr)
+! ******************************************************************************
+! nodeu_to_array -- Convert user node number to cellid and fill array with
+!                   (nodenumber) or (k,j) or (k,i,j)
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    use InputOutputModule, only: get_ijk
+    implicit none
+    class(GwfDisuType) :: this
+    integer(I4B), intent(in) :: nodeu
+    integer(I4B), dimension(:), intent(inout) :: arr
+    ! -- local
+    character(len=LINELENGTH) :: errmsg
+    integer(I4B) :: isize
+! ------------------------------------------------------------------------------
+    !
+    ! -- check the size of arr
+    isize = size(arr)
+    if (isize /= this%ndim) then
+      write(errmsg,'(a,i0,a,i0,a)')                                              &
+        'Program error: nodeu_to_array size of array (', isize,                  &
+        ') is not equal to the discretization dimension (', this%ndim, ')'
+      call store_error(errmsg)
+      call ustop()
+    end if
+    !
+    ! -- fill array
+    arr(1) = nodeu
+    !
+    ! -- return
+    return
+  end subroutine nodeu_to_array
 
   subroutine read_options(this)
 ! ******************************************************************************
@@ -642,7 +687,7 @@ module GwfDisuModule
             write(this%iout,'(3x,a)') 'VERTICES AND CELL2D BLOCKS WILL ' //    &
               'BE READ BELOW. '
           case default
-            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN DIS DIMENSION: ',      &
+            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN DISU DIMENSION: ',      &
                                       trim(keyword)
             call store_error(errmsg)
             call this%parser%StoreErrorUnit()
@@ -1095,8 +1140,9 @@ module GwfDisuModule
     end if
     !
     ! -- Convert vertspm into ia/ja form
-    allocate(this%iavert(this%nodesuser + 1))
-    allocate(this%javert(vertspm%nnz))
+    call mem_allocate(this%iavert, this%nodesuser + 1, 'IAVERT', this%origin)
+    call mem_allocate(this%javert, vertspm%nnz, 'JAVERT', this%origin)
+    
     call vertspm%filliaja(this%iavert, this%javert, ierr)
     call vertspm%destroy()
     !
@@ -1427,6 +1473,15 @@ module GwfDisuModule
     ! -- return
     return
   end subroutine get_cellxy_disu                             
+
+  ! return discretization type
+  subroutine get_dis_type(this, dis_type)
+    class(GwfDisuType), intent(in)  :: this
+    character(len=*), intent(out)  :: dis_type
+      
+    dis_type = "DISU"
+    
+  end subroutine get_dis_type
 
   subroutine allocate_scalars(this, name_model, dis_type) !PAR
 ! ******************************************************************************

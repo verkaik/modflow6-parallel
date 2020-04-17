@@ -1,7 +1,8 @@
 module MemoryTypeModule
   
   use KindModule, only: DP, I4B
-  use ConstantsModule, only: LENORIGIN, LENTIMESERIESNAME, LENVARNAME
+  use ConstantsModule, only: LENORIGIN, LENTIMESERIESNAME, LENVARNAME,           &
+                             MAXMEMRANK, LENMEMTYPE
   implicit none
   private
   public :: MemoryTSType, MemoryType

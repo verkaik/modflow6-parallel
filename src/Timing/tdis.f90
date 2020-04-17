@@ -7,7 +7,7 @@
   use KindModule, only: DP, I4B
   use SimVariablesModule, only: iout
   use BlockParserModule, only: BlockParserType
-  use ConstantsModule, only: LENDATETIME
+  use ConstantsModule, only: LINELENGTH, LENDATETIME, VALL
   !
   implicit none
   !
@@ -105,8 +105,10 @@
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MpiExchangeGenModule, only: writestd !PAR
-    use ConstantsModule, only: DONE, DZERO, ISTDOUT
+    use ConstantsModule, only: DONE, DZERO
+    use GenericUtilitiesModule, only: sim_message
     ! -- local
+    character(len=LINELENGTH) :: line
     ! -- formats
     character(len=*),parameter :: fmtspi =                                     &
       "('1',/28X,'STRESS PERIOD NO. ',I4,', LENGTH =',G15.7,/                  &
@@ -161,7 +163,8 @@
     !
     ! -- Print stress period and time step to console
     if (writestd) then !PAR
-      write(ISTDOUT, fmtspts) kper, kstp
+      write(line, fmtspts) kper, kstp
+      call sim_message(line, level=VALL)
     endif !PAR
     !
     ! -- Store totim and pertim, which are times at end of previous time step
@@ -175,7 +178,10 @@
     !
     ! -- End of stress period and/or simulation?
     if(kstp == nstp(kper)) endofperiod = .true.
-    if(endofperiod .and. kper==nper) endofsimulation = .true.
+    if(endofperiod .and. kper==nper) then
+      endofsimulation = .true.
+      totim = totalsimtime  
+    end if
     !
     ! -- return
     return
@@ -244,14 +250,14 @@
 !C
 !C5------PRINT TIME STEP LENGTH AND ELAPSED TIMES IN ALL TIME UNITS.
       WRITE(IOUT,200)
-  200 FORMAT(19X,' SECONDS     MINUTES      HOURS',7X, &
+  200 FORMAT(19X,' SECONDS     MINUTES      HOURS',7X,                           &
      &    'DAYS        YEARS'/20X,59('-'))
-      WRITE (IOUT,201) DELSEC,DELMN,DELHR,DELDY,DELYR
+      write(IOUT,201) DELSEC,DELMN,DELHR,DELDY,DELYR
   201 FORMAT(1X,'  TIME STEP LENGTH',1P,5G12.5)
       WRITE(IOUT,202) PERSEC,PERMN,PERHR,PERDY,PERYR
   202 FORMAT(1X,'STRESS PERIOD TIME',1P,5G12.5)
       WRITE(IOUT,203) TOTSEC,TOTMN,TOTHR,TOTDY,TOTYR
-  203 FORMAT(1X,'        TOTAL TIME',1P,5G12.5)
+  203 FORMAT(1X,'        TOTAL TIME',1P,5G12.5,/)
 !C
 !C6------RETURN
       RETURN

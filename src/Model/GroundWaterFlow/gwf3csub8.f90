@@ -5,8 +5,10 @@ module GwfCsubModule
                              DGRAVITY, DTEN, DHUNDRED, DNODATA, DHNOFLO,        &
                              LENFTYPE, LENPACKAGENAME,                          &
                              LINELENGTH, LENBOUNDNAME, NAMEDBOUNDFLAG,          &
-                             LENBUDTXT, LENAUXNAME, LENORIGIN
-  use GenericUtilities, only: is_same
+                             LENBUDTXT, LENAUXNAME, LENORIGIN, LENPAKLOC,       &
+                             TABLEFT, TABCENTER, TABRIGHT,                      &
+                             TABSTRING, TABUCSTRING, TABINTEGER, TABREAL
+  use GenericUtilitiesModule, only: is_same, sim_message
   use SmoothingModule,        only: sQuadraticSaturation,                       &
                                     sQuadraticSaturationDerivative
   use NumericalPackageModule, only: NumericalPackageType
@@ -15,15 +17,16 @@ module GwfCsubModule
   use BlockParserModule,      only: BlockParserType
   use TimeSeriesLinkModule, only: TimeSeriesLinkType, &
                                   GetTimeSeriesLinkFromList
-  use InputOutputModule, only: get_node, extract_idnum_or_bndname, UWWORD
+  use InputOutputModule, only: get_node, extract_idnum_or_bndname
   use BaseDisModule, only: DisBaseType
-  use SimModule, only: count_errors, store_error, store_error_unit, ustop
+  use SimModule, only: count_errors, store_error, store_error_unit, ustop 
   use ArrayHandlersModule, only: ExpandArray
   use SortModule, only: qsort, selectn
   !
   use TimeSeriesLinkModule,         only: TimeSeriesLinkType
   use TimeSeriesManagerModule,      only: TimeSeriesManagerType, tsmanager_cr
   use ListModule,                   only: ListType
+  use TableModule,                  only: TableType, table_cr
   !
   implicit none
   !
@@ -61,12 +64,14 @@ module GwfCsubModule
     integer(I4B), pointer :: ioutcompib => null()
     integer(I4B), pointer :: ioutcomps => null()
     integer(I4B), pointer :: ioutzdisp => null()
+    integer(I4B), pointer :: ipakcsv => null()
     integer(I4B), pointer :: iupdatematprop => null()
     integer(I4B), pointer :: istoragec => null()
     integer(I4B), pointer :: icellf => null()
     integer(I4B), pointer :: ispecified_pcs => null()
     integer(I4B), pointer :: ispecified_dbh => null()
     integer(I4B), pointer :: inamedbound => null()                               !flag to read boundnames
+    integer(I4B), pointer :: iconvchk => NULL()
     integer(I4B), pointer :: naux => null()                                      !number of auxiliary variables
     integer(I4B), pointer :: ninterbeds => null()
     integer(I4B), pointer :: maxsig0 => null()
@@ -191,6 +196,11 @@ module GwfCsubModule
     ! -- observation data
     integer(I4B), pointer :: inobspkg => null()                                  !unit number for obs package
     type(ObsType), pointer :: obs => null()                                      !observation package
+    !
+    ! -- table objects
+    type(TableType), pointer :: inputtab => null()
+    type(TableType), pointer :: outputtab => null()
+    type(TableType), pointer :: pakcsvtab => null()
 
   contains
     procedure :: define_listlabel
@@ -350,6 +360,7 @@ contains
     call mem_allocate(this%ispecified_pcs, 'ISPECIFIED_PCS', this%origin)
     call mem_allocate(this%ispecified_dbh, 'ISPECIFIED_DBH', this%origin)
     call mem_allocate(this%inamedbound, 'INAMEDBOUND', this%origin)
+    call mem_allocate(this%iconvchk, 'ICONVCHK', this%origin)
     call mem_allocate(this%naux, 'NAUX', this%origin)
     call mem_allocate(this%istoragec, 'ISTORAGEC', this%origin)
     call mem_allocate(this%istrainib, 'ISTRAINIB', this%origin)
@@ -360,6 +371,7 @@ contains
     call mem_allocate(this%ioutcompib, 'IOUTCOMPIB', this%origin)
     call mem_allocate(this%ioutcomps, 'IOUTCOMPS', this%origin)
     call mem_allocate(this%ioutzdisp, 'IOUTZDISP', this%origin)
+    call mem_allocate(this%ipakcsv, 'IPAKCSV', this%origin)
     call mem_allocate(this%iupdatematprop, 'IUPDATEMATPROP', this%origin)
     call mem_allocate(this%epsilon, 'EPSILON', this%origin)
     call mem_allocate(this%cc_crit, 'CC_CRIT', this%origin)
@@ -395,6 +407,7 @@ contains
     this%ispecified_pcs = 0
     this%ispecified_dbh = 0
     this%inamedbound = 0
+    this%iconvchk = 1
     this%naux = 0
     this%istoragec = 1
     this%istrainib = 0
@@ -405,6 +418,7 @@ contains
     this%ioutcompib = 0
     this%ioutcomps = 0
     this%ioutzdisp = 0
+    this%ipakcsv = 0
     this%iupdatematprop = 0
     this%epsilon = DZERO
     this%cc_crit = DEM7
@@ -427,31 +441,41 @@ contains
     return
    end subroutine csub_allocate_scalars
 
-  subroutine csub_cc(this, iend, icnvg, nodes, hnew, hold, hclose, rclose)
+  subroutine csub_cc(this, innertot, kiter, iend, icnvgmod, nodes,               &
+                     hnew, hold, cpak, ipak, dpak)
 ! **************************************************************************
 ! csub_cc -- Final convergence check for package
 ! **************************************************************************
 !
 !    SPECIFICATIONS:
 ! --------------------------------------------------------------------------
-    use TdisModule, only:delt
+    use TdisModule, only: totim, kstp, kper, delt
     ! -- dummy
     class(GwfCsubType) :: this
+    integer(I4B), intent(in) :: innertot
+    integer(I4B), intent(in) :: kiter
     integer(I4B), intent(in) :: iend
-    integer(I4B), intent(inout) :: icnvg
+    integer(I4B), intent(in) :: icnvgmod
     integer(I4B), intent(in) :: nodes
     real(DP), dimension(nodes), intent(in) :: hnew
     real(DP), dimension(nodes), intent(in) :: hold
-    real(DP), intent(in) :: hclose
-    real(DP), intent(in) :: rclose
+    character(len=LENPAKLOC), intent(inout) :: cpak
+    integer(I4B), intent(inout) :: ipak
+    real(DP), intent(inout) :: dpak
     ! -- local
-    integer(I4B) :: ifirst
+    character(len=LINELENGTH) :: tag
+    character(len=LENPAKLOC) :: cloc
+    integer(I4B) :: icheck
+    integer(I4B) :: ipakfail
+    integer(I4B) :: ntabrows
+    integer(I4B) :: ntabcols
     integer(I4B) :: ib
     integer(I4B) :: node
     integer(I4B) :: idelay
-    integer(I4B) :: ihmax
-    integer(I4B) :: irmax
-    real(DP) :: hmax
+    integer(I4B) :: locdhmax
+    integer(I4B) :: locrmax
+    integer(I4B) :: ifirst
+    real(DP) :: dhmax
     real(DP) :: rmax
     real(DP) :: dh
     real(DP) :: area
@@ -468,19 +492,69 @@ contains
     real(DP) :: v2
     real(DP) :: df
     ! format
-02000 format(4x,'CSUB PACKAGE FAILED CONVERGENCE CRITERIA',//,                  &
-             4x,'INTERBED MAX. HEAD CHANGE ',1x,'INTERBED MAX. FLOW DIFF',/,    &                           
-             4x,2(a10,1x,a15,1x),/,4x,53('-'))
-02010 format(4x,2(i10,1x,G15.7,1x))
-02020 format(4x,53('-'))
-02030 format('CONVERGENCE FAILED AS A RESULT OF CSUB PACKAGE',1x,a)
 ! --------------------------------------------------------------------------
+    !
+    ! -- initialize local variables
+    icheck = this%iconvchk 
+    ipakfail = 0
+    locdhmax = 0
+    locrmax = 0
+    dhmax = DZERO
+    rmax = DZERO
     ifirst = 1
-    if (this%gwfiss == 0) then
-      ihmax = 0
-      irmax = 0
-      hmax = DZERO
-      rmax = DZERO
+    !
+    ! -- additional checks to see if convergence needs to be checked
+    ! -- no convergence check for steady-state stress periods
+    if (this%gwfiss /= 0) then
+      icheck = 0
+    else
+      !
+      ! -- if not saving package convergence data on check convergence if
+      !    the model is considered converged
+      if (this%ipakcsv == 0) then
+        if (icnvgmod == 0) then
+          icheck = 0
+        end if
+      else
+        !
+        ! -- header for package csv
+        if (.not. associated(this%pakcsvtab)) then
+          !
+          ! -- determine the number of columns and rows
+          ntabrows = 1
+          ntabcols = 9
+          !
+          ! -- setup table
+          call table_cr(this%pakcsvtab, this%name, '')
+          call this%pakcsvtab%table_df(ntabrows, ntabcols, this%ipakcsv,           &
+                                       lineseparator=.FALSE., separator=',',       &
+                                       finalize=.FALSE.)
+          !
+          ! -- add columns to package csv
+          tag = 'total_inner_iterations'
+          call this%pakcsvtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'totim'
+          call this%pakcsvtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'kper'
+          call this%pakcsvtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'kstp'
+          call this%pakcsvtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'nouter'
+          call this%pakcsvtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'dvmax'
+          call this%pakcsvtab%initialize_column(tag, 15, alignment=TABLEFT)
+          tag = 'dvmax_loc'
+          call this%pakcsvtab%initialize_column(tag, 15, alignment=TABLEFT)
+          tag = 'dstoragemax'
+          call this%pakcsvtab%initialize_column(tag, 15, alignment=TABLEFT)
+          tag = 'dstoragemax_loc'
+          call this%pakcsvtab%initialize_column(tag, 15, alignment=TABLEFT)
+        end if
+      end if
+    end if
+    !
+    ! -- perform package convergence check
+    if (icheck /= 0) then
       if (DELT > DZERO) then
         tled = DONE / DELT
       else
@@ -494,10 +568,6 @@ contains
         !
         ! -- evaluate the maximum head change in the interbed
         dh = this%dbdhmax(idelay)
-        if (abs(dh) > abs(hmax)) then
-          ihmax = ib
-          hmax = dh
-        end if
         !
         ! -- evaluate difference between storage changes
         !    in the interbed and exchange between the interbed
@@ -522,27 +592,64 @@ contains
         !    storage and the flow between the interbed and the cell
         df = v2 - v1
         !
-        ! -- evaluate difference relative to rrmax
-        if (abs(df) > abs(rmax)) then
-          irmax = ib
+        ! -- normalize by cell area and convert to a depth
+        df = df * delt / area
+        !
+        ! -- evaluate magnitude of differences
+        if (ifirst == 1) then
+          ifirst = 0
+          locdhmax = ib
+          dhmax = dh
+          locrmax = ib
           rmax = df
+        else
+          if (abs(dh) > abs(dhmax)) then
+            locdhmax = ib
+            dhmax = dh
+          end if
+          if (abs(df) > abs(rmax)) then
+            locrmax = ib
+            rmax = df
+          end if
         end if
       end do final_check
-      if (abs(hmax) > hclose .or. abs(rmax) > rclose) then
-        icnvg = 0
-        ! write convergence check information if this is the last outer iteration
+      !
+      ! -- set dpak and cpak
+      ! -- update head error
+      if (abs(dhmax) > abs(dpak)) then
+        ipak = locdhmax
+        dpak = dhmax
+        write(cloc, "(a,'-',a)") trim(this%name), 'head'
+        cpak = cloc
+      end if
+      !
+      ! -- update storage error
+      if (abs(rmax) > abs(dpak)) then
+        ipak = locrmax
+        dpak = rmax
+        write(cloc, "(a,'-',a)") trim(this%name), 'storage'
+        cpak = cloc
+      end if
+      !
+      ! -- write convergence data to package csv
+      if (this%ipakcsv /= 0) then
+        !
+        ! -- write the data
+        call this%pakcsvtab%add_term(innertot)
+        call this%pakcsvtab%add_term(totim)
+        call this%pakcsvtab%add_term(kper)
+        call this%pakcsvtab%add_term(kstp)
+        call this%pakcsvtab%add_term(kiter)
+        call this%pakcsvtab%add_term(dhmax)
+        call this%pakcsvtab%add_term(locdhmax)
+        call this%pakcsvtab%add_term(rmax)
+        call this%pakcsvtab%add_term(locrmax)
+        !
+        ! -- finalize the package csv
         if (iend == 1) then
-          write(*,2030) this%name
-          write(this%iout, 2000)                                              &
-            '  LOCATION', '    HEAD CHANGE',                                  &
-            '  LOCATION', 'FLOW DIFFERENCE'
-          write(*,2010) ihmax, hmax, irmax, rmax
-          write(this%iout,2010) ihmax, hmax, irmax, rmax
+          call this%pakcsvtab%finalize_table()
         end if
       end if
-    end if
-    if (icnvg == 0) then
-      write(this%iout,2020)
     end if
     !
     ! -- return
@@ -702,14 +809,30 @@ contains
       rratewc = DZERO
       idelay = this%idelay(ib)
       ielastic = this%ielastic(ib)
+      !
+      ! -- calculate interbed thickness
+      ! -- no delay interbeds
+      if (idelay == 0) then
+        b = this%thick(ib)
+      ! -- delay interbeds
+      else
+        b = this%thick(ib) * this%rnb(ib)
+      end if
+      !
+      ! -- set variables required for no-delay and delay interbeds
+      node = this%nodelist(ib)
+      area = this%dis%get_area(node)
+      !
+      ! -- add interbed thickness to cell thickness
+      this%cell_thick(node) = this%cell_thick(node) + b
+      !
+      ! -- update budget terms if transient stress period
       if (this%gwfiss == 0) then
         if (DELT > DZERO) then
           tledm = DONE / DELT
         else
           tledm = DZERO
         end if
-        node = this%nodelist(ib)
-        area = this%dis%get_area(node)
         !
         ! -- skip inactive and constant head cells
         if (this%ibound(node) < 1) cycle
@@ -717,7 +840,6 @@ contains
         ! -- no delay interbeds
         if (idelay == 0) then
           iconvert = this%iconvert(ib)
-          b = this%thick(ib)
           stoi = DZERO
           !
           ! -- calculate compaction
@@ -762,7 +884,6 @@ contains
           !
           ! -- delay interbeds
         else
-          b = this%thick(ib) * this%rnb(ib)
           h = hnew(node)
           h0 = hold(node)
           !
@@ -821,7 +942,6 @@ contains
                                          hnew(node), hold(node), hcof, rhs)
         rratewc = hcof * hnew(node) - rhs
         this%cell_wcstor(node) = this%cell_wcstor(node) + rratewc
-        this%cell_thick(node) = this%cell_thick(node) + b
         !
         ! -- water compressibility budget terms
         if (rratewc < DZERO) then
@@ -882,8 +1002,6 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
-    use TdisModule, only: kstp, kper, delt, pertim, totim
-    use InputOutputModule, only: ulasav, ubdsv06
     ! -- dummy
     class(GwfCsubType) :: this
     integer(I4B), intent(in) :: idvfl
@@ -929,10 +1047,9 @@ contains
       if (this%ninterbeds > 0) then
         naux = 0
         ! -- interbed elastic storage
-        call ubdsv06(kstp, kper, budtxt(2), this%name_model, this%name,         &
-                     this%name_model, this%name,                                &
-                     ibinun, naux, this%auxname, this%ninterbeds, 1, 1,         &
-                     this%ninterbeds, this%iout, delt, pertim, totim)
+        call this%dis%record_srcdst_list_header(budtxt(2), this%name_model,     &
+                    this%name_model, this%name_model, this%name, naux,          &
+                    this%auxname, ibinun, this%ninterbeds, this%iout)
         do ib = 1, this%ninterbeds
           q = this%storagee(ib)
           node = this%nodelist(ib)
@@ -940,10 +1057,9 @@ contains
                                               this%auxvar(:,ib))
         end do
         ! -- interbed inelastic storage
-        call ubdsv06(kstp, kper, budtxt(3), this%name_model, this%name,         &
-                     this%name_model, this%name,                                &
-                     ibinun, naux, this%auxname, this%ninterbeds, 1, 1,         &
-                     this%ninterbeds, this%iout, delt, pertim, totim)
+        call this%dis%record_srcdst_list_header(budtxt(3), this%name_model,     &
+                    this%name_model, this%name_model, this%name, naux,          &
+                    this%auxname, ibinun, this%ninterbeds, this%iout)
         do ib = 1, this%ninterbeds
           q = this%storagei(ib)
           node = this%nodelist(ib)
@@ -1169,39 +1285,42 @@ contains
 !
 !    SPECIFICATIONS:
 ! --------------------------------------------------------------------------
-    use InputOutputModule, only: UWWORD
     ! -- dummy
     class(GwfCsubType) :: this
     ! -- local
-    character(len=LINELENGTH) :: line
-    character(len=LINELENGTH) :: linesep
+    character(len=LINELENGTH) :: title
+    character(len=LINELENGTH) :: tag
     character(len=LINELENGTH) :: msg
     character(len=10) :: ctype
     character(len=20) :: cellid
     character(len=10) :: cflag
-    character(len=16) :: text
     integer(I4B) :: i
     integer(I4B) :: ib
     integer(I4B) :: i0
     integer(I4B) :: i1
     integer(I4B) :: node
-    integer(I4B) :: iloc
-    integer(I4B) :: n
     integer(I4B) :: nn
     integer(I4B) :: idelay
     integer(I4B) :: iexceed
     integer(I4B), parameter :: ncells = 20
     integer(I4B) :: nlen
-    real(DP) :: rval
+    integer(I4B) :: ntabrows
+    integer(I4B) :: ntabcols
+    integer(I4B) :: ipos
     real(DP) :: b0
     real(DP) :: b1
     real(DP) :: strain
     real(DP) :: pctcomp
     integer(I4B), dimension(:), allocatable :: imap_sel
+    integer(I4B), dimension(:), allocatable :: locs
     real(DP), dimension(:), allocatable :: pctcomp_arr
     ! format
-02000 FORMAT (1X,///1X,A,1X,A,1X,A)
 ! --------------------------------------------------------------------------
+    !
+    ! -- initialize locs
+    allocate(locs(this%dis%ndim))
+    !
+    ! -- calculate and report strain for interbeds
     if (this%ninterbeds > 0) then
       nlen = min(ncells,this%ninterbeds)
       allocate(imap_sel(nlen))
@@ -1224,45 +1343,44 @@ contains
       i1 = this%ninterbeds
       msg = ''
       if (iexceed /= 0) then
-        write(msg,'(a,1x,i0,1x,a,1x,i0,1x,a)')                                  &
-          '-- LARGEST', (i1 - i0 + 1), 'OF', this%ninterbeds,                   &
+        write(msg,'(1x,a,1x,i0,1x,a,1x,i0,1x,a)')                                &
+          'LARGEST', (i1 - i0 + 1), 'OF', this%ninterbeds,                       &
           'INTERBED STRAIN VALUES SHOWN'
-      end if
-      write (this%iout, 2000) trim(this%name), 'INTERBED STRAIN SUMMARY',       &
-        trim(adjustl(msg))
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 10, 1, 'interbed', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'interbed', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 20, 1, 'interbed', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'initial', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'final', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'total', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'final', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'percent', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, '', n, rval, CENTER=.TRUE.)
-      ! -- create line separator
-      linesep = repeat('-', iloc)
-      ! -- write first line
-      write(this%iout,'(1X,A)') linesep(1:iloc)
-      write(this%iout,'(1X,A)') line(1:iloc)
-      ! -- create second header line
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 10, 1, 'number', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'type', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 20, 1, 'location', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'thickness', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'thickness', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'compaction', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'strain', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1, 'compaction', n, rval, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'flag', n, rval, CENTER=.TRUE.)
-      ! -- write second line
-      write(this%iout,'(1X,A)') line(1:iloc)
-      write(this%iout,'(1X,A)') linesep(1:iloc)
-      ! -- write data
-      if (iexceed /= 0) then
+        call sim_message(msg, this%iout, skipbefore=1)
+        !
+        ! -- interbed strain data
+        ! -- set title
+        title = trim(adjustl(this%name)) // ' PACKAGE INTERBED STRAIN SUMMARY'
+        !
+        ! -- determine the number of columns and rows
+        ntabrows = nlen
+        ntabcols = 9
+        !
+        ! -- setup table
+        call table_cr(this%outputtab, this%name, title)
+        call this%outputtab%table_df(ntabrows, ntabcols, this%iout)
+        !
+        ! add columns
+        tag = 'INTERBED NUMBER'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABCENTER)
+        tag = 'INTERBED TYPE'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABCENTER)
+        tag = 'CELLID'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABLEFT)
+        tag = 'INITIAL THICKNESS'
+        call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+        tag = 'FINAL THICKNESS'
+        call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+        tag = 'TOTAL COMPACTION'
+        call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+        tag = 'FINAL STRAIN'
+        call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+        tag = 'PERCENT COMPACTION'
+        call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+        tag = 'FLAG'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABCENTER)
+        !
+        ! -- write data
         do i = 1, nlen
           ib = imap_sel(i)
           idelay = this%idelay(ib)
@@ -1285,20 +1403,19 @@ contains
           end if
           node = this%nodelist(ib)
           call this%dis%noder_to_string(node, cellid)
-          iloc = 1
-          line = ''
-          call UWWORD(line, iloc, 10, 2, text, ib, rval)
-          call UWWORD(line, iloc, 10, 1, ctype, n, rval)
-          call UWWORD(line, iloc, 20, 1, cellid, n, rval, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 3, text, n, b0)
-          call UWWORD(line, iloc, 16, 3, text, n, b1)
-          call UWWORD(line, iloc, 16, 3, text, n, this%tcomp(ib))
-          call UWWORD(line, iloc, 16, 3, text, n, strain)
-          call UWWORD(line, iloc, 16, 3, text, n, pctcomp)
-          call UWWORD(line, iloc, 10, 1, cflag, ib, rval)
-          write(this%iout, '(1X,A)') line(1:iloc)
+          !
+          ! -- fill table line
+          call this%outputtab%add_term(ib)
+          call this%outputtab%add_term(ctype)
+          call this%outputtab%add_term(cellid)
+          call this%outputtab%add_term(b0)
+          call this%outputtab%add_term(b1)
+          call this%outputtab%add_term(this%tcomp(ib))
+          call this%outputtab%add_term(strain)
+          call this%outputtab%add_term(pctcomp)
+          call this%outputtab%add_term(cflag)
         end do
-        write(this%iout, '(/1X,A,1X,I0,1X,A,1X,I0,1X,A,/1X,A,/1X,A)') &
+        write(this%iout, '(/1X,A,1X,I0,1X,A,1X,I0,1X,A,/1X,A,/1X,A)')         &
           'PERCENT COMPACTION IS GREATER THAN OR EQUAL TO 1 PERCENT IN',      &
           iexceed, 'OF', this%ninterbeds, 'INTERBED(S).',                     &
           'USE THE STRAIN_CSV_INTERBED OPTION TO OUTPUT A CSV ' //            &
@@ -1310,18 +1427,51 @@ contains
       !
       ! -- write csv file
       if (this%istrainib /= 0) then
-        iloc = 1
-        line = ''
-        call UWWORD(line, iloc, 20, 1, 'interbed_number', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'interbed_type', n, rval, SEP=',')
-        call UWWORD(line, iloc, 22, 1, 'cellid', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'initial_thickness', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'final_thickness', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'total_compaction', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'total_strain', n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 1, 'percent_compaction', n, rval)
-        ! -- write second line
-        write(this%istrainib,'(1X,A)') line(1:iloc)
+        !
+        ! -- determine the number of columns and rows
+        ntabrows = this%ninterbeds
+        ntabcols = 7
+        if (this%dis%ndim > 1) then
+          ntabcols = ntabcols + 1
+        end if
+        ntabcols = ntabcols + this%dis%ndim
+        !
+        ! -- setup table
+        call table_cr(this%outputtab, this%name, '')
+        call this%outputtab%table_df(ntabrows, ntabcols, this%istrainib,         &
+                                     lineseparator=.FALSE., separator=',')
+        !
+        ! add columns
+        tag = 'INTERBED_NUMBER'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'INTERBED_TYPE'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'NODE'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        if (this%dis%ndim == 2) then
+          tag = 'LAYER'
+          call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+          tag = 'ICELL2D'
+          call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        else
+          tag = 'LAYER'
+          call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+          tag = 'ROW'
+          call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+          tag = 'COLUMN'
+          call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        end if
+        tag = 'INITIAL_THICKNESS'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'FINAL_THICKNESS'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'TOTAL_COMPACTION'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'TOTAL_STRAIN'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        tag = 'PERCENT_COMPACTION'
+        call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+        !
         ! -- write data
         do ib = 1, this%ninterbeds
           idelay = this%idelay(ib)
@@ -1336,19 +1486,22 @@ contains
           strain = this%tcomp(ib) / b0
           pctcomp = DHUNDRED * strain
           node = this%nodelist(ib)
-          call this%dis%noder_to_string(node, cellid)
-          iloc = 1
-          line = ''
-          call UWWORD(line, iloc, 20, 2, text, ib, rval, SEP=',')
-          call UWWORD(line, iloc, 20, 1, ctype, n, rval, SEP=',')
-          call UWWORD(line, iloc, 22, 1, '"'//trim(adjustl(cellid))//'"',       &
-                      n, rval, SEP=',')
-          call UWWORD(line, iloc, 20, 3, text, n, b0, SEP=',')
-          call UWWORD(line, iloc, 20, 3, text, n, b1, SEP=',')
-          call UWWORD(line, iloc, 20, 3, text, n, this%tcomp(ib), SEP=',')
-          call UWWORD(line, iloc, 20, 3, text, n, strain, SEP=',')
-          call UWWORD(line, iloc, 20, 3, text, n, pctcomp)
-          write(this%istrainib, '(1X,A)') line(1:iloc)
+          call this%dis%noder_to_array(node, locs)
+          !
+          ! -- fill table line
+          call this%outputtab%add_term(ib)
+          call this%outputtab%add_term(ctype)
+          if (this%dis%ndim > 1) then
+            call this%outputtab%add_term(this%dis%get_nodeuser(node))
+          end if
+          do ipos = 1, this%dis%ndim
+            call this%outputtab%add_term(locs(ipos))
+          end do
+          call this%outputtab%add_term(b0)
+          call this%outputtab%add_term(b1)
+          call this%outputtab%add_term(this%tcomp(ib))
+          call this%outputtab%add_term(strain)
+          call this%outputtab%add_term(pctcomp)
         end do
       end if
       !
@@ -1356,7 +1509,8 @@ contains
       deallocate(imap_sel)
       deallocate(pctcomp_arr)
     end if
-    
+    !
+    ! -- calculate and report strain for coarse-grained materials
     nlen = min(ncells,this%dis%nodes)
     allocate(imap_sel(nlen))
     allocate(pctcomp_arr(this%dis%nodes))
@@ -1379,41 +1533,39 @@ contains
     i1 = this%dis%nodes
     msg = ''
     if (iexceed /= 0) then
-      write(msg,'(a,1x,i0,1x,a,1x,i0,1x,a)')                                    &
-        '-- LARGEST ', (i1 - i0 + 1), 'OF', this%dis%nodes,                     &
+      write(msg,'(a,1x,i0,1x,a,1x,i0,1x,a)')                                     &
+        'LARGEST ', (i1 - i0 + 1), 'OF', this%dis%nodes,                         &
         'CELL COARSE-GRAINED VALUES SHOWN'
-    end if
-    write (this%iout, 2000) trim(this%name), 'COARSE-GRAINED STRAIN SUMMARY',   &
-      trim(adjustl(msg))
-    iloc = 1
-    line = ''
-    call UWWORD(line, iloc, 20, 1, 'cell', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'initial', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'final', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'total', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'final', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'percent', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 10, 1, '', n, rval, CENTER=.TRUE.)
-    ! -- create line separator
-    linesep = repeat('-', iloc)
-    ! -- write first line
-    write(this%iout,'(1X,A)') linesep(1:iloc)
-    write(this%iout,'(1X,A)') line(1:iloc)
-    ! -- create second header line
-    iloc = 1
-    line = ''
-    call UWWORD(line, iloc, 20, 1, 'location', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'thickness', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'thickness', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'compaction', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'strain', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 16, 1, 'compaction', n, rval, CENTER=.TRUE.)
-    call UWWORD(line, iloc, 10, 1, 'flag', n, rval, CENTER=.TRUE.)
-    ! -- write second line
-    write(this%iout,'(1X,A)') line(1:iloc)
-    write(this%iout,'(1X,A)') linesep(1:iloc)
-    ! -- write data
-    if (iexceed /= 0) then
+      call sim_message(msg, this%iout, skipbefore=1)
+      !
+      ! -- set title
+      title = trim(adjustl(this%name)) //                                        &
+              ' PACKAGE COARSE-GRAINED STRAIN SUMMARY'
+      !
+      ! -- determine the number of columns and rows
+      ntabrows = nlen
+      ntabcols = 7
+      !
+      ! -- setup table
+      call table_cr(this%outputtab, this%name, title)
+      call this%outputtab%table_df(ntabrows, ntabcols, this%iout)
+      !
+      ! add columns
+      tag = 'CELLID'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABLEFT)
+      tag = 'INITIAL THICKNESS'
+      call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+      tag = 'FINAL THICKNESS'
+      call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+      tag = 'TOTAL COMPACTION'
+      call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+      tag = 'FINAL STRAIN'
+      call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+      tag = 'PERCENT COMPACTION'
+      call this%outputtab%initialize_column(tag, 12, alignment=TABCENTER)
+      tag = 'FLAG'
+      call this%outputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      ! -- write data
       do nn = 1, nlen
         node = imap_sel(nn)
         if (this%cg_thickini(node) > DZERO) then
@@ -1430,16 +1582,15 @@ contains
           cflag = ''
         end if
         call this%dis%noder_to_string(node, cellid)
-        iloc = 1
-        line = ''
-        call UWWORD(line, iloc, 20, 1, cellid, n, rval, CENTER=.TRUE.)
-        call UWWORD(line, iloc, 16, 3, text, n, this%cg_thickini(node))
-        call UWWORD(line, iloc, 16, 3, text, n, this%cg_thick(node))
-        call UWWORD(line, iloc, 16, 3, text, n, this%cg_tcomp(node))
-        call UWWORD(line, iloc, 16, 3, text, n, strain)
-        call UWWORD(line, iloc, 16, 3, text, n, pctcomp)
-        call UWWORD(line, iloc, 10, 1, cflag, ib, rval)
-        write(this%iout, '(1X,A)') line(1:iloc)
+        !
+        ! -- fill table line
+        call this%outputtab%add_term(cellid)
+        call this%outputtab%add_term(this%cg_thickini(node))
+        call this%outputtab%add_term(this%cg_thick(node))
+        call this%outputtab%add_term(this%cg_tcomp(node))
+        call this%outputtab%add_term(strain)
+        call this%outputtab%add_term(pctcomp)
+        call this%outputtab%add_term(cflag)
       end do
       write(this%iout, '(/1X,A,1X,I0,1X,A,1X,I0,1X,A,/1X,A,/1X,A)') &
         'COARSE-GRAINED STORAGE PERCENT COMPACTION IS GREATER THAN OR ' //    &
@@ -1454,17 +1605,47 @@ contains
     !
     ! -- write csv file
     if (this%istrainsk /= 0) then
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 20, 1, 'node', n, rval, SEP=',')
-      call UWWORD(line, iloc, 22, 1, 'cellid', n, rval, SEP=',')
-      call UWWORD(line, iloc, 20, 1, 'initial_thickness', n, rval, SEP=',')
-      call UWWORD(line, iloc, 20, 1, 'final_thickness', n, rval, SEP=',')
-      call UWWORD(line, iloc, 20, 1, 'total_compaction', n, rval, SEP=',')
-      call UWWORD(line, iloc, 20, 1, 'total_strain', n, rval, SEP=',')
-      call UWWORD(line, iloc, 20, 1, 'percent_compaction', n, rval)
-      ! -- write second line
-      write(this%istrainsk,'(1X,A)') line(1:iloc)
+      !
+      ! -- determine the number of columns and rows
+      ntabrows = this%dis%nodes
+      ntabcols = 5
+      if (this%dis%ndim > 1) then
+        ntabcols = ntabcols + 1
+      end if
+      ntabcols = ntabcols + this%dis%ndim
+      !
+      ! -- setup table
+      call table_cr(this%outputtab, this%name, '')
+      call this%outputtab%table_df(ntabrows, ntabcols, this%istrainsk,         &
+                                    lineseparator=.FALSE., separator=',')
+      !
+      ! add columns
+      tag = 'NODE'
+      call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+      if (this%dis%ndim == 2) then
+        tag = 'LAYER'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        tag = 'ICELL2D'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+      else
+        tag = 'LAYER'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        tag = 'ROW'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+        tag = 'COLUMN'
+        call this%outputtab%initialize_column(tag, 10, alignment=TABRIGHT)
+      end if
+      tag = 'INITIAL_THICKNESS'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+      tag = 'FINAL_THICKNESS'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+      tag = 'TOTAL_COMPACTION'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+      tag = 'TOTAL_STRAIN'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+      tag = 'PERCENT_COMPACTION'
+      call this%outputtab%initialize_column(tag, 20, alignment=TABRIGHT)
+      !
       ! -- write data
       do node = 1, this%dis%nodes
         if (this%cg_thickini(node) > DZERO) then
@@ -1473,24 +1654,26 @@ contains
           strain = DZERO
         end if
         pctcomp = DHUNDRED * strain
-        call this%dis%noder_to_string(node, cellid)
-        iloc = 1
-        line = ''
-        call UWWORD(line, iloc, 20, 2, text, node, rval, SEP=',')
-        call UWWORD(line, iloc, 22, 1, '"'//trim(adjustl(cellid))//'"',       &
-                    n, rval, SEP=',')
-        call UWWORD(line, iloc, 20, 3, text, n, this%cg_thickini(node),       &
-                    SEP=',')
-        call UWWORD(line, iloc, 20, 3, text, n, this%cg_thick(node), SEP=',')
-        call UWWORD(line, iloc, 20, 3, text, n, this%cg_tcomp(node), SEP=',')
-        call UWWORD(line, iloc, 20, 3, text, n, strain, SEP=',')
-        call UWWORD(line, iloc, 20, 3, text, n, pctcomp)
-        write(this%istrainsk, '(1X,A)') line(1:iloc)
+        call this%dis%noder_to_array(node, locs)
+        !
+        ! -- fill table line
+        if (this%dis%ndim > 1) then
+          call this%outputtab%add_term(this%dis%get_nodeuser(node))
+        end if
+        do ipos = 1, this%dis%ndim
+          call this%outputtab%add_term(locs(ipos))
+        end do
+        call this%outputtab%add_term(this%cg_thickini(node))
+        call this%outputtab%add_term(this%cg_thick(node))
+        call this%outputtab%add_term(this%cg_tcomp(node))
+        call this%outputtab%add_term(strain)
+        call this%outputtab%add_term(pctcomp)
       end do
     end if
     !
     ! -- deallocate temporary storage
     deallocate(imap_sel)
+    deallocate(locs)
     deallocate(pctcomp_arr)
     !
     ! -- return
@@ -1513,10 +1696,10 @@ contains
     ! -- local
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: cellid
+    character(len=LINELENGTH) :: title
+    character(len=LINELENGTH) :: tag
     character(len=20) :: scellid
     character(len=10) :: text
-    character(len=LINELENGTH) :: line
-    character(len=LINELENGTH) :: linesep
     character(len=LENBOUNDNAME) :: bndName, bndNameTemp
     character(len=7) :: cdelay
     character(len=9) :: cno
@@ -1529,8 +1712,8 @@ contains
     integer(I4B) :: ierr
     integer(I4B) :: ndelaybeds
     integer(I4B) :: idelay
-    integer(I4B) :: iloc
-    integer(I4B) :: isep
+    integer(I4B) :: ntabrows
+    integer(I4B) :: ntabcols
     real(DP) :: rval
     real(DP) :: top
     real(DP) :: bot
@@ -1719,75 +1902,81 @@ contains
         this%boundname(itmp) = bndName
       end do
       write(this%iout,'(1x,a)')'END OF '//trim(adjustl(this%name))//' PACKAGEDATA'
-    !else
-    !  call store_error('ERROR.  REQUIRED PACKAGEDATA BLOCK NOT FOUND.')
-    endif
+    end if
     !
     ! -- write summary of interbed data
     if (this%iprpak == 1) then
-      write(this%iout, '(//1X,A)') 'INTERBED DATA'
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 10, 1, 'INTERBED', n, q, left=.TRUE.)
-      call UWWORD(line, iloc, 20, 1, 'CELLID', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'CDELAY', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'PCS', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'THICK', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'RNB', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'SSV_CC', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'SSE_CR', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'THETA', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'KV', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 10, 1, 'H0', n, q, CENTER=.TRUE.)
+      ! -- set title
+      title = trim(adjustl(this%name)) // ' PACKAGE INTERBED DATA'
+      !
+      ! -- determine the number of columns and rows
+      ntabrows = this%ninterbeds
+      ntabcols = 11
       if (this%inamedbound /= 0) then
-        call UWWORD(line, iloc, LENBOUNDNAME, 1,                      &
-                    'BOUNDNAME', n, q, LEFT=.TRUE.)
+        ntabcols = ntabcols + 1
       end if
-      linesep = repeat('-', iloc)
-      isep = iloc
-      write(this%iout, '(1X,A)') line(1:iloc)
-      write(this%iout, '(1X,A)') linesep(1:iloc)
+      !
+      ! -- setup table
+      call table_cr(this%inputtab, this%name, title)
+      call this%inputtab%table_df(ntabrows, ntabcols, this%iout)
+      !
+      ! add columns
+      tag = 'INTERBED'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABLEFT)
+      tag = 'CELLID'
+      call this%inputtab%initialize_column(tag, 20, alignment=TABCENTER)
+      tag = 'CDELAY'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'PCS'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'THICK'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'RNB'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'SSV_CC'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'SSV_CR'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'THETA'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'KV'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      tag = 'H0'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABCENTER)
+      if (this%inamedbound /= 0) then
+        tag = 'BOUNDNAME'
+        call this%inputtab%initialize_column(tag, LENBOUNDNAME,                  &
+                                             alignment=TABLEFT)
+      end if
+      !
+      ! -- write the data
       do ib = 1, this%ninterbeds
-        iloc = 1
-        line = ''
-        call UWWORD(line, iloc, 10, 2, text, ib, q, left=.TRUE.)
         call this%dis%noder_to_string(this%nodelist(ib), scellid)
-        call UWWORD(line, iloc, 20, 1, scellid, n, q, center=.TRUE.)
         if (this%idelay(ib) == 0) then
           text = 'NODELAY'
         else
           text = 'DELAY'
         end if
-        call UWWORD(line, iloc, 10, 1, text, n, q, center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%pcs(ib), center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%thickini(ib), center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%rnb(ib), center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%ci(ib), center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%rci(ib), center=.TRUE.)
-        call UWWORD(line, iloc, 10, 3,                                &
-                    text, n, this%thetaini(ib), center=.TRUE.)
+        call this%inputtab%add_term(ib)
+        call this%inputtab%add_term(scellid)
+        call this%inputtab%add_term(text)
+        call this%inputtab%add_term(this%pcs(ib))
+        call this%inputtab%add_term(this%thickini(ib))
+        call this%inputtab%add_term(this%rnb(ib))
+        call this%inputtab%add_term(this%ci(ib))
+        call this%inputtab%add_term(this%rci(ib))
+        call this%inputtab%add_term(this%thetaini(ib))
         if (this%idelay(ib) == 0) then
-          text = '-'
-          call UWWORD(line, iloc, 10, 1, text, n, q, center=.TRUE.)
-          call UWWORD(line, iloc, 10, 1, text, n, q, center=.TRUE.)
+          call this%inputtab%add_term('-')
+          call this%inputtab%add_term('-')
         else
-          call UWWORD(line, iloc, 10, 3,                              &
-                      text, n, this%kv(ib), center=.TRUE.)
-          call UWWORD(line, iloc, 10, 3,                              &
-                      text, n, this%h0(ib), center=.TRUE.)
+          call this%inputtab%add_term(this%kv(ib))
+          call this%inputtab%add_term(this%h0(ib))
         end if
         if (this%inamedbound /= 0) then
-          call UWWORD(line, iloc, LENBOUNDNAME, 1,                    &
-                      this%boundname(ib), n, q, left=.TRUE.)
+          call this%inputtab%add_term(this%boundname(ib))
         end if
-        write(this%iout, '(1X,A)') line(1:iloc)
       end do
-      write(this%iout, '(1X,A/)') linesep(1:isep)  
     end if
     !
     ! -- Check to make sure that every interbed is specified and that no 
@@ -1954,7 +2143,6 @@ contains
     ! -- local
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: keyword
-    !character(len=LINELENGTH) :: cvalue
     character(len=LINELENGTH) :: line
     character(len=MAXCHARLEN) :: fname
     logical :: isfound
@@ -2220,11 +2408,30 @@ contains
                        'FOLLOWED BY FILEOUT'
               call store_error(errmsg)
             end if
+          ! -- package convergence
+          case('PACKAGE_CONVERGENCE')
+            call this%parser%GetStringCaps(keyword)
+            if (keyword == 'FILEOUT') then
+              call this%parser%GetString(fname)
+              this%ipakcsv = getunit()
+              call openfile(this%ipakcsv, this%iout, fname, 'CSV',                   &
+                            filstat_opt='REPLACE')
+              write(this%iout,fmtfileout) 'PACKAGE_CONVERGENCE', fname, this%ipakcsv
+            else
+              call store_error('OPTIONAL PACKAGE_CONVERGENCE KEYWORD MUST BE ' //    &
+                               'FOLLOWED BY FILEOUT')
+            end if
           !
           ! -- right now these are options that are only available in the
           !    development version and are not included in the documentation.
           !    These options are only available when IDEVELOPMODE in
           !    constants module is set to 1
+          case('DEV_NO_FINAL_CHECK')
+            call this%parser%DevOpt()
+            this%iconvchk = 0
+            write(this%iout, '(4x,a)')                                           &
+              'A FINAL CONVERGENCE CHECK OF THE CHANGE IN DELAY INTERBED ' //    &
+              'HEADS AND FLOWS WILL NOT BE MADE'
           
           !
           ! default case
@@ -2533,7 +2740,7 @@ contains
     class(GwfCsubType) :: this
 ! ------------------------------------------------------------------------------
     !
-    ! -- Deallocate arrays
+    ! -- Deallocate arrays if package is active
     if(this%inunit > 0) then
       call mem_deallocate(this%unodelist)
       call mem_deallocate(this%nodelist)
@@ -2547,8 +2754,6 @@ contains
       call mem_deallocate(this%sgm)
       call mem_deallocate(this%sgs)
       call mem_deallocate(this%cg_ske_cr)
-      !call mem_deallocate(this%cg_theta)
-      !call mem_deallocate(this%cg_thick)
       call mem_deallocate(this%cg_gs)
       call mem_deallocate(this%cg_es)
       call mem_deallocate(this%cg_es0)
@@ -2661,6 +2866,27 @@ contains
       ! -- pointers to storage variables
       nullify(this%stoiconv)
       nullify(this%stosc1)
+      !
+      ! -- input table
+      if (this%iprpak > 0) then
+        call this%inputtab%table_da()
+        deallocate(this%inputtab)
+        nullify(this%inputtab)
+      end if
+      !
+      ! -- output table
+      if (this%istrainib > 0 .or. this%istrainsk > 0) then
+        call this%outputtab%table_da()
+        deallocate(this%outputtab)
+        nullify(this%outputtab)
+      end if
+    end if
+    !
+    ! -- package csv table
+    if (this%ipakcsv > 0) then
+      call this%pakcsvtab%table_da()
+      deallocate(this%pakcsvtab)
+      nullify(this%pakcsvtab)
     end if
     !
     ! -- deallocate scalars
@@ -2682,6 +2908,7 @@ contains
     call mem_deallocate(this%ispecified_pcs)
     call mem_deallocate(this%ispecified_dbh)
     call mem_deallocate(this%inamedbound)
+    call mem_deallocate(this%iconvchk)
     call mem_deallocate(this%naux)
     call mem_deallocate(this%istoragec)
     call mem_deallocate(this%istrainib)
@@ -2692,6 +2919,7 @@ contains
     call mem_deallocate(this%ioutcompib)
     call mem_deallocate(this%ioutcomps)
     call mem_deallocate(this%ioutzdisp)
+    call mem_deallocate(this%ipakcsv)
     call mem_deallocate(this%iupdatematprop)
     call mem_deallocate(this%epsilon)
     call mem_deallocate(this%cc_crit)
@@ -3000,6 +3228,7 @@ contains
       top = this%dis%top(node)
       bot = this%dis%bot(node)
       this%cg_thickini(node) = top - bot
+      this%cell_thick(node) = top - bot
     end do
     !
     ! -- subtract the interbed thickness from aquifer thickness
@@ -3681,17 +3910,16 @@ contains
     class(GwfCsubType) :: this
     integer(I4B), intent(in) :: nodes
     real(DP), dimension(nodes), intent(in) :: hnew
-    character(len=LINELENGTH) :: line
-    character(len=LINELENGTH) :: linesep
-    character(len=16) :: text
+    character(len=LINELENGTH) :: title
+    character(len=LINELENGTH) :: tag
     character(len=20) :: cellid
     character (len=LINELENGTH) :: errmsg
     integer(I4B) :: ib
     integer(I4B) :: node
     integer(I4B) :: n
     integer(I4B) :: idelay
-    integer(I4B) :: iloc
-    integer(I4B) :: isep
+    integer(I4B) :: ntabrows
+    integer(I4B) :: ntabcols
     real(DP) :: pcs0
     real(DP) :: pcs
     real(DP) :: fact
@@ -3704,7 +3932,6 @@ contains
     real(DP) :: dzhalf
     real(DP) :: zbot
     real(DP) :: dbpcs
-    real(DP) :: q
 ! ------------------------------------------------------------------------------
     !
     ! -- update geostatic load calculation
@@ -3872,138 +4099,175 @@ contains
     !
     ! -- write current stress and initial preconsolidation stress
     if (this%iprpak == 1) then
-      write(this%iout, '(//1X,A,/1X,A)')                                         &
-        'CALCULATED INITIAL INTERBED GEOSTATIC, EFFECTIVE,',                     &
-        'AND PRECONSOLIDATION STRESS'
+      ! -- set title
+      title = trim(adjustl(this%name)) //                                        &
+        ' PACKAGE CALCULATED INITIAL INTERBED STRESSES AT THE CELL BOTTOM'
       !
-      ! -- first header line
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 10, 1, 'INTERBED', n, q, left=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'GEOSTATIC', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'EFFECTIVE', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'PRECONSOLIDATION', n, q, CENTER=.TRUE.)
-      linesep = repeat('-', iloc)
-      isep = iloc
-      write(this%iout, '(1X,A)') linesep(1:iloc)
-      write(this%iout, '(1X,A)') line(1:iloc)
+      ! -- determine the number of columns and rows
+      ntabrows = this%ninterbeds
+      ntabcols = 5
+      if (this%inamedbound /= 0) then
+        ntabcols = ntabcols + 1
+      end if
       !
-      ! -- second header line
-      iloc = 1
-      line = ''
-      call UWWORD(line, iloc, 10, 1, 'NUMBER', n, q, left=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'STRESS', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'STRESS', n, q, CENTER=.TRUE.)
-      call UWWORD(line, iloc, 16, 1,                                             & 
-                  'STRESS', n, q, CENTER=.TRUE.)
-      write(this%iout, '(1X,A)') line(1:iloc)
-      write(this%iout, '(1X,A)') linesep(1:iloc)
-
+      ! -- setup table
+      call table_cr(this%inputtab, this%name, title)
+      call this%inputtab%table_df(ntabrows, ntabcols, this%iout)
+      !
+      ! add columns
+      tag = 'INTERBED NUMBER'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABLEFT)
+      tag = 'CELLID'
+      call this%inputtab%initialize_column(tag, 20)
+      tag = 'GEOSTATIC STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      tag = 'EFFECTIVE STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      tag = 'PRECONSOLIDATION STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      if (this%inamedbound /= 0) then
+        tag = 'BOUNDNAME'
+        call this%inputtab%initialize_column(tag, LENBOUNDNAME,                  &
+                                             alignment=TABLEFT)
+      end if
+      !
+      ! -- write the data
       do ib = 1, this%ninterbeds
-        iloc = 1
-        line = ''
-        call UWWORD(line, iloc, 10, 2, text, ib, q, left=.TRUE.)
         node = this%nodelist(ib)
-        call UWWORD(line, iloc, 16, 3,                                           &
-                    text, n, this%cg_gs(node), center=.TRUE.)
-        call UWWORD(line, iloc, 16, 3,                                           &
-                    text, n, this%cg_es(node), center=.TRUE.)
-        call UWWORD(line, iloc, 16, 3,                                           & 
-                    text, n, this%pcs(ib), CENTER=.TRUE.)
-        write(this%iout, '(1X,A)') line(1:iloc)
+        call this%dis%noder_to_string(node, cellid)
+        !
+        ! -- write the columns
+        call this%inputtab%add_term(ib)
+        call this%inputtab%add_term(cellid)
+        call this%inputtab%add_term(this%cg_gs(node))
+        call this%inputtab%add_term(this%cg_es(node))
+        call this%inputtab%add_term(this%pcs(ib))
+        if (this%inamedbound /= 0) then
+          call this%inputtab%add_term(this%boundname(ib))
+        end if
       end do
-      write(this%iout, '(1X,A,/)') linesep(1:isep)
       !
       ! -- write effective stress and preconsolidation stress 
       !    for delay beds
+      ! -- set title
+      title = trim(adjustl(this%name)) //                                        &
+        ' PACKAGE CALCULATED INITIAL DELAY INTERBED STRESSES'
+      !
+      ! -- determine the number of columns and rows
+      ntabrows = 0
       do ib = 1, this%ninterbeds
         idelay = this%idelay(ib)
         if (idelay /= 0) then
-          write(this%iout, '(//1X,A,/1X,A,1X,I0)')                               &
-            'CALCULATED INITIAL INTERBED GEOSTATIC, EFFECTIVE,',                 &
-            'AND PRECONSOLIDATION STRESS FOR INTERBED', ib
-          !
-          ! -- first header line
-          iloc = 1
-          line = ''
-          call UWWORD(line, iloc, 10, 1, 'DELAY', n, q, left=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'GEOSTATIC', n, q, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'EFFECTIVE', n, q, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'PRECONSOLIDATION', n, q, CENTER=.TRUE.)
-          linesep = repeat('-', iloc)
-          isep = iloc
-          write(this%iout, '(1X,A)') linesep(1:iloc)
-          write(this%iout, '(1X,A)') line(1:iloc)
-          !
-          ! -- second header line
-          iloc = 1
-          line = ''
-          call UWWORD(line, iloc, 10, 1, 'CELL', n, q, left=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'STRESS', n, q, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'STRESS', n, q, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 1,                                         &
-                      'STRESS', n, q, CENTER=.TRUE.)
-          write(this%iout, '(1X,A)') line(1:iloc)
-          write(this%iout, '(1X,A)') linesep(1:iloc)
-
-          do n = 1, this%ndelaycells
-            iloc = 1
-            line = ''
-            call UWWORD(line, iloc, 10, 2, text, n, q, left=.TRUE.)
-            call UWWORD(line, iloc, 16, 3,                                       &
-                        text, n, this%dbgeo(n, idelay),                          &
-                        center=.TRUE.)
-            call UWWORD(line, iloc, 16, 3,                                       &
-                        text, n, this%dbes(n, idelay),                           &
-                        center=.TRUE.)
-            call UWWORD(line, iloc, 16, 3,                                       &
-                        text, n, this%dbpcs(n, idelay), center=.TRUE.)
-            write(this%iout, '(1X,A)') line(1:iloc)
-          end do
-          write(this%iout, '(1X,A,/)') linesep(1:isep)
+          ntabrows = ntabrows + this%ndelaycells
         end if
       end do
-    
+      ntabcols = 6
+      if (this%inamedbound /= 0) then
+        ntabcols = ntabcols + 1
+      end if
+      !
+      ! -- setup table
+      call table_cr(this%inputtab, this%name, title)
+      call this%inputtab%table_df(ntabrows, ntabcols, this%iout)
+      !
+      ! add columns
+      tag = 'INTERBED NUMBER'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABLEFT)
+      tag = 'CELLID'
+      call this%inputtab%initialize_column(tag, 20)
+      tag = 'DELAY CELL'
+      call this%inputtab%initialize_column(tag, 10, alignment=TABLEFT)
+      tag = 'GEOSTATIC STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      tag = 'EFFECTIVE STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      tag = 'PRECONSOLIDATION STRESS'
+      call this%inputtab%initialize_column(tag, 16)
+      if (this%inamedbound /= 0) then
+        tag = 'BOUNDNAME'
+        call this%inputtab%initialize_column(tag, LENBOUNDNAME,                  &
+                                             alignment=TABLEFT)
+      end if
+      !
+      ! -- write the data
+      do ib = 1, this%ninterbeds
+        idelay = this%idelay(ib)
+        if (idelay /= 0) then
+          node = this%nodelist(ib)
+          call this%dis%noder_to_string(node, cellid)
+          !
+          ! -- write the columns
+          do n = 1, this%ndelaycells
+            if (n == 1) then
+              call this%inputtab%add_term(ib)
+              call this%inputtab%add_term(cellid)
+            else
+              call this%inputtab%add_term(' ')
+              call this%inputtab%add_term(' ')
+            end if
+            call this%inputtab%add_term(n)
+            call this%inputtab%add_term(this%dbgeo(n, idelay))
+            call this%inputtab%add_term(this%dbes(n, idelay))
+            call this%inputtab%add_term(this%dbpcs(n, idelay))
+            if (this%inamedbound /= 0) then
+              if (n == 1) then
+                call this%inputtab%add_term(this%boundname(ib))
+              else
+                call this%inputtab%add_term(' ')
+              end if
+            end if
+          end do
+        end if
+      end do
       !
       ! -- write calculated compression indices
       if (this%istoragec == 1) then
         if (this%lhead_based .EQV. .FALSE.) then
-          write(this%iout, '(//1X,A)')                                &
-            'CALCULATED COMPRESSION INDICES'
-          iloc = 1
-          line = ''
-          call UWWORD(line, iloc, 10, 1,                              &
-                      'INTERBED', n, q, left=.TRUE.)
-          call UWWORD(line, iloc, 16, 1, 'CC', n, q, CENTER=.TRUE.)
-          call UWWORD(line, iloc, 16, 1, 'CR', n, q, CENTER=.TRUE.)
-          linesep = repeat('-', iloc)
-          isep = iloc
-          write(this%iout, '(1X,A)') linesep(1:iloc)
-          write(this%iout, '(1X,A)') line(1:iloc)
-          write(this%iout, '(1X,A)') linesep(1:iloc)
+          ! -- set title
+          title = trim(adjustl(this%name)) //                                    &
+            ' PACKAGE COMPRESSION INDICES'
+          !
+          ! -- determine the number of columns and rows
+          ntabrows = this%ninterbeds
+          ntabcols = 4
+          if (this%inamedbound /= 0) then
+            ntabcols = ntabcols + 1
+          end if
+          !
+          ! -- setup table
+          call table_cr(this%inputtab, this%name, title)
+          call this%inputtab%table_df(ntabrows, ntabcols, this%iout)
+          !
+          ! add columns
+          tag = 'INTERBED NUMBER'
+          call this%inputtab%initialize_column(tag, 10, alignment=TABLEFT)
+          tag = 'CELLID'
+          call this%inputtab%initialize_column(tag, 20)
+          tag = 'CC'
+          call this%inputtab%initialize_column(tag, 16)
+          tag = 'CR'
+          call this%inputtab%initialize_column(tag, 16)
+          if (this%inamedbound /= 0) then
+            tag = 'BOUNDNAME'
+            call this%inputtab%initialize_column(tag, LENBOUNDNAME,              &
+                                                 alignment=TABLEFT)
+          end if
+          !
+          ! -- write the data
           do ib = 1, this%ninterbeds
             fact = DONE / dlog10es
-            iloc = 1
-            line = ''
-            call UWWORD(line, iloc, 10, 2,                            &
-                        text, ib, q, left=.TRUE.)
-            call UWWORD(line, iloc, 16, 3,                            & 
-                        text, n, this%ci(ib) * fact, CENTER=.TRUE.)
-            call UWWORD(line, iloc, 16, 3,                            & 
-                        text, n, this%rci(ib) * fact, CENTER=.TRUE.)
-            write(this%iout, '(1X,A)') line(1:iloc)
+            node = this%nodelist(ib)
+            call this%dis%noder_to_string(node, cellid)
+            !
+            ! -- write the columns
+            call this%inputtab%add_term(ib)
+            call this%inputtab%add_term(cellid)
+            call this%inputtab%add_term(this%ci(ib) * fact)
+            call this%inputtab%add_term(this%rci(ib) * fact)
+            if (this%inamedbound /= 0) then
+              call this%inputtab%add_term(this%boundname(ib))
+            end if
           end do
-          write(this%iout, '(1X,A,/)') linesep(1:isep)
         end if
       end if
     end if
@@ -5819,11 +6083,13 @@ contains
     real(DP) :: bet
     real(DP) :: beti
 ! ------------------------------------------------------------------------------
+    !
     ! -- initialize variables
     w(1) = DZERO
     bet = td(1)
     beti = DONE / bet
     x(1) = b(1) * beti
+    !
     ! -- decomposition and forward substitution
     do j = 2, n
       w(j) = tu(j-1) * beti
@@ -5831,6 +6097,7 @@ contains
       beti = DONE / bet
       x(j) = (b(j) - tl(j) * x(j-1)) * beti
     end do
+    !
     ! -- backsubstitution
     do j = n-1, 1, -1
       x(j) = x(j) - w(j+1) * x(j+1)
@@ -5956,7 +6223,7 @@ contains
     ! -- calculate cell saturation
     call this%csub_calc_sat(node, hcell, hcellold, snnew, snold)
     !
-    !
+    ! -- calculate compaction
     if (this%thickini(ib) > DZERO) then
       fmult = this%dbdzini(1, idelay)
       do n = 1, this%ndelaycells
@@ -6248,6 +6515,16 @@ contains
     this%obs%obsData(indx)%ProcessIdPtr => csub_process_obsID
     !
     ! -- Store obs type and assign procedure pointer
+    !    for inelastic-compaction-cell observation type.
+    call this%obs%StoreObsType('inelastic-compaction-cell', .true., indx)
+    this%obs%obsData(indx)%ProcessIdPtr => csub_process_obsID
+    !
+    ! -- Store obs type and assign procedure pointer
+    !    for elastic-compaction-cell observation type.
+    call this%obs%StoreObsType('elastic-compaction-cell', .true., indx)
+    this%obs%obsData(indx)%ProcessIdPtr => csub_process_obsID
+    !
+    ! -- Store obs type and assign procedure pointer
     !    for compaction-cell observation type.
     call this%obs%StoreObsType('compaction-cell', .true., indx)
     this%obs%obsData(indx)%ProcessIdPtr => csub_process_obsID
@@ -6362,136 +6639,196 @@ contains
     type(ObserveType), pointer :: obsrv => null()
     !---------------------------------------------------------------------------
     !
-    ! Write simulated values for all csub observations
-    if (this%obs%npakobs>0) then
+    ! -- Fill simulated values for all csub observations
+    if (this%obs%npakobs > 0) then
       call this%obs%obs_bd_clear()
       do i = 1, this%obs%npakobs
         obsrv => this%obs%pakobs(i)%obsrv
-        nn = size(obsrv%indxbnds)
-        v = DZERO
-        do j = 1, nn
-          n = obsrv%indxbnds(j)
-          select case (obsrv%ObsTypeId)
-            case ('CSUB')
-              v = this%storagee(n) + this%storagei(n)
-            case ('INELASTIC-CSUB')
-              v = this%storagei(n)
-            case ('ELASTIC-CSUB')
-              v = this%storagee(n)
-            case ('COARSE-CSUB')
-              v = this%cg_stor(n)
-            case ('WCOMP-CSUB-CELL')
-              v = this%cell_wcstor(n)
-            case ('CSUB-CELL')
-              ! -- add the coarse component
-              if (j == 1) then
-                v = this%cg_stor(n)
-              else
-                v = this%storagee(n) + this%storagei(n)
-              end if
-            case ('SKE')
-              v = this%ske(n)
-            case ('SK')
-              v = this%sk(n)
-            case ('SKE-CELL')
-              ! -- add the coarse component
-              if (j == 1) then
-                v = this%cg_ske(n)
-              else
-                v = this%ske(n)
-              end if
-            case ('SK-CELL')
-              ! -- add the coarse component
-              if (j == 1) then
-                v = this%cg_sk(n)
-              else
-                v = this%sk(n)
-              end if
-            case ('THETA')
-              v = this%theta(n)
-            case ('COARSE-THETA')
-              v = this%cg_theta(n)
-            case ('THETA-CELL')
-              ! -- add the coarse component
-              if (j == 1) then
-                f = this%cg_thick(n) / this%cell_thick(n)
-                v = f * this%cg_theta(n)
-              else
-                node = this%nodelist(n) 
-                f = this%csub_calc_interbed_thickness(n) / this%cell_thick(node)
-                v = f * this%theta(n)
-              end if
-            case ('GSTRESS-CELL')
-              v = this%cg_gs(n)
-            case ('ESTRESS-CELL')
-              v = this%cg_es(n)
-            case ('INTERBED-COMPACTION')
-              v = this%tcomp(n)
-            case ('INELASTIC-COMPACTION')
-              v = this%tcompi(n)
-            case ('ELASTIC-COMPACTION')
-              v = this%tcompe(n)
-            case ('COARSE-COMPACTION')
-              v = this%cg_tcomp(n)
-            case ('COMPACTION-CELL')
-              ! -- add the coarse component
-              if (j == 1) then
-                v = this%cg_tcomp(n)
-              else
-                v = this%tcomp(n)
-              end if
-            case ('THICKNESS')
-              idelay = this%idelay(n)
-              v = this%thick(n)
-              if (idelay /= 0) then
-                v = v * this%rnb(n)
-              end if
-            case ('COARSE-THICKNESS')
-              v = this%cg_thick(n)
-            case ('THICKNESS-CELL')
-              v = this%cell_thick(n)
-            case ('DELAY-HEAD', 'DELAY-PRECONSTRESS',                           &
-                  'DELAY-GSTRESS', 'DELAY-ESTRESS',                             &
-                  'DELAY-COMPACTION', 'DELAY-THICKNESS',                        &
-                  'DELAY-THETA')
-              if (n > this%ndelaycells) then
-                r = real(n, DP) / real(this%ndelaycells, DP)
-                idelay = int(floor(r)) + 1
-                ncol = mod(n, this%ndelaycells)
-              else
-                idelay = 1
-                ncol = n
-              end if
-              select case(obsrv%ObsTypeId)
-                case ('DELAY-PRECONSTRESS')
-                  v = this%dbpcs(ncol, idelay)
-                case ('DELAY-HEAD')
-                  v = this%dbh(ncol, idelay)
-                case ('DELAY-GSTRESS')
-                  v = this%dbgeo(ncol, idelay)
-                case ('DELAY-ESTRESS')
-                  v = this%dbes(ncol, idelay)
-                case ('DELAY-COMPACTION')
-                  v = this%dbtcomp(ncol, idelay)
-                case ('DELAY-THICKNESS')
-                  v = this%dbdz(ncol, idelay)
-                case ('DELAY-THETA')
-                  v = this%dbtheta(ncol, idelay)
+        if (obsrv%BndFound) then
+          nn = size(obsrv%indxbnds)
+          if (obsrv%ObsTypeId == 'SKE' .or.                                      &
+              obsrv%ObsTypeId == 'SK' .or.                                       &
+              obsrv%ObsTypeId == 'SKE-CELL' .or.                                 &
+              obsrv%ObsTypeId == 'SK-CELL' .or.                                  &
+              obsrv%ObsTypeId == 'DELAY-HEAD' .or.                               &
+              obsrv%ObsTypeId == 'DELAY-PRECONSTRESS' .or.                       &
+              obsrv%ObsTypeId == 'DELAY-GSTRESS' .or.                            &
+              obsrv%ObsTypeId == 'DELAY-ESTRESS' .or.                            &
+              obsrv%ObsTypeId == 'PRECONSTRESS-CELL') then
+            if (this%gwfiss /= 0) then
+              call this%obs%SaveOneSimval(obsrv, DNODATA)
+            else
+              v = DZERO
+              do j = 1, nn
+                n = obsrv%indxbnds(j)
+                select case (obsrv%ObsTypeId)
+                  case ('SKE')
+                    v = this%ske(n)
+                  case ('SK')
+                    v = this%sk(n)
+                  case ('SKE-CELL')
+                    !
+                    ! -- add the coarse component
+                    if (j == 1) then
+                      v = this%cg_ske(n)
+                    else
+                      v = this%ske(n)
+                    end if
+                  case ('SK-CELL')
+                    !
+                    ! -- add the coarse component
+                    if (j == 1) then
+                      v = this%cg_sk(n)
+                    else
+                      v = this%sk(n)
+                    end if
+                  case ('DELAY-HEAD', 'DELAY-PRECONSTRESS',                      &
+                        'DELAY-GSTRESS', 'DELAY-ESTRESS')
+                    if (n > this%ndelaycells) then
+                      r = real(n, DP) / real(this%ndelaycells, DP)
+                      idelay = int(floor(r)) + 1
+                      ncol = mod(n, this%ndelaycells)
+                    else
+                      idelay = 1
+                      ncol = n
+                    end if
+                    select case(obsrv%ObsTypeId)
+                      case ('DELAY-HEAD')
+                        v = this%dbh(ncol, idelay)
+                      case ('DELAY-PRECONSTRESS')
+                        v = this%dbpcs(ncol, idelay)
+                      case ('DELAY-GSTRESS')
+                        v = this%dbgeo(ncol, idelay)
+                      case ('DELAY-ESTRESS')
+                        v = this%dbes(ncol, idelay)
+                      end select
+                  case ('PRECONSTRESS-CELL')
+                    v = this%pcs(n)
+                  case default
+                    msg = 'Error: Unrecognized observation type: ' //            &
+                          trim(obsrv%ObsTypeId)
+                    call store_error(msg)
+                end select
+                call this%obs%SaveOneSimval(obsrv, v)
+              end do
+            end if
+          else
+            v = DZERO
+            do j = 1, nn
+              n = obsrv%indxbnds(j)
+              select case (obsrv%ObsTypeId)
+                case ('CSUB')
+                  v = this%storagee(n) + this%storagei(n)
+                case ('INELASTIC-CSUB')
+                  v = this%storagei(n)
+                case ('ELASTIC-CSUB')
+                  v = this%storagee(n)
+                case ('COARSE-CSUB')
+                  v = this%cg_stor(n)
+                case ('WCOMP-CSUB-CELL')
+                  v = this%cell_wcstor(n)
+                case ('CSUB-CELL')
+                  !
+                  ! -- add the coarse component
+                  if (j == 1) then
+                    v = this%cg_stor(n)
+                  else
+                    v = this%storagee(n) + this%storagei(n)
+                  end if
+                case ('THETA')
+                  v = this%theta(n)
+                case ('COARSE-THETA')
+                  v = this%cg_theta(n)
+                case ('THETA-CELL')
+                  !
+                  ! -- add the coarse component
+                  if (j == 1) then
+                    f = this%cg_thick(n) / this%cell_thick(n)
+                    v = f * this%cg_theta(n)
+                  else
+                    node = this%nodelist(n) 
+                    f = this%csub_calc_interbed_thickness(n) / this%cell_thick(node)
+                    v = f * this%theta(n)
+                  end if
+                case ('GSTRESS-CELL')
+                  v = this%cg_gs(n)
+                case ('ESTRESS-CELL')
+                  v = this%cg_es(n)
+                case ('INTERBED-COMPACTION')
+                  v = this%tcomp(n)
+                case ('INELASTIC-COMPACTION')
+                  v = this%tcompi(n)
+                case ('ELASTIC-COMPACTION')
+                  v = this%tcompe(n)
+                case ('COARSE-COMPACTION')
+                  v = this%cg_tcomp(n)
+                case ('INELASTIC-COMPACTION-CELL')
+                  !
+                  ! -- no coarse inelastic component
+                  if (j > 1) then
+                    v = this%tcompi(n)
+                  end if
+                case ('ELASTIC-COMPACTION-CELL')
+                  !
+                  ! -- add the coarse component
+                  if (j == 1) then
+                    v = this%cg_tcomp(n)
+                  else
+                    v = this%tcompe(n)
+                  end if
+                case ('COMPACTION-CELL')
+                  !
+                  ! -- add the coarse component
+                  if (j == 1) then
+                    v = this%cg_tcomp(n)
+                  else
+                    v = this%tcomp(n)
+                  end if
+                case ('THICKNESS')
+                  idelay = this%idelay(n)
+                  v = this%thick(n)
+                  if (idelay /= 0) then
+                    v = v * this%rnb(n)
+                  end if
+                case ('COARSE-THICKNESS')
+                  v = this%cg_thick(n)
+                case ('THICKNESS-CELL')
+                  v = this%cell_thick(n)
+                case ('DELAY-COMPACTION', 'DELAY-THICKNESS',                       &
+                      'DELAY-THETA')
+                  if (n > this%ndelaycells) then
+                    r = real(n, DP) / real(this%ndelaycells, DP)
+                    idelay = int(floor(r)) + 1
+                    ncol = mod(n, this%ndelaycells)
+                  else
+                    idelay = 1
+                    ncol = n
+                  end if
+                  select case(obsrv%ObsTypeId)
+                    case ('DELAY-COMPACTION')
+                      v = this%dbtcomp(ncol, idelay)
+                    case ('DELAY-THICKNESS')
+                      v = this%dbdz(ncol, idelay)
+                    case ('DELAY-THETA')
+                      v = this%dbtheta(ncol, idelay)
+                  end select
+                case ('DELAY-FLOWTOP')
+                  idelay = this%idelay(n)
+                  v = this%dbflowtop(idelay)
+                case ('DELAY-FLOWBOT')
+                  idelay = this%idelay(n)
+                  v = this%dbflowbot(idelay)
+                case default
+                  msg = 'Error: Unrecognized observation type: ' //                &
+                        trim(obsrv%ObsTypeId)
+                  call store_error(msg)
               end select
-            case ('PRECONSTRESS-CELL')
-              v = this%pcs(n)
-            case ('DELAY-FLOWTOP')
-              idelay = this%idelay(n)
-              v = this%dbflowtop(idelay)
-            case ('DELAY-FLOWBOT')
-              idelay = this%idelay(n)
-              v = this%dbflowbot(idelay)
-            case default
-              msg = 'Error: Unrecognized observation type: ' // trim(obsrv%ObsTypeId)
-              call store_error(msg)
-          end select
-          call this%obs%SaveOneSimval(obsrv, v)
-        end do
+              call this%obs%SaveOneSimval(obsrv, v)
+            end do
+          end if
+        else
+          call this%obs%SaveOneSimval(obsrv, DNODATA)
+        end if
       end do
     end if
     !
@@ -6515,11 +6852,14 @@ contains
     class(ObserveType), pointer :: obsrv => null()
     character(len=LENBOUNDNAME) :: bname
     character(len=200) :: ermsg
-    logical :: jfound
     !
-    if (.not. this%csub_obs_supported()) return
+    !  -- return if observations are not supported 
+    if (.not. this%csub_obs_supported()) then
+      return
+    end if
     !
-    do i=1,this%obs%npakobs
+    ! -- process each package observation
+    do i = 1, this%obs%npakobs
       obsrv => this%obs%pakobs(i)%obsrv
       !
       ! -- indxbnds needs to be deallocated and reallocated (using
@@ -6527,18 +6867,19 @@ contains
       !    can change each stress period.
       if (allocated(obsrv%indxbnds)) then
         deallocate(obsrv%indxbnds)
-      endif
+      end if
+      !
+      ! -- initialize BndFound to .false.
       obsrv%BndFound = .false.
       !
       bname = obsrv%FeatureName
       if (bname /= '') then
+        !
         ! -- Observation location(s) is(are) based on a boundary name.
         !    Iterate through all boundaries to identify and store
         !    corresponding index(indices) in bound array.
-        jfound = .false.
         do j = 1, this%ninterbeds
           if (this%boundname(j) == bname) then
-            jfound = .true.
             obsrv%BndFound = .true.
             obsrv%CurrentTimeStepEndValue = DZERO
             call ExpandArray(obsrv%indxbnds)
@@ -6546,6 +6887,7 @@ contains
             obsrv%indxbnds(n) = j
           end if
         end do
+      !
       ! -- one value per cell
       else if (obsrv%ObsTypeId == 'GSTRESS-CELL' .or.                           &
                obsrv%ObsTypeId == 'ESTRESS-CELL' .or.                           &
@@ -6555,7 +6897,6 @@ contains
                obsrv%ObsTypeId == 'COARSE-COMPACTION' .or.                      &
                obsrv%ObsTypeId == 'COARSE-THETA' .or.                           &
                obsrv%ObsTypeId == 'COARSE-THICKNESS') then
-        jfound = .true.
         obsrv%BndFound = .true.
         obsrv%CurrentTimeStepEndValue = DZERO
         call ExpandArray(obsrv%indxbnds)
@@ -6568,26 +6909,31 @@ contains
                obsrv%ObsTypeId == 'DELAY-COMPACTION' .or.                       &
                obsrv%ObsTypeId == 'DELAY-THICKNESS' .or.                        &
                obsrv%ObsTypeId == 'DELAY-THETA') then
-        n = obsrv%NodeNumber
-        idelay = this%idelay(n)
-        j = (idelay - 1) * this%ndelaycells + 1
-        n2 = obsrv%NodeNumber2
-        if (n2 < 1 .or. n2 > this%ndelaycells) then
-          write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)') &
-            'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
-            ' interbed cell must be > 0 and <=', this%ndelaycells, &
-            '(specified value is ', n2, ')'
-          call store_error(ermsg)
-        else
-          j = (idelay - 1) * this%ndelaycells + n2
+        if (this%ninterbeds > 0) then
+          n = obsrv%NodeNumber
+          idelay = this%idelay(n)
+          if (idelay /= 0) then
+            j = (idelay - 1) * this%ndelaycells + 1
+            n2 = obsrv%NodeNumber2
+            if (n2 < 1 .or. n2 > this%ndelaycells) then
+              write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)') &
+                'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
+                ' interbed cell must be > 0 and <=', this%ndelaycells, &
+                '(specified value is ', n2, ')'
+              call store_error(ermsg)
+            else
+              j = (idelay - 1) * this%ndelaycells + n2
+            end if
+            obsrv%BndFound = .true.
+            call ExpandArray(obsrv%indxbnds)
+            obsrv%indxbnds(1) = j
+          end if
         end if
-        call ExpandArray(obsrv%indxbnds)
-        obsrv%indxbnds(1) = j
+      !
       ! -- interbed value
       else if (obsrv%ObsTypeId == 'CSUB' .or.                                   &
                obsrv%ObsTypeId == 'INELASTIC-CSUB' .or.                         &
                obsrv%ObsTypeId == 'ELASTIC-CSUB' .or.                           &
-               obsrv%ObsTypeId == 'SK' .or.                                     &
                obsrv%ObsTypeId == 'SK' .or.                                     &
                obsrv%ObsTypeId == 'SKE' .or.                                    &
                obsrv%ObsTypeId == 'THICKNESS' .or.                              &
@@ -6595,56 +6941,55 @@ contains
                obsrv%ObsTypeId == 'INTERBED-COMPACTION' .or.                    &
                obsrv%ObsTypeId == 'INELASTIC-COMPACTION' .or.                   &
                obsrv%ObsTypeId == 'ELASTIC-COMPACTION') then
-        j = obsrv%NodeNumber
-        idelay = this%idelay(j)
-        if (j < 1 .or. j > this%ninterbeds) then
-          write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)') &
-            'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
-            ' interbed cell must be > 0 and <=', this%ninterbeds, &
-            '(specified value is ', j, ')'
-          call store_error(ermsg)
-        else
-          obsrv%BndFound = .true.
-          obsrv%CurrentTimeStepEndValue = DZERO
-          call ExpandArray(obsrv%indxbnds)
-          n = size(obsrv%indxbnds)
-          obsrv%indxbnds(n) = j
+        if (this%ninterbeds > 0) then
+          j = obsrv%NodeNumber
+          if (j < 1 .or. j > this%ninterbeds) then
+            write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)')             &
+              'ERROR:', trim(adjustl(obsrv%ObsTypeId)),                         &
+              ' interbed cell must be > 0 and <=', this%ninterbeds,             &
+              '(specified value is ', j, ')'
+            call store_error(ermsg)
+          else
+            obsrv%BndFound = .true.
+            obsrv%CurrentTimeStepEndValue = DZERO
+            call ExpandArray(obsrv%indxbnds)
+            n = size(obsrv%indxbnds)
+            obsrv%indxbnds(n) = j
+          end if
         end if
       else if (obsrv%ObsTypeId == 'DELAY-FLOWTOP' .or.                          &
                obsrv%ObsTypeId == 'DELAY-FLOWBOT') then
-        j = obsrv%NodeNumber
-        if (j < 1 .or. j > this%ninterbeds) then
-          write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)') &
-            'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
-            ' interbed cell must be > 0 and <=', this%ninterbeds, &
-            '(specified value is ', j, ')'
-          call store_error(ermsg)
-        end if
-        idelay = this%idelay(j)
-        if (idelay == 0) then
-          write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a)') &
-            'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
-            ' interbed', j, 'must be a delay interbed'
-          call store_error(ermsg)
-        else
-          obsrv%BndFound = .true.
-          obsrv%CurrentTimeStepEndValue = DZERO
-          call ExpandArray(obsrv%indxbnds)
-          n = size(obsrv%indxbnds)
-          obsrv%indxbnds(n) = j
+        if (this%ninterbeds > 0) then
+          j = obsrv%NodeNumber
+          if (j < 1 .or. j > this%ninterbeds) then
+            write (ermsg, '(4x,a,1x,a,1x,a,1x,i0,1x,a,1x,i0,1x,a)') &
+              'ERROR:', trim(adjustl(obsrv%ObsTypeId)), &
+              ' interbed cell must be > 0 and <=', this%ninterbeds, &
+              '(specified value is ', j, ')'
+            call store_error(ermsg)
+          end if
+          idelay = this%idelay(j)
+          if (idelay /= 0) then
+            obsrv%BndFound = .true.
+            obsrv%CurrentTimeStepEndValue = DZERO
+            call ExpandArray(obsrv%indxbnds)
+            n = size(obsrv%indxbnds)
+            obsrv%indxbnds(n) = j
+          end if
         end if
       else
+        !
         ! -- Accumulate values in a single cell
         ! -- Observation location is a single node number
-        jfound = .false.
         ! -- save node number in first position
         if (obsrv%ObsTypeId == 'CSUB-CELL' .or.                                 &
             obsrv%ObsTypeId == 'SKE-CELL' .or.                                  &
             obsrv%ObsTypeId == 'SK-CELL' .or.                                   &
             obsrv%ObsTypeId == 'THETA-CELL' .or.                                &
+            obsrv%ObsTypeId == 'INELASTIC-COMPACTION-CELL' .or.                 &
+            obsrv%ObsTypeId == 'ELASTIC-COMPACTION-CELL' .or.                   &
             obsrv%ObsTypeId == 'COMPACTION-CELL') then 
           if (.NOT. obsrv%BndFound) then
-            jfound = .true.
             obsrv%BndFound = .true.
             obsrv%CurrentTimeStepEndValue = DZERO
             call ExpandArray(obsrv%indxbnds)
@@ -6654,14 +6999,13 @@ contains
         end if
         jloop: do j = 1, this%ninterbeds
           if (this%nodelist(j) == obsrv%NodeNumber) then
-            jfound = .true.
             obsrv%BndFound = .true.
             obsrv%CurrentTimeStepEndValue = DZERO
             call ExpandArray(obsrv%indxbnds)
             n = size(obsrv%indxbnds)
             obsrv%indxbnds(n) = j
           endif
-        enddo jloop
+        end do jloop
       endif
     enddo
     !
@@ -6692,10 +7036,12 @@ contains
     !--------------------------------------------------------------------------
     !
     strng = obsrv%IDstring
+    !
     ! -- Extract reach number from strng and store it.
     !    If 1st item is not an integer(I4B), it should be a
     !    boundary name--deal with it.
     icol = 1
+    !
     ! -- get icsubno number or boundary name
     if (obsrv%ObsTypeId=='CSUB' .or.                                            &
         obsrv%ObsTypeId == 'INELASTIC-CSUB' .or.                                &
@@ -6741,15 +7087,18 @@ contains
         end if
       end if
     endif
+    !
     ! -- store reach number (NodeNumber)
     obsrv%NodeNumber = nn1
     !
+    ! -- return
     return
   end subroutine csub_process_obsID
 
   !
   ! -- Procedure related to time series
   subroutine csub_rp_ts(this)
+    !
     ! -- Assign tsLink%Text appropriately for
     !    all time series in use by package.
     !    In the CSUB package only the SIG0 variable
@@ -6760,8 +7109,9 @@ contains
     integer(I4B) :: i, nlinks
     type(TimeSeriesLinkType), pointer :: tslink => null()
     !
+    ! -- process all timeseries links
     nlinks = this%TsManager%boundtslinks%Count()
-    do i=1,nlinks
+    do i = 1, nlinks
       tslink => GetTimeSeriesLinkFromList(this%TsManager%boundtslinks, i)
       if (associated(tslink)) then
         if (tslink%JCol==1) then
@@ -6772,6 +7122,5 @@ contains
     !
     return
   end subroutine csub_rp_ts
-
 
 end module GwfCsubModule

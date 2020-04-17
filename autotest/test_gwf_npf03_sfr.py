@@ -235,8 +235,12 @@ def get_model(idx, dir):
 
         pname = 'sfr{}'.format(jdx + 1)
         fn = '{}.{}.sfr'.format(mname, pname)
+        cnvgpth = '{}.sfr.cnvg.csv'.format(mname)
 
         sfr = flopy.mf6.ModflowGwfsfr(gwf, unit_conversion=unit_conv,
+                                      print_stage=True,
+                                      print_flows=True,
+                                      package_convergence_filerecord=cnvgpth,
                                       mover=True,
                                       nreaches=len(rchd),
                                       packagedata=rchd,
@@ -247,11 +251,15 @@ def get_model(idx, dir):
 
         # maw files
         if jdx == nmodels - 1:
-            mpd = [[0, 0.25, bot, strt, 'THIEM', 1]]
+            mpd = [[0, 0.25, bot, strt, 'THIEM', 1, 'MYWELL']]
             mcd = [[0, 0, (0, 15, int(ncolst[jdx]) - 31), top, bot, 999.,
                     999.]]
             perioddata = [[0, 'RATE', -1e-5]]
-            maw = flopy.mf6.ModflowGwfmaw(gwf, print_input=True,
+            maw = flopy.mf6.ModflowGwfmaw(gwf,
+                                          boundnames=True,
+                                          print_input=True,
+                                          print_head=True,
+                                          print_flows=True,
                                           nmawwells=len(mpd),
                                           packagedata=mpd,
                                           connectiondata=mcd,
