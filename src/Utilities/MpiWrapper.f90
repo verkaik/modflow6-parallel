@@ -12,15 +12,12 @@ module MpiWrapper
   private
   
   integer, parameter :: mpiwrplblk_size = 64
-  integer, parameter :: mpiwrprbuf_size = 256
 #ifdef MPI_PARALLEL
   character(len=MPI_MAX_PROCESSOR_NAME) :: mpiwrpmyname
   integer, dimension(MPI_STATUS_SIZE,mpiwrplblk_size) :: mpiwrpstats
 #endif  
   integer :: mpiwrpcomm_world, mpiwrpcomm_null
   integer :: mpiwrpnrproc, mpiwrpmyrank
-  integer, dimension(mpiwrprbuf_size) :: mpiwrprbufi
-  double precision, dimension(mpiwrprbuf_size) :: mpiwrprbufd
   integer, dimension(1000) :: rreq, sreq
   integer :: lenbuf
   
@@ -55,6 +52,7 @@ module MpiWrapper
   public :: mpiwrpirecv
   public :: mpiwrpallgather
   public :: mpiwrpallgatherv
+  public :: mpiwrpreduce
   public :: mpiwrpallreduce
   public :: mpiwrpcommgroup
   public :: mpiwrpgroupincl
@@ -84,7 +82,11 @@ module MpiWrapper
   interface mpiwrpirecv
     module procedure mpiwrpirecvmmt, mpiwrpirecvmt
   end interface
-    
+  
+  interface mpiwrpreduce
+    module procedure mpiwrpreduced
+  end interface
+  
   interface mpiwrpallreduce
     module procedure mpiwrpallreducei, mpiwrpallreducer, mpiwrpallreduced
   end interface
@@ -437,6 +439,54 @@ module MpiWrapper
     return
   end subroutine mpiwrpgetcount
 
+ subroutine mpiwrpreduced(sendbuf, count, op, root, comm)
+! ******************************************************************************
+! Combines values (doubles) from all processes and distributes the result back 
+! to root processes.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    integer, intent(in)                               :: count   ! Number of elements in send buffer
+    double precision, dimension(count), intent(inout) :: sendbuf ! Send buffer
+    character(len=*)                                  :: op      ! Operation
+    integer, intent(in)                               :: root    ! Rank of root process
+    integer, intent(in)                               :: comm    ! Communicator
+    ! -- local
+    integer  :: ierr, i
+    double precision, dimension(count) :: recvbuf ! receive buffer.
+! ------------------------------------------------------------------------------
+#ifdef MPI_PARALLEL
+    if (comm == MPI_COMM_NULL) then
+      return
+    endif
+    select case(op)
+      case('mpi_min')
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_min,            &
+                           root, comm, ierr)
+      case('mpi_max')
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_max,            &
+                           root, comm, ierr)
+      case('mpi_sum')
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_sum,            &
+                           root, comm, ierr)
+      case default
+        call mpiwrperror(comm, 'mpiwrpreduced', 'invalid operation')
+    end select
+    !
+    do i = 1, count
+      sendbuf(i) = recvbuf(i)
+    end do
+    !
+#else
+    call mpiwrperror(comm, 'mpiwrpreduced', 'invalid operation')
+#endif
+    ! -- return
+    return
+  end subroutine mpiwrpreduced
+  
   subroutine mpiwrpallreducei(sendbuf, count, op, comm)
 ! ******************************************************************************
 ! Combines values (integers) from all processes and distributes the result back 

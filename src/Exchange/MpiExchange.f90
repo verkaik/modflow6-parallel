@@ -16,7 +16,8 @@
                         mpiwrpstats, mpiwrpisend, mpiwrpirecv,                 &
                         mpiwrpmmtstruct, mpiwrpmtstruct, mpiwrpwaitall,        &
                         mpiwrpprobe, mpiwrpgetcount, mpiwrpallreduce,          &
-                        mpiwrpcommgroup, mpiwrpgroupincl, mpiwrpcommcreate
+                        mpiwrpcommgroup, mpiwrpgroupincl, mpiwrpcommcreate,    &
+                        mpiwrpreduce
   use MpiWrapper, only: MetaMemoryType
 
   implicit none
@@ -139,9 +140,10 @@
     integer(I4B), pointer                                :: npdigits  => null() ! Number of digits for nrproc
     character(len=50), pointer                           :: partstr   => null() ! Partition string
     logical                                              :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
-    real(DP)                                             :: ttgsum = 0.d0
-    real(DP)                                             :: ttgmax = 0.d0
-    real(DP)                                             :: ttgmin = 0.d0
+    real(DP)                                             :: ttgasum = 0.d0
+    real(DP)                                             :: ttgmsum = 0.d0
+    real(DP)                                             :: ttgamax = 0.d0
+    real(DP)                                             :: ttgamin = 0.d0
     real(DP)                                             :: ttbarr = 0.d0
     real(DP)                                             :: ttpack = 0.d0
     real(DP)                                             :: ttupck = 0.d0
@@ -159,20 +161,22 @@
     procedure :: mpi_add_vmt
     procedure :: mpi_init_vg
     procedure :: mpi_mv_halo
-    procedure :: mpi_global_exchange_sum1
-    procedure :: mpi_global_exchange_sum2
-    generic   :: mpi_global_exchange_sum => mpi_global_exchange_sum1,          &
-                                            mpi_global_exchange_sum2
-    procedure :: mpi_global_exchange_absmin1
-    procedure :: mpi_global_exchange_absmin2
-    generic   :: mpi_global_exchange_absmin => mpi_global_exchange_absmin1,    &
-                                               mpi_global_exchange_absmin2
-    procedure :: mpi_global_exchange_absmax1
-    procedure :: mpi_global_exchange_absmax2
-    generic   :: mpi_global_exchange_absmax => mpi_global_exchange_absmax1,    &
-                                               mpi_global_exchange_absmax2
-    procedure :: mpi_global_exchange_max => mpi_global_exchange_max_int
-    procedure :: mpi_global_exchange_cgc !CGC
+    procedure :: mpi_global_exchange_master_sum1
+    generic   :: mpi_global_exchange_master_sum => mpi_global_exchange_master_sum1
+    procedure :: mpi_global_exchange_all_sum1
+    procedure :: mpi_global_exchange_all_sum2
+    generic   :: mpi_global_exchange_all_sum => mpi_global_exchange_all_sum1, &
+                                                mpi_global_exchange_all_sum2
+    procedure :: mpi_global_exchange_all_absmin1
+    procedure :: mpi_global_exchange_all_absmin2
+    generic   :: mpi_global_exchange_all_absmin => mpi_global_exchange_all_absmin1, &
+                                                   mpi_global_exchange_all_absmin2
+    procedure :: mpi_global_exchange_all_absmax1
+    procedure :: mpi_global_exchange_all_absmax2
+    generic   :: mpi_global_exchange_all_absmax => mpi_global_exchange_all_absmax1, &
+                                                   mpi_global_exchange_all_absmax2
+    procedure :: mpi_global_exchange_all_max => mpi_global_exchange_all_max_int
+    procedure :: mpi_global_exchange_all_cgc !CGC
     procedure :: mpi_debug
     procedure :: mpi_da
     procedure :: mpi_not_supported
@@ -1308,7 +1312,7 @@
     return
   end subroutine mpi_copy_dbl_to_halo
 
-  subroutine mpi_global_exchange_sum1(this, dval)
+  subroutine mpi_global_exchange_master_sum1(this, dval)
 ! ******************************************************************************
 ! Collective sum over all processes for one double precision value.
 ! ******************************************************************************
@@ -1329,19 +1333,52 @@
     !
     dwrk(1) = dval
 #ifdef MPI_TIMER
-    call code_timer(0, t, this%ttgsum)
+    call code_timer(0, t, this%ttgmsum)
 #endif
-    call mpiwrpallreduce(dwrk, 1, 'mpi_sum', this%comm)
+    call mpiwrpreduce(dwrk, 1, 'mpi_sum', 0, this%comm)
 #ifdef MPI_TIMER
-    call code_timer(1, t, this%ttgsum)
+    call code_timer(1, t, this%ttgmsum)
 #endif
     dval = dwrk(1)
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_sum1
+  end subroutine mpi_global_exchange_master_sum1
+    
+  subroutine mpi_global_exchange_all_sum1(this, dval)
+! ******************************************************************************
+! Collective sum over all processes for one double precision value.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    real(DP), intent(inout) :: dval
+    ! -- local
+    real(DP), dimension(1) :: dwrk
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    dwrk(1) = dval
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgasum)
+#endif
+    call mpiwrpallreduce(dwrk, 1, 'mpi_sum', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(1, t, this%ttgasum)
+#endif
+    dval = dwrk(1)
+    !
+    ! -- return
+    return
+  end subroutine mpi_global_exchange_all_sum1
 
-  subroutine mpi_global_exchange_sum2(this, dval1, dval2)
+  subroutine mpi_global_exchange_all_sum2(this, dval1, dval2)
 ! ******************************************************************************
 ! Collective sum over all processes for two double precision values.
 ! ******************************************************************************
@@ -1363,20 +1400,20 @@
     dwrk(1) = dval1
     dwrk(2) = dval2
 #ifdef MPI_TIMER
-    call code_timer(0, t, this%ttgsum)
+    call code_timer(0, t, this%ttgasum)
 #endif
     call mpiwrpallreduce(dwrk, 2, 'mpi_sum', this%comm)
 #ifdef MPI_TIMER
-    call code_timer(1, t, this%ttgsum)
+    call code_timer(1, t, this%ttgasum)
 #endif
     dval1 = dwrk(1)
     dval2 = dwrk(2)
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_sum2
+  end subroutine mpi_global_exchange_all_sum2
 
-  subroutine mpi_global_exchange_absmax1(this, dval)
+  subroutine mpi_global_exchange_all_absmax1(this, dval)
 ! ******************************************************************************
 ! Collective maximum over all processes for one double precision value.
 ! ******************************************************************************
@@ -1407,9 +1444,9 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_absmax1
+  end subroutine mpi_global_exchange_all_absmax1
 
-  subroutine mpi_global_exchange_absmax2(this, dval1, dval2)
+  subroutine mpi_global_exchange_all_absmax2(this, dval1, dval2)
 ! ******************************************************************************
 ! Collective maximum over all processes for two double precision values.
 ! ******************************************************************************
@@ -1442,9 +1479,9 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_absmax2
+  end subroutine mpi_global_exchange_all_absmax2
 
-  subroutine mpi_global_exchange_max_int(this, ival)
+  subroutine mpi_global_exchange_all_max_int(this, ival)
 ! ******************************************************************************
 ! Collective maximum over all processes for one integer value.
 ! ******************************************************************************
@@ -1475,9 +1512,9 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_max_int
+  end subroutine mpi_global_exchange_all_max_int
 
-  subroutine mpi_global_exchange_absmin1(this, dval)
+  subroutine mpi_global_exchange_all_absmin1(this, dval)
 ! ******************************************************************************
 ! Collective minimum over all processes for one double precision value.
 ! ******************************************************************************
@@ -1508,9 +1545,9 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_absmin1
+  end subroutine mpi_global_exchange_all_absmin1
 
-  subroutine mpi_global_exchange_absmin2(this, dval1, dval2)
+  subroutine mpi_global_exchange_all_absmin2(this, dval1, dval2)
 ! ******************************************************************************
 ! Collective minimum over all processes for two double precision values.
 ! ******************************************************************************
@@ -1543,9 +1580,9 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_absmin2
+  end subroutine mpi_global_exchange_all_absmin2
 
-  subroutine mpi_global_exchange_cgc(this, nla1d, nga1d, la1d, ga1d,            &
+  subroutine mpi_global_exchange_all_cgc(this, nla1d, nga1d, la1d, ga1d,            &
     gnia, gnja, gia, gja, iopt) !CGC
 ! ******************************************************************************
 ! Collective gather over all processes for coarse grid matrix
@@ -1640,7 +1677,7 @@
     !
     ! -- return
     return
-  end subroutine mpi_global_exchange_cgc
+  end subroutine mpi_global_exchange_all_cgc
 
   subroutine mpi_pack_mt(origin, mti, mto, node, nexg, moffset)
 ! ******************************************************************************

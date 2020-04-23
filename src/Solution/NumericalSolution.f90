@@ -138,7 +138,8 @@ module NumericalSolutionModule
     !
     integer(I4B), pointer                                :: icgc     => NULL() !CGC
     !
-    integer(I4B), pointer                                :: cgcgnia  => NULL() !CGC: global topology
+    integer(I4B), pointer                                :: cgcgneq  => NULL() !CGC: global topology
+    integer(I4B), pointer                                :: cgcgnia  => NULL() !CGC
     integer(I4B), pointer                                :: cgcgnja  => NULL() !CGC
     integer(I4B), dimension(:), pointer, contiguous      :: cgcgia   => NULL() !CGC
     integer(I4B), dimension(:), pointer, contiguous      :: cgcgja   => NULL() !CGC
@@ -451,7 +452,7 @@ contains
       this%icgc = 1 !CGC
       call this%sln_cgc_allocate() !CGC
     else !CGC
-      this%icgc = 0 !CG
+      this%icgc = 0 !CGC
     end if !CGC
     !
     ! -- return
@@ -477,6 +478,7 @@ contains
     integer(I4B) :: mid, m1id, m2id, iact, nja, cid, c1id, c2id
     integer(I4b), dimension(:), allocatable :: wrk
 ! ------------------------------------------------------------------------------
+    call mem_allocate(this%cgcgneq, 'CGCGNEQ', this%name)
     call mem_allocate(this%cgcgnia, 'CGCGNIA', this%name)
     call mem_allocate(this%cgcgnja, 'CGCGNJA', this%name)
     !
@@ -498,8 +500,9 @@ contains
       end if
     end do
     !
-    ! -- create global topology
-    this%cgcgnia = n + 1
+    ! -- create global topology based on model IDs
+    this%cgcgneq = n
+    this%cgcgnia = this%cgcgneq + 1
     call mem_allocate(this%cgcgia, this%cgcgnia, 'CGCGIA', this%name)
     !
     allocate(wrk(maxid))
@@ -619,7 +622,7 @@ contains
     deallocate(wrk)
     
     ! -- ZC mapping
-    call mem_allocate(this%cgccizc, this%cgcgnia-1, 'CGCCIZC', this%name)
+    call mem_allocate(this%cgccizc, this%cgcgneq, 'CGCCIZC', this%name)
     n = size(this%blkgizc)
     m = maxval(this%blkgizc)
     if (n /= size(this%blkgid)) then
@@ -1070,7 +1073,7 @@ contains
                                              this%ibjflag) !BJ
       if (this%icgc == 1) then !CGC
         call this%imslinear%imslinear_allocate_cgc(this%icgc,                 & !CGC
-          this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja,               & !CGC
+          this%cgcgneq, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, & !CGC
           this%cgclnia, this%cgclnja, this%cgclia, this%cgclja, this%cgclgja, & !CGC
           this%cgcl2gid, this%cgcg2lid, this%cgcg2cid, this%cgcc2gid,         & !CGC
           this%cgccizc) !CGC
@@ -1811,7 +1814,7 @@ contains
     !
     ! -- MPI parallel: ptcf
     if (parallelrun) then !PAR
-      call this%MpiSol%mpi_global_exchange_absmax(ptcf) !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(ptcf) !PAR
     endif !PAR
     !
     ! -- Add model Newton-Raphson terms to solution
@@ -1850,7 +1853,7 @@ contains
     ! -- MPI parallel: head criterion
     if (parallelrun) then !PAR
       hncg = this%hncg(kiter) !PAR
-      call this%MpiSol%mpi_global_exchange_absmax(hncg) !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(hncg) !PAR
     else !PAR
       hncg = abs(this%hncg(kiter)) !PAR
     endif !PAR
@@ -2882,7 +2885,7 @@ contains
         enddo
       endif
     enddo
-    call this%MpiSol%mpi_global_exchange_max(mvrflag)
+    call this%MpiSol%mpi_global_exchange_all_max(mvrflag)
     if (mvrflag > 0) then
       this%MpiMvr%lp2p = .true.
     else
@@ -3231,6 +3234,8 @@ contains
     logical :: lsame
     integer(I4B) :: n
     integer(I4B) :: itestmat, i, i1, i2
+    integer(I4B) :: j !SYM
+    logical :: lsym = .true. !SYM
     integer(I4B) :: iptct
     integer(I4B) :: iallowptc
     real(DP) :: adiag, diagval
@@ -3266,6 +3271,22 @@ contains
         endif
       endif
     end do
+    !
+    ! -- eliminate Dirichlet boundary to preserve symmetric matrix
+    if (lsym) then !SYM
+      do n = 1, this%neq !SYM
+        i1 = this%ia(n) + 1 !SYM
+        i2 = this%ia(n + 1) - 1 !SYM
+        do i = i1, i2 !SYM
+          j = this%ja(i) !SYM
+          if (this%active(j) <= 0) then !SYM
+            this%rhs(n) = this%rhs(n) - this%amat(i) * this%x(j) !SYM
+            this%amat(i) = DZERO !SYM
+          end if !SYM
+        end do !SYM
+      end do !SYM
+    end if !SYM
+    !
     ! -- pseudo transient continuation
     !
     ! -- set iallowptc
@@ -3324,7 +3345,7 @@ contains
               end if
             end do
             if (parallelrun) then !PAR
-              call this%MpiSol%mpi_global_exchange_sum(bnorm) !PAR
+              call this%MpiSol%mpi_global_exchange_all_sum(bnorm) !PAR
             endif !PAR
             bnorm = sqrt(bnorm)
             this%ptcdel = bnorm / l2norm
@@ -3355,8 +3376,8 @@ contains
       end do
       !
       if (parallelrun) then !PAR
-         call this%MpiSol%mpi_global_exchange_sum(bnorm) !PAR
-         call this%MpiSol%mpi_global_exchange_absmin(diagmin) !PAR
+         call this%MpiSol%mpi_global_exchange_all_sum(bnorm) !PAR
+         call this%MpiSol%mpi_global_exchange_all_absmin(diagmin) !PAR
       endif !PAR
       bnorm = sqrt(bnorm)
       if (this%iptcout > 0) then
@@ -3725,7 +3746,7 @@ contains
         endif !PAR
       enddo !PAR
       deallocate(dwrk) !PAR
-      call this%MpiSol%mpi_global_exchange_sum(resid) !PAR
+      call this%MpiSol%mpi_global_exchange_all_sum(resid) !PAR
     else !PAR
     resid = DZERO
     do n = 1, neq

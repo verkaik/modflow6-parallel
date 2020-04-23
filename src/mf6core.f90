@@ -82,10 +82,13 @@ contains
   end function Mf6Update
   
   subroutine Mf6Finalize()
+    use MpiExchangeGenModule, only: parallelrun, writestd !PAR
+    use MpiExchangeModule, only: MpiWorld !PAR
     use, intrinsic :: iso_fortran_env, only: output_unit
     use ListsModule,            only: lists_da
     use MemoryManagerModule,    only: mem_usage, mem_da,                         &
-                                      mem_timing !TIM
+                                      mem_timing,                                & !TIM
+                                      bytes !PAR
     use TimerModule,            only: elapsed_time
     use SimVariablesModule,     only: iout
     use SimulationCreateModule, only: simulation_cr, simulation_da  
@@ -153,12 +156,26 @@ contains
     call simulation_da()
     call lists_da()
     !
+    ! -- Calculate memory usage, elapsed time and terminate
+    call mem_usage(iout)
+    if (parallelrun) then !PAR
+      call MpiWorld%mpi_global_exchange_master_sum(bytes) !PAR
+    endif
+    if (writestd) then !PAR
+      write(*,*)
+      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in kilobytes: ', &
+        bytes/(1024.d0**1) !PAR
+      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in megabytes: ', &
+        bytes/(1024.d0**2) !PAR
+      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in gigabytes: ', &
+        bytes/(1024.d0**3) !PAR
+    endif !PAR
+    !
+    call mem_timing(iout) !TIM
+    !
     ! -- Deallocate MPI world
     call mpi_world_da() !PAR
     !
-    ! -- Calculate memory usage, elapsed time and terminate
-    call mem_usage(iout)
-    call mem_timing(iout) !TIM
     call mem_da()
     call elapsed_time(iout, 1, writestd) !PAR
     call final_message()

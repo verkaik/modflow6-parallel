@@ -41,6 +41,8 @@ module MemoryManagerModule
   integer(I8B) :: nvalues_aint = 0
   integer(I8B) :: nvalues_adbl = 0
   integer(I8B) :: nvalues_ats = 0
+  real(DP)     :: bytes = DZERO !PAR
+  public       :: bytes !PAR
   integer(I4B) :: iprmem = 0
 
   interface mem_allocate
@@ -1352,7 +1354,7 @@ module MemoryManagerModule
           if (mt%memtype(1:7) == 'INTEGER') nint = nint + mt%isize
           if (mt%memtype(1:6) == 'DOUBLE') nreal = nreal + mt%isize
         enddo
-        bytesmb = (nint * I4B + nreal * DP) / 1000000.d0
+        bytesmb = (nint * I4B + nreal * DP) / 1048576.d0 !PAR 1024*1024
         write(iout, '(a20, i10, i10, 1pg16.2)') cunique(icomp), nint, nreal, bytesmb
       enddo
     endif
@@ -1374,13 +1376,11 @@ module MemoryManagerModule
     endif
     !
     ! -- Calculate and write total memory allocation
-    bytesmb = (nvalues_aint * I4B + &
-               nvalues_adbl * DP + &
-               nvalues_ats * DP) / 1048576.d0 !PAR 1024*1024
+    bytes = (nvalues_aint * I4B + nvalues_adbl * DP + nvalues_ats * DP) !PAR
     write(iout, *)
     write(iout, fmt) 'Number of allocated integer variables:   ', nvalues_aint
     write(iout, fmt) 'Number of allocated real variables:    ', nvalues_adbl + nvalues_ats
-    write(iout, fmtd) 'Allocated memory in megabytes: ', bytesmb
+    write(iout, fmtd) 'Allocated memory in megabytes: ', bytes/1048576.d0 !PAR 1024*1024
     write(iout, *)
   end subroutine mem_usage
   

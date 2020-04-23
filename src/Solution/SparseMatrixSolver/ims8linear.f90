@@ -90,11 +90,15 @@
     type(MpiExchangeType), pointer:: MpiSol => NULL() !PAR
     ! COARSE GRID CORRECTION ARRAYS
     integer(I4B), pointer                                :: icgc     => NULL() !CGC
+    integer(I4B), pointer                                :: cgcsol   => NULL() !CGC
     !
+    integer(I4B), pointer                                :: cgcgneq  => NULL() !CGC
     integer(I4B), pointer                                :: cgcgnia  => NULL() !CGC
     integer(I4B), pointer                                :: cgcgnja  => NULL() !CGC
     integer(I4B), dimension(:), pointer, contiguous      :: cgcgia   => NULL() !CGC
     integer(I4B), dimension(:), pointer, contiguous      :: cgcgja   => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgiapc => NULL() !CGC
+    integer(I4B), dimension(:), pointer, contiguous      :: cgcgjapc => NULL() !CGC
     !
     integer(I4B), pointer                                :: cgclnia  => NULL() !CGC
     integer(I4B), pointer                                :: cgclnja  => NULL() !CGC
@@ -109,6 +113,7 @@
     integer(I4B), dimension(:), pointer, contiguous      :: cgccizc  => NULL() !CGC
     !
     real(DP), pointer, dimension(:,:), contiguous        :: acpc  => NULL() !CGC
+    real(DP), pointer, dimension(:), contiguous          :: acpci => NULL() !CGC
     real(DP), pointer, dimension(:), contiguous          :: xc    => NULL() !CGC
     real(DP), pointer, dimension(:), contiguous          :: rhsc  => NULL() !CGC
     real(DP), pointer, dimension(:), contiguous          :: wc    => NULL() !CGC
@@ -222,6 +227,7 @@
       THIS%ISCL = 0
       THIS%IPC = 0
       THIS%LEVEL = 0
+      this%cgcsol = 1 !CGC
       
       !clevel = ''
       !cdroptol = ''
@@ -386,6 +392,15 @@
      &            'MUST BE GREATER THAN OR EQUAL TO ZERO' !SOL
                 call store_error(errmsg) !SOL
               end if !SOL
+            case ('CGC_SOLVER') !CGC
+              i = parser%GetInteger() !CGC
+              this%cgcsol = i !CGC
+              if ((i < 0).or.(i > 2)) then !CGC
+                write(errmsg,'(4x,a,a)') & !CGC
+     &            '****ERROR. CGC_SOLVER: ', & !CGC
+     &            'MUST BE 1 FOR BAND LU OR 2 FOR ILU(0)' !CGC
+                call store_error(errmsg) !CGC
+              end if !CGC
             case default
               write(errmsg,'(4x,a,a)') &
      &          '****WARNING. UNKNOWN IMSLINEAR KEYWORD: ', &
@@ -731,8 +746,9 @@
       ! -- return
     return
     end subroutine imslinear_summary
+    
     subroutine imslinear_ar_cgc(this, icgc,                             & !CGC
-      cgcgnia, cgcgnja, cgcgia, cgcgja,                                 &
+      cgcgneq, cgcgnia, cgcgnja, cgcgia, cgcgja,                        &
       cgclnia, cgclnja, cgclia, cgclja, cgclgja,                        &
       cgcl2gid, cgcg2lid, cgcg2cid, cgcc2gid, cgccizc) !CGC
 !     ******************************************************************
@@ -750,6 +766,7 @@
       class(imslinear_data), intent(inout) :: this
       integer(I4B), target                            :: icgc
       !
+      integer(I4B), target                            :: cgcgneq
       integer(I4B), target                            :: cgcgnia
       integer(I4B), target                            :: cgcgnja
       integer(I4B), dimension(:), target, contiguous  :: cgcgia
@@ -773,6 +790,7 @@
       ! -- set pointers
       this%icgc     => icgc
       !
+      this%cgcgneq  => cgcgneq
       this%cgcgnia  => cgcgnia
       this%cgcgnja  => cgcgnja
       this%cgcgia   => cgcgia
@@ -790,12 +808,15 @@
       this%cgcc2gid => cgcc2gid
       this%cgccizc  => cgccizc
       !
-      call mem_allocate(this%acpc, this%cgcgnia-1, this%cgcgnia-1,  &
+      call mem_allocate(this%acpc, this%cgcgneq, this%cgcgneq,  &
         'ACPC', trim(this%origin))
+      call mem_allocate(this%acpci, this%cgcgnja, 'ACPCI', trim(this%origin))
       call mem_allocate(this%acpcb, 'ACPCB', trim(this%origin))
-      call mem_allocate(this%xc, this%cgcgnia-1, 'XC', trim(this%origin))
-      call mem_allocate(this%rhsc, this%cgcgnia-1, 'RHSC', trim(this%origin))
-      call mem_allocate(this%wc, this%cgcgnia-1, 'WC', trim(this%origin))
+      call mem_allocate(this%xc, this%cgcgneq, 'XC', trim(this%origin))
+      call mem_allocate(this%rhsc, this%cgcgneq, 'RHSC', trim(this%origin))
+      call mem_allocate(this%wc, this%cgcgneq, 'WC', trim(this%origin))
+      call mem_allocate(this%cgcgiapc, this%cgcgnia, 'CGCGIAPC', trim(this%origin))
+      call mem_allocate(this%cgcgjapc, this%cgcgnja, 'CGCGJAPC', trim(this%origin))
       call mem_allocate(this%zc, this%neq, 'ZC', trim(this%origin))
       !
       this%acpcb = 0
@@ -807,7 +828,7 @@
       nr = this%neq
       nc = 0
       nlblk = size(this%cgcl2gid)
-      ngblk =  this%cgcgnia-1
+      ngblk =  this%cgcgneq
       allocate(iwrk(ngblk))
       iwrk = 0
       do il = 1, nlblk ! my local blocks
@@ -831,10 +852,11 @@
           'SOL', 'MM1', 'SOL', 'MEM') !PAR
         call this%MpiSol%mpi_init_vg('IMS-ZC') !PAR
       end if
-      
+      !
 !-------return
       return
     end subroutine imslinear_ar_cgc
+      
     subroutine allocate_scalars(this)
       use MemoryManagerModule, only: mem_allocate
       class(IMSLINEAR_DATA), intent(inout) :: this
@@ -868,6 +890,7 @@
       call mem_allocate(this%omegatol, 'OMEGATOL', this%origin) !SOL
       call mem_allocate(this%ircloseprechk, 'IRCLOSEPRECHK', this%origin) !SOL
       call mem_allocate(this%icgc, 'ICGC', this%origin) !CGC
+      call mem_allocate(this%cgcsol, 'CGCSOL', this%origin) !CGC
       !
       ! -- initialize
       this%iout = 0
@@ -898,6 +921,7 @@
       this%omegatol = DZERO !SOL
       this%ircloseprechk = 0 !SOL
       this%icgc = 0 !CGC
+      this%cgcsol = 0 !CGC
       !
       ! --Return
       return
@@ -962,6 +986,8 @@
       call mem_deallocate(this%alphatol) !SOL
       call mem_deallocate(this%omegatol) !SOL
       call mem_deallocate(this%ircloseprechk) !SOL
+      call mem_deallocate(this%icgc) !CGC
+      call mem_deallocate(this%cgcsol) !CGC
       !
       ! -- nullify pointers
       nullify(this%iprims)
@@ -1161,9 +1187,9 @@
         THIS%L2NORM0 = THIS%L2NORM0 + THIS%D(n) * THIS%D(n)
       END DO
       ! -- MPI parallel: collective sum of THIS%L2NORM0
-      call this%MpiSol%mpi_global_exchange_sum(THIS%L2NORM0) !PAR
+      call this%MpiSol%mpi_global_exchange_all_sum(THIS%L2NORM0) !PAR
       ! -- MPI parallel: collective sum of rmax
-      call this%MpiSol%mpi_global_exchange_absmax(rmax) !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(rmax) !PAR
       THIS%L2NORM0 = SQRT(THIS%L2NORM0)
 !-------CHECK FOR EXACT SOLUTION
       itmax = THIS%ITER1
@@ -1550,12 +1576,15 @@
         integer(I4B), intent(in) :: nlblk
         integer(I4B), dimension(:), intent(in) :: lblkeq
 !       + + + local definitions + + +                                     
-        integer(I4B) :: i, j, ngblk, lna1d
+        integer(I4B) :: i, j, k, ngblk, lna1d
         integer(I4B) :: icbl, icbg
         integer(I4B) :: n, m, icol, ic, ic0, ic1, jc, jc0, jc1
         integer(I4B) ::  ireq0, ireq1, iceq0, iceq1, ieq
         integer(I4B) :: p, q
-        real(DP), dimension(:), allocatable :: la1d, ga1d
+        integer(I4B) :: izero
+        integer(I4B), dimension(2) :: eqbnd
+        real(DP) :: delta, relax
+        real(DP), dimension(:), allocatable :: la1d
         real(DP) :: tv
         real(DP), dimension(:), allocatable :: dwrk
         
@@ -1576,7 +1605,7 @@
           end if
         end do
         !
-        ngblk = this%cgcgnia-1
+        ngblk = this%cgcgneq
         lna1d = 0
         do i = 1, nlblk ! my local blocks
           j = this%cgcl2gid(i)
@@ -1587,7 +1616,6 @@
         end do ! my local blocks
         !
         allocate(la1d(lna1d))
-        allocate(ga1d(this%cgcgnja))
         !
         ! initalize and fill local A*ZC
         do i = 1, size(this%a0zc,2)
@@ -1670,8 +1698,8 @@
         end do
         !
         ! -- MPI all-to-all of matrix coefficients
-        call this%MpiSol%mpi_global_exchange_cgc(lna1d, this%cgcgnja,  &
-          la1d, ga1d, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, &
+        call this%MpiSol%mpi_global_exchange_all_cgc(lna1d, this%cgcgnja, &
+          la1d, this%acpci, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, &
           1)
         !
         do i = 1, ngblk
@@ -1687,16 +1715,38 @@
           do m = ic0, ic1
             j = this%cgcgja(m)
             n = n + 1
-            this%acpc(j,i) = ga1d(n)
+            this%acpc(j,i) = this%acpci(n)
           end do
         end do  
+        if (this%cgcsol == 1) then
+          ! -- band LU decomposition
+          call imslinearsub_slu_band(this%acpc, ngblk, p, q)
+          this%acpcb = p
+          call imslinearsub_slu(this%acpc, ngblk, p, q)
         !
-        call imslinearsub_slu_band(this%acpc, ngblk, p, q)
-        this%acpcb = p
-        call imslinearsub_slu(this%acpc, ngblk, p, q)
+        else
+          allocate(dwrk(this%cgcgnja))
+          do i = 1, this%cgcgnja
+            dwrk(i) = this%acpci(i)
+          end do
+          ! -- ILU(0) decomposition
+          call imslinearsub_pccrs(ngblk, this%cgcgnja, this%cgcgia, this%cgcgja, &
+                                  this%cgcgiapc, this%cgcgjapc)
+          izero = 0
+          delta = dzero
+          relax = done
+          eqbnd(1) = 1
+          eqbnd(2) = ngblk + 1
+          call imslinearsub_pcilu0(this%cgcgnja, ngblk, dwrk, this%cgcgia,       &
+                                   this%cgcgja, this%acpci, this%cgcgiapc,       &
+                                   this%cgcgjapc, this%iw, this%w,               &
+                                   relax, izero, delta, &
+                                   0, 1, eqbnd)
+          deallocate(dwrk)
+        end if
         !
         !-- clean up
-        deallocate(la1d, ga1d)
+        deallocate(la1d)
         !
         !-- return
         return
@@ -1920,17 +1970,17 @@
           ic0 = IA(n)
           ic1 = IA(n+1) - 1
           DO j = ic0, ic1
-            jcol      = JA(j)
-              IF (IBJFLAG.EQ.1) THEN !BJ
-                IF (jcol >= ieq0 .and. jcol <= ieq1) THEN !BJ
-                  IW(jcol) = 1  !BJ
-                  W(jcol) = W(jcol) + AMAT(j) !BJ
-                END IF !BJ
-              ELSE !BJ
-            IW(jcol) = 1
-            W(jcol) = W(jcol) + AMAT(j)
+            jcol = JA(j)
+            IF (IBJFLAG.EQ.1) THEN !BJ
+              IF (jcol >= ieq0 .and. jcol <= ieq1) THEN !BJ
+                IW(jcol) = 1 !BJ
+                W(jcol) = W(jcol) + AMAT(j) !BJ
               END IF !BJ
-            END DO !BJ
+            ELSE !BJ
+              IW(jcol) = 1
+              W(jcol) = W(jcol) + AMAT(j)
+            END IF !BJ
+          END DO !BJ
           ic0 = IAPC(n)
           ic1 = IAPC(n+1) - 1
           iu  = JAPC(n)
@@ -2178,7 +2228,7 @@
           END IF !CGC
           rho = IMSLINEARSUB_DP(NEQ, D, Z)
           ! -- MPI parallel: collective comm. of rho (sum)
-          call MpiSol%mpi_global_exchange_sum(rho) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(rho) !PAR
 !-----------COMPUTE DIRECTIONAL VECTORS
           IF (IITER ==  1) THEN
             DO n = 1, NEQ
@@ -2200,7 +2250,7 @@
           call MpiSol%mpi_mv_halo(origin, 'IMS-P', q) !PAR
           denom =  IMSLINEARSUB_DP(NEQ, P, Q)
           ! -- MPI parallel: collective comm. of denom (sum)
-          call MpiSol%mpi_global_exchange_sum(denom) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(denom) !PAR
           denom = denom + SIGN(DPREC, denom)
           alpha = rho / denom
 !-----------UPDATE X AND RESIDUAL                                       
@@ -2246,9 +2296,9 @@
             l2norm = l2norm + tv * tv
           END DO
           ! -- MPI parallel: collective comm. of deltax and rmax (max)
-          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !PAR
+          call MpiSol%mpi_global_exchange_all_absmax(deltax, rmax) !PAR
           ! -- MPI parallel: collective comm. of l2norm (sum)
-          call MpiSol%mpi_global_exchange_sum(l2norm) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(l2norm) !PAR
           l2norm = SQRT(l2norm)
 !-----------SAVE SOLVER CONVERGENCE INFORMATION
           IF (NCONV > 1) THEN
@@ -2466,7 +2516,7 @@
 !----------CALCULATE rho
           rho = IMSLINEARSUB_DP(NEQ, DHAT, D)
           ! -- MPI parallel: collective comm. of rho (sum)
-          call MpiSol%mpi_global_exchange_sum(rho) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(rho) !PAR
 !-----------COMPUTE DIRECTIONAL VECTORS
           IF (IITER ==  1) THEN
             DO n = 1, NEQ
@@ -2502,7 +2552,7 @@
 !           UPDATE alpha WITH DHAT AND V
           denom = IMSLINEARSUB_DP(NEQ, DHAT, V)
           ! -- MPI parallel: collective comm. of denom (sum)
-          call MpiSol%mpi_global_exchange_sum(denom) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(denom) !PAR
           denom = denom + SIGN(DPREC, denom)
           alpha = rho / denom
 !-----------UPDATE Q
@@ -2554,7 +2604,7 @@
           numer = IMSLINEARSUB_DP(NEQ, T, Q)
           denom = IMSLINEARSUB_DP(NEQ, T, T)
           ! -- MPI parallel: collective comm. of numer and denom (sum)
-          call MpiSol%mpi_global_exchange_sum(numer, denom) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(numer, denom) !PAR
           denom = denom + SIGN(DPREC,denom)
           omega = numer / denom
 !-----------UPDATE X AND RESIDUAL
@@ -2606,8 +2656,8 @@
             l2norm = l2norm + tv * tv 
           END DO
           ! -- MPI parallel: collective comm. of l2norm (sum) and rmax (max)
-          call MpiSol%mpi_global_exchange_sum(l2norm) !PAR
-          call MpiSol%mpi_global_exchange_absmax(deltax, rmax) !PAR
+          call MpiSol%mpi_global_exchange_all_sum(l2norm) !PAR
+          call MpiSol%mpi_global_exchange_all_absmax(deltax, rmax) !PAR
           l2norm = sqrt(l2norm)
 !-----------SAVE SOLVER CONVERGENCE INFORMATION
           IF (NCONV > 1) THEN
@@ -3517,7 +3567,7 @@
 
       subroutine imslinearsub_pcc_sol(this, neq, nlblk, lblkeq, r, s) !CGC
 !       ******************************************************************
-!       ALLOCATE STORAGE FOR COARSE GRID CORRECTION ARRAYS
+!       APPLY COARSE GRID CORRECTION
 !       ******************************************************************
 !    
 !          SPECIFICATIONS:
@@ -3551,14 +3601,22 @@
         end do
         !
         ! -- MPI all-to-all for global RHS
-        call this%MpiSol%mpi_global_exchange_cgc(nlblk, this%cgcgnia-1,  &
+        call this%MpiSol%mpi_global_exchange_all_cgc(nlblk, this%cgcgnia-1,  &
           this%wc, this%rhsc, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, &
           2)
         !
         !-- solve the coarse system
         this%xc = this%rhsc
-        call imslinearsub_slu_solve(this%acpc, this%cgcgnia-1, this%acpcb,    &
-          this%acpcb, this%xc)
+        if (this%cgcsol == 1) then
+          !-- Band LU solve of the coarse system
+          call imslinearsub_slu_solve(this%acpc, this%cgcgneq, this%acpcb,       &
+                                      this%acpcb, this%xc)
+        else
+          ! -- ILU(0) solve of the coarse system
+          call imslinearsub_ilu0a(this%cgcgnja, this%cgcgneq, this%acpci,        &
+                                  this%cgcgiapc, this%cgcgjapc,                  &
+                                  this%xc, this%xc)
+        end if
         !
         !-- Correct search direction s
         do irbl = 1, nlblk ! my local blocks
