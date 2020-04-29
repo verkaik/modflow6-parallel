@@ -42,8 +42,7 @@ module SimulationCreateModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeModule, only: MpiWorld !PAR
-    ! -- local
+    use MpiExchangeGenModule, only: parallelrun, writestd !PAR
     character(len=LINELENGTH) :: line
 ! ------------------------------------------------------------------------------
     !
@@ -54,11 +53,15 @@ module SimulationCreateModule
     iout = getunit()
     call openfile(iout, 0, simlstfile, 'LIST', filstat_opt='REPLACE',            &
                   master_write=.true.) !PAR
-    call MpiWorld%mpi_barrier() !PAR 
     ! -- write simlstfile to stdout
-    write(line,'(2(1x,A))') 'Writing simulation list file:',                     &
-                            trim(adjustl(simlstfile))
-    call sim_message(line)
+    if (parallelrun) then !PAR
+      write(line,'(2(1x,A))') 'Writing simulation list file for MPI rank 0:',    & !PAR
+                              trim(adjustl(simlstfile)) !PAR
+    else !PAR
+      write(line,'(2(1x,A))') 'Writing simulation list file:',                   &
+                              trim(adjustl(simlstfile))
+    endif !PAR
+    call sim_message(line, force_write=writestd) !PAR
     call write_simulation_header()
     !
     ! -- Read the simulation name file and create objects
@@ -172,7 +175,7 @@ module SimulationCreateModule
     ! -- Open simulation name file
     inunit = getunit()
     call openfile(inunit, iout, simfile, 'NAM')
-    call MpiWorld%mpi_barrier() !PAR
+    !call MpiWorld%mpi_barrier() !PAR
     if (writestd) then !PAR
       write(line,'(2(1x,a))') 'Using Simulation name file:', trim(simfile) !PAR
       call sim_message(line, skipafter=1)

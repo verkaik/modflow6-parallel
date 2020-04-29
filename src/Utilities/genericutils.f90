@@ -16,7 +16,8 @@ module GenericUtilitiesModule
   contains
 
   subroutine sim_message(message, iunit, fmt, level,                             &
-                         skipbefore, skipafter, advance)
+                         skipbefore, skipafter, advance,                         &
+                         force_write) !PAR
   ! ******************************************************************************
   ! Print message to user specified iunit or STDOUT based on level.
   !
@@ -43,6 +44,7 @@ module GenericUtilitiesModule
     integer(I4B), intent(in), optional :: skipbefore
     integer(I4B), intent(in), optional :: skipafter
     logical, intent(in), optional :: advance
+    logical, intent(in), optional :: force_write !PAR
     ! -- local
     character(len=3) :: cadvance
     integer(I4B) :: i
@@ -52,6 +54,7 @@ module GenericUtilitiesModule
     character(len=LENHUGELINE) :: simfmt
     character(len=*), parameter :: stdfmt = '(a)'
     character(len=*), parameter :: emptyfmt = '()'
+    logical :: lwrite !PAR
   ! ------------------------------------------------------------------------------
     !
     ! -- initialize local variables
@@ -86,6 +89,13 @@ module GenericUtilitiesModule
     else
       cadvance = 'YES'
     end if
+    lwrite = .true. !PAR
+    if (present(force_write)) then !PAR
+      lwrite = force_write !PAR
+    end if !PAR
+    if (.not.lwrite) then !PAR
+      return !PAR
+    end if !PAR
     !
     ! -- write empty line before message
     if (present(skipbefore)) then

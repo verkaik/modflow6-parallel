@@ -33,10 +33,8 @@ module TimerModule
     !    
     ! -- Get current date and time, assign to IBDT, and write to screen
     call date_and_time(values=ibdt)
-    if (writestd) then !PAR
-      write(line, fmtdt) (ibdt(i), i = 1, 3), (ibdt(i), i = 5, 7)
-      call sim_message(line, skipafter=1)
-    end if
+    write(line, fmtdt) (ibdt(i), i = 1, 3), (ibdt(i), i = 5, 7)
+    call sim_message(line, skipafter=1, force_write=writestd) !PAR
     !
     ! -- return
     return
@@ -73,10 +71,8 @@ module TimerModule
       CALL DATE_AND_TIME(VALUES=IEDT)
       !
       ! -- write elapsed time to stdout
-      if(writestd) then !PAR
-        write(line,fmtdt) (IEDT(I),I=1,3),(IEDT(I),I=5,7)
-        call sim_message(line, skipbefore=1)
-      end if !PAR
+      write(line,fmtdt) (IEDT(I),I=1,3),(IEDT(I),I=5,7)
+      call sim_message(line, skipbefore=1, force_write=writestd) !PAR
       !
       ! -- write elapsted time to iout
       IF(IPRTIM.GT.0) THEN
@@ -136,25 +132,23 @@ module TimerModule
       IF (RSECS.GE.0.5) NRSECS=NRSECS+1
 !
 !     Write elapsed time to screen
-      IF(WRITESTD) THEN !PAR
-        IF (NDAYS.GT.0) THEN
-          WRITE(line, 1010) NDAYS,NHOURS,NMINS,NRSECS
- 1010     FORMAT(1X,'Elapsed run time: ',I3,' Days, ',I2,' Hours, ',I2,        &
-            ' Minutes, ',I2,' Seconds')
-        ELSEIF (NHOURS.GT.0) THEN
-          WRITE(line, 1020) NHOURS,NMINS,NRSECS
- 1020     FORMAT(1X,'Elapsed run time: ',I2,' Hours, ',I2,                     &
-            ' Minutes, ',I2,' Seconds')
-        ELSEIF (NMINS.GT.0) THEN
-          WRITE(line, 1030) NMINS,NSECS,MSECS
- 1030     FORMAT(1X,'Elapsed run time: ',I2,' Minutes, ',                      &
-            I2,'.',I3.3,' Seconds')
-        ELSE
-          WRITE(line, 1040) NSECS,MSECS
- 1040     FORMAT(1X,'Elapsed run time: ',I2,'.',I3.3,' Seconds')
-        ENDIF
-        call sim_message(line, skipafter=1)
-      END IF !PAR
+      IF (NDAYS.GT.0) THEN
+        WRITE(line, 1010) NDAYS,NHOURS,NMINS,NRSECS
+ 1010   FORMAT(1X,'Elapsed run time: ',I3,' Days, ',I2,' Hours, ',I2,        &
+          ' Minutes, ',I2,' Seconds')
+      ELSEIF (NHOURS.GT.0) THEN
+        WRITE(line, 1020) NHOURS,NMINS,NRSECS
+ 1020   FORMAT(1X,'Elapsed run time: ',I2,' Hours, ',I2,                     &
+          ' Minutes, ',I2,' Seconds')
+      ELSEIF (NMINS.GT.0) THEN
+        WRITE(line, 1030) NMINS,NSECS,MSECS
+ 1030   FORMAT(1X,'Elapsed run time: ',I2,' Minutes, ',                      &
+          I2,'.',I3.3,' Seconds')
+      ELSE
+        WRITE(line, 1040) NSECS,MSECS
+ 1040   FORMAT(1X,'Elapsed run time: ',I2,'.',I3.3,' Seconds')
+      ENDIF
+      call sim_message(line, skipafter=1, force_write=writestd) !PAR
 !
 !     Write times to file if requested
       IF(IPRTIM.GT.0) THEN

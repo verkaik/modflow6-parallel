@@ -158,26 +158,17 @@ contains
     !
     ! -- Calculate memory usage, elapsed time and terminate
     call mem_usage(iout)
-    if (parallelrun) then !PAR
-      call MpiWorld%mpi_global_exchange_master_sum(bytes) !PAR
-    endif
-    if (writestd) then !PAR
-      write(*,*)
-      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in kilobytes: ', &
-        bytes/(1024.d0**1) !PAR
-      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in megabytes: ', &
-        bytes/(1024.d0**2) !PAR
-      write(*, "(1x, a, 1(1pg15.6))") 'Total allocated memory in gigabytes: ', &
-        bytes/(1024.d0**3) !PAR
-    endif !PAR
+    call MpiWorld%mpi_total_memory(bytes) !PAR
     !
     call mem_timing(iout) !TIM
+    call MpiWorld%mpi_barrier() !PAR
+    call elapsed_time(iout, 1, writestd) !PAR
     !
     ! -- Deallocate MPI world
     call mpi_world_da() !PAR
     !
     call mem_da()
-    call elapsed_time(iout, 1, writestd) !PAR
+    !
     call final_message()
     !        
   end subroutine Mf6Finalize

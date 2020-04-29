@@ -185,6 +185,7 @@
     generic   :: mpicopyinttohalo => mpi_copy_int_to_halo
     procedure :: mpi_copy_dbl_to_halo
     generic   :: mpicopydbltohalo => mpi_copy_dbl_to_halo
+    procedure :: mpi_total_memory
   end type MpiExchangeType
 
   ! -- World communicator
@@ -2118,6 +2119,53 @@
     return
   end subroutine mpi_not_supported
 
+  subroutine mpi_total_memory(this, bytes)
+! ******************************************************************************
+! Master gathers total memory used from slaves and writes to standard output.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    real(DP), intent(in) :: bytes
+    ! -- local
+    character(len=*), parameter :: fmtm = "(1x,a,1(1pg15.6),1x,a)"
+    real(DP), parameter :: DKILO = 1024.D0
+    character(len=LINELENGTH) :: line
+    real(DP) :: b
+! ------------------------------------------------------------------------------
+    if (serialrun) then
+      return
+    end if
+    !
+    b = bytes
+    call this%mpi_global_exchange_master_sum(b)
+    !
+    if (.not.writestd) then
+      return
+    end if
+    !
+    line = 'Total allocated memory:'
+    write(*,*)
+    if ((       0 <= b).and.(b < DKILO**2)) then
+      write(*,fmtm) trim(line), b/(DKILO**1), 'kB'
+    end if
+    if ((DKILO**2 <= b).and.(b < DKILO**3)) then
+      write(*,fmtm) trim(line), b/(DKILO**2), 'MB'
+    end if
+    if ((DKILO**3 <= b).and.(b < DKILO**4)) then
+      write(*,fmtm) trim(line), b/(DKILO**3), 'GB'
+    end if
+    if ((DKILO**4 <= b).and.(b < DKILO**5)) then
+      write(*,fmtm) trim(line), b/(DKILO**4), 'TB'
+    end if
+    !
+    ! -- return
+    return
+  end subroutine mpi_total_memory
+  
   subroutine mpi_da(this)
 ! ******************************************************************************
 ! mpi_da -- deallocate
