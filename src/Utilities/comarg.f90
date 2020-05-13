@@ -43,7 +43,7 @@ module CommandArguments
     integer(I4B) :: icountcmd
     integer(I4B) :: ipos
     integer(I4B) :: ilen
-    integer(I4B) :: iarg, jarg, i !SIM
+    integer(I4B) :: iarg, jarg, jpos !SIM
 ! ------------------------------------------------------------------------------
     !
     ! -- initialize local variables
@@ -184,14 +184,18 @@ module CommandArguments
           jarg = jarg + 1 !SIM 
           call get_command_argument(jarg, line) !SIM
           simfile = trim(adjustl(line)) !SIM
-          i = index(simfile,'.',back=.true.) !SIM
-          if (i > 0) then !SIM
-            simlstfile = simfile(1:i-1)//'.lst' !SIM
-          else !SIM
-            simlstfile = trim(simfile)//'.lst' !SIM
+          ipos = index(simfile, '/', back=.TRUE.) !SIM
+          if (ipos == 0) then !SIM
+            ipos = index(simfile, '\', back=.TRUE.) !SIM
           end if !SIM
-          lstop = .FALSE.
-          if (jarg == icountcmd) exit !SIM          
+          jpos = index(simfile,'.',back=.true.) !SIM
+          if (jpos > 0) then !SIM
+            simlstfile = simfile(ipos+1:jpos-1)//'.lst' !SIM
+          else !SIM
+            simlstfile = trim(simfile(ipos+1:))//'.lst' !SIM
+          end if !SIM
+          lstop = .FALSE. !SIM
+          if (jarg == icountcmd) exit !SIM
         case default
           lstop = .TRUE.
           call write_usage(trim(adjustl(header)), trim(adjustl(cexe)))
