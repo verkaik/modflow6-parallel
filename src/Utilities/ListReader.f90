@@ -1,7 +1,7 @@
 ! -- Generic List Reader Module
 module ListReaderModule
 
-  use KindModule, only: DP, I4B
+  use KindModule, only: DP, I4B, I8B !BINPOS
   use ConstantsModule, only: LINELENGTH, LENBOUNDNAME, LENTIMESERIESNAME, &
                              LENLISTLABEL, DONE
   use SimModule,       only: store_error_unit
@@ -17,6 +17,8 @@ module ListReaderModule
     integer(I4B) :: ierr = 0                                                     ! error flag
     integer(I4B) :: nlist = 0                                                    ! number of entries in list.  -1 indicates number will be automatically determined
     integer(I4B) :: ibinary = 0                                                  ! flag indicating to read binary list
+    integer(I8B) :: posstart = -1                                                ! start binary initial file position !BINPOS
+    integer(I8B) :: posstop = -1                                                 ! stop binary initial file position !BINPOS
     integer(I4B) :: istart = 0                                                   ! string starting location
     integer(I4B) :: istop = 0                                                    ! string ending location
     integer(I4B) :: lloc = 0                                                     ! entry number in line
@@ -164,7 +166,8 @@ module ListReaderModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use InputOutputModule, only: u8rdcom, urword, openfile
+    use InputOutputModule, only: u8rdcom, urword, openfile, &
+      fseek_stream !BINPOS
     use OpenSpecModule, only: form, access
     use ConstantsModule, only: LINELENGTH
     use SimModule, only: ustop, store_error
@@ -172,6 +175,7 @@ module ListReaderModule
     class(ListReaderType) :: this
     ! -- local
     integer(I4B) :: idum, itmp
+    integer(I4B) :: iostat !BINPOS
     real(DP) :: r
     logical :: exists
     integer(I4B) :: nunopn = 99
@@ -206,10 +210,25 @@ module ListReaderModule
     endif
     !
     ! -- Check for (BINARY) keyword
-    call urword(this%line, this%lloc, this%istart, this%istop, 1, idum, r,     &
+    call urword(this%line, this%lloc, this%istart, this%istop, 1, idum, r, &
                 this%iout, this%in)
     if(this%line(this%istart:this%istop) == '(BINARY)') this%ibinary = 1
     !
+    call urword(this%line, this%lloc, this%istart, this%istop, 2, idum, r, & !BINPOS
+                this%iout, this%in) !BINPOS
+    if(this%lloc < LINELENGTH) then !BINPOS
+      ! -- I8B read of URWORD not yet supported, therefore free format !BINPOS
+      read(this%line(this%istart:this%istop),*) this%posstart
+      call urword(this%line, this%lloc, this%istart, this%istop, 1, idum, r, & !BINPOS
+                  this%iout, this%in) !BINPOS
+      if(this%lloc < LINELENGTH) then !BINPOS
+        ! -- I8B read of URWORD not yet supported, therefore free format !BINPOS
+        read(this%line(this%istart:this%istop),*) this%posstop !BINPOS
+      else !BINPOS
+        call store_error('Could not read stopping binary file pointer.') !BINPOS
+      end if !BINPOS
+    end if !BINPOS
+    
     ! -- Open the file depending on ibinary flag
     this%inlist = nunopn
     if(this%ibinary == 1) then
@@ -219,8 +238,20 @@ module ListReaderModule
         write(this%iout, fmtobf) this%inlist, trim(adjustl(fname))
         if(this%nlist > 0) write(this%iout, fmtobfnlist) this%nlist
       endif
-      call openfile(this%inlist, itmp, fname, 'OPEN/CLOSE', fmtarg_opt=form,   &
-                    accarg_opt=access)
+      if ((this%posstart > 0).and.(this%posstop > 0)) then !BINPOS
+        if (trim(ACCESS) /= 'STREAM') then !BINPOS
+          call store_error('Binary file pointer can only be used in STREAM mode.') !BINPOS
+        end if !BINPOS
+        call openfile(this%inlist, itmp, fname, 'OPEN/CLOSE', fmtarg_opt=form, & !BINPOS
+                      accarg_opt=access, filact_opt='READWRITE')
+        call fseek_stream(this%inlist, this%posstart, 0, iostat) !BINPOS
+        if (iostat /= 0) then !BINPOS
+          call store_error('Could not set binary file pointer.') !BINPOS
+        end if !BINPOS
+      else !BINPOS
+        call openfile(this%inlist, itmp, fname, 'OPEN/CLOSE', fmtarg_opt=form, & !BINPOS
+                      accarg_opt=access) !BINPOS
+      end if !BINPOS
     else
       itmp = this%iout
       if(this%iout > 0) then
@@ -291,6 +322,7 @@ module ListReaderModule
     character(len=LINELENGTH) :: fname
     character(len=LENBIGLINE) :: errmsg
     integer(I4B), dimension(:), allocatable :: cellid
+    integer(I8B) :: pos !BINPOS
     ! -- formats
     character(len=*), parameter :: fmtmxlsterronly = &
       "('ERROR READING LIST FROM FILE: '," // &
@@ -311,12 +343,19 @@ module ListReaderModule
     ! -- Allocate arrays
     allocate(cellid(this%ndim))
     !
+    pos = max(this%posstart, 1) !BINPOS
+    !
     ii = 1
     readloop: do
       !
       ! -- read layer, row, col, or cell number
       read(this%inlist, iostat=this%ierr) cellid
-
+      !
+      pos = pos + I4B*this%ndim !BINPOS
+      if ((this%posstart > 0).and.(pos >= this%posstop)) then !BINPOS
+        this%ierr = -1 !BINPOS
+      end if !BINPOS
+      !
       ! -- If not end of record, then store nodenumber, else
       !    calculate lstend and nlist, and exit readloop
       select case(this%ierr)
@@ -343,6 +382,7 @@ module ListReaderModule
         this%nodelist(ii) = nod
         read(this%inlist, iostat=this%ierr) (this%rlist(jj,ii),jj=1,ldim),     &
                                             (this%auxvar(ii,jj),jj=1,naux)
+        pos = pos + DP*(ldim + naux) !BINPOS
         if(this%ierr /= 0) then
           inquire(unit=this%inlist, name=fname)
           write(errmsg, fmtlsterronly) trim(adjustl(fname)), this%inlist

@@ -2,7 +2,7 @@
 !
 module InputOutputModule
 
-  use KindModule, only: DP, I4B
+  use KindModule, only: DP, I4B, I8B !BINPOS
   use SimVariablesModule, only: iunext
   use SimModule, only: store_error, ustop, store_error_unit,                   &
                        store_error_filename
@@ -29,8 +29,8 @@ module InputOutputModule
 
   contains
 
-  subroutine openfile(iu, iout, fname, ftype, fmtarg_opt, accarg_opt,          &
-                      filstat_opt, master_write) !PAR
+  subroutine openfile(iu, iout, fname, ftype, fmtarg_opt, accarg_opt,          & !BINPOS
+                      filstat_opt, filact_opt, master_write) !PAR
 ! ******************************************************************************
 ! openfile -- Open a file using the specified arguments.
 !
@@ -58,6 +58,7 @@ module InputOutputModule
     character(len=*), intent(in), optional :: fmtarg_opt
     character(len=*), intent(in), optional :: accarg_opt
     character(len=*), intent(in), optional :: filstat_opt
+    character(len=*), intent(in), optional :: filact_opt !BINPOS
     logical, intent(in), optional :: master_write !PAR
     ! -- local
     character(len=20) :: fmtarg
@@ -107,6 +108,10 @@ module InputOutputModule
     else
       filact = action(2)
     endif
+    if(present(filact_opt)) then !BINPOS
+      filact = filact_opt !BINPOS
+      call upcase(filact) !BINPOS
+    endif !BINPOS
     !
     mw = .false. !PAR
     if (present(master_write)) then !PAR
@@ -2190,10 +2195,10 @@ module InputOutputModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     integer(I4B), intent(in) :: iu
-    integer(I4B), intent(in) :: offset
+    integer(I8B), intent(in) :: offset !BINPOS
     integer(I4B), intent(in) :: whence
     integer(I4B), intent(inout) :: status
-    integer(I4B) :: ipos
+    integer(I8B) :: ipos !BINPOS
 ! ------------------------------------------------------------------------------
     !
     inquire(unit=iu, size=ipos)

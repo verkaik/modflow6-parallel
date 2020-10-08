@@ -5,8 +5,10 @@ module ArrayReadersModule
                                DZERO
   use InputOutputModule, only: openfile, u8rdcom, urword, ucolno, ulaprw, &
                                BuildFixedFormat, BuildFloatFormat, &
-                               BuildIntFormat
-  use KindModule,        only: DP, I4B
+                               BuildIntFormat, &
+                               fseek_stream !BINPOS
+  use KindModule,        only: DP, I4B, &
+                               I8B !BINPOS
   use OpenSpecModule,    only: ACCESS, FORM
   use SimModule,         only: store_error, ustop, store_error_unit, &
                                store_error_filename
@@ -713,14 +715,17 @@ contains
     character(len=*), intent(inout) :: line
     integer(I4B), intent(inout)     :: icol, iprn, locat
     ! -- local
-    integer(I4B) :: i, n, istart, istop, lenkey
+    integer(I4B) :: i, n, istart, istop, lenkey, &
+      iostat !BINPOS
     real(DP) :: r
     character(len=MAXCHARLEN) :: keyword
     character(len=LENBIGLINE) :: ermsg
     logical :: binary
+    integer(I8B) :: posstart !BINPOS
     !
     iprn = -1   ! Printing is turned off by default
     binary = .false.
+    posstart = -1 !BINPOS
     !
     if (locat.ne.0) then
       ! -- CONSTANT has not been specified; array data will be read.
@@ -739,6 +744,13 @@ contains
             call ustop()
           endif
           binary = .true.
+          call urword(line,icol,istart,istop,1,n,r,iout,iu) !BINPOS
+          if(icol < LINELENGTH) then !BINPOS
+            ! -- I8B read using uword is not yet supported, hence read free format !BINPOS
+            read(line(istart:istop),*) posstart !BINPOS
+            exit !BINPOS
+          end if !BINPOS
+          !
         case ('IPRN')
           ! -- Read IPRN value
           call urword(line,icol,istart,istop,2,iprn,r,iout,iu)
@@ -760,8 +772,20 @@ contains
       else
         ! -- Open the OPEN\CLOSE file
         if (binary) then
-          call openfile(locat, iout, fname, 'OPEN/CLOSE', fmtarg_opt=FORM, &
-                        accarg_opt=ACCESS)
+          if (posstart > 0) then !BINPOS
+            if (trim(ACCESS) /= 'STREAM') then !BINPOS
+              call store_error('Binary file pointer can only be used in STREAM mode.') !BINPOS
+            end if !BINPOS
+            call openfile(locat, iout, fname, 'OPEN/CLOSE', fmtarg_opt=FORM, & !BINPOS
+                          accarg_opt=ACCESS, filact_opt='READWRITE') !BINPOS
+            call fseek_stream(locat, posstart, 0, iostat) !BINPOS
+            if (iostat /= 0) then !BINPOS
+              call store_error('Could not set binary file pointer.') !BINPOS
+            end if !BINPOS
+          else !BINPOS
+            call openfile(locat, iout, fname, 'OPEN/CLOSE', fmtarg_opt=FORM, &
+                          accarg_opt=ACCESS)
+          end if !BINPOS
           locat = -locat
         else
           call openfile(locat, iout, fname, 'OPEN/CLOSE')
