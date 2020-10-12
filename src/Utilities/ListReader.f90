@@ -214,7 +214,7 @@ module ListReaderModule
                 this%iout, this%in)
     if(this%line(this%istart:this%istop) == '(BINARY)') this%ibinary = 1
     !
-    call urword(this%line, this%lloc, this%istart, this%istop, 2, idum, r, & !BINPOS
+    call urword(this%line, this%lloc, this%istart, this%istop, 1, idum, r, & !BINPOS
                 this%iout, this%in) !BINPOS
     if(this%lloc < LINELENGTH) then !BINPOS
       ! -- I8B read of URWORD not yet supported, therefore free format !BINPOS
