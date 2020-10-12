@@ -246,7 +246,8 @@ module OutputControlModule
     !
     do ipos = 1, size(this%ocdobj)
       ocdobjptr => this%ocdobj(ipos)
-      call ocdobjptr%ocd_ot(ipflg, kstp, nstp(kper), this%iout)
+      call ocdobjptr%ocd_ot(ipflg, kstp, nstp(kper), this%iout, &
+        iprint_opt=0) !PAR
     enddo
     !
     ! -- Return
