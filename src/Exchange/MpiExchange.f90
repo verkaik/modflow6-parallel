@@ -160,6 +160,7 @@
     procedure :: mpi_add_vg
     procedure :: mpi_add_vmt
     procedure :: mpi_init_vg
+    procedure :: mpi_clean_vg
     procedure :: mpi_mv_halo
     procedure :: mpi_global_exchange_master_sum1
     generic   :: mpi_global_exchange_master_sum => mpi_global_exchange_master_sum1
@@ -652,7 +653,78 @@
     !
     ! -- return
     return
-  end subroutine mpi_init_vg
+ end subroutine mpi_init_vg
+
+subroutine mpi_clean_vg(this, vgname)
+! ******************************************************************************
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    character(len=*), intent(in) :: vgname
+    ! -- local
+    type(MemoryType), pointer :: mt => null()
+    type(MpiGwfBuf), pointer :: vgbuf => null()
+    integer(I4B) :: ivg, ixp, i
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    ivg = ifind(this%vg, trim(vgname))
+    if (ivg < 0) then
+      write(errmsg,'(a)') 'Program error mpi_init_vg'
+      call store_error(errmsg)
+      call ustop()
+    end if
+    !
+    do ixp = 1, this%nrxp
+      vgbuf => this%lxch(ixp)%vgbuf(ivg)
+      do i = 1, vgbuf%nsnd + vgbuf%nrcv
+        if (i <= vgbuf%nsnd) then
+          mt => vgbuf%sndmt(i)
+        else
+          mt => vgbuf%rcvmt(i-vgbuf%nsnd)
+        end if
+        !
+        select case(mt%memitype)
+          case(iintsclr)
+            if (associated(mt%intsclr)) then
+              deallocate(mt%intsclr)
+            end if
+            mt%intsclr => null()
+          case(idblsclr)
+            if (associated(mt%dblsclr)) then
+              deallocate(mt%dblsclr)
+            end if
+            mt%dblsclr => null()
+          case(iaint1d)
+            if (associated(mt%aint1d)) then
+              deallocate(mt%aint1d)
+            end if
+            mt%aint1d => null()
+          case(iadbl1d)
+            if (associated(mt%adbl1d)) then
+              deallocate(mt%adbl1d)
+            end if
+            mt%adbl1d => null()
+        end select
+        !
+        mt%name     = ''
+        mt%origin   = ''
+        mt%memitype = 0
+        mt%isize    = 0
+      end do
+    end do
+    !
+    ! -- return
+    return
+  end subroutine mpi_clean_vg
 
   subroutine mpi_local_exchange(this, solname, vgname, lunpack)
 ! ******************************************************************************
@@ -721,10 +793,14 @@
       call ustop()
     end if
     !
+    ! -- clean up MemoryType buffers
+    call this%mpi_clean_vg(vgname)
+    !
     ! ---
 #ifdef MPI_TIMER
     call code_timer(0, t, this%ttpack)
 #endif
+    !
     if (lpack) then
       ! -- Loop over the exchange partners
       do ixp = 1, this%nrxp
