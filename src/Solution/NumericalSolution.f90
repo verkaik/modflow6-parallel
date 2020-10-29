@@ -1700,7 +1700,6 @@ contains
     real(DP) :: ttsoln
     real(DP) :: dpak
     real(DP) :: outer_hncg
-    real(DP) :: hncg !PAR    
     ! formats
 !   -----------------------------------------------------------------------------
     !
@@ -1851,17 +1850,15 @@ contains
     call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter))
     !
     ! -- MPI parallel: head criterion
+    outer_hncg = this%hncg(kiter) !PAR
     if (parallelrun) then !PAR
-      hncg = this%hncg(kiter) !PAR
-      call this%MpiSol%mpi_global_exchange_all_absmax(hncg) !PAR
-    else !PAR
-      hncg = abs(this%hncg(kiter)) !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
     endif !PAR
     !
     if (this%icnvg /= 0) then
       this%icnvgprev = this%icnvg !SOL
       this%icnvg = 0
-      if (abs(hncg) <= this%hclose) then !PAR
+      if (abs(outer_hncg) <= this%hclose) then !PAR
         this%icnvg = 1
       end if
     end if
@@ -1911,7 +1908,7 @@ contains
         call this%outertab%add_term(' ')
         call this%outertab%add_term(' ')
       end if
-      call this%outertab%add_term(this%hncg(kiter))
+      call this%outertab%add_term(outer_hncg) !PAR
       call this%outertab%add_term(cmsg)
       call this%outertab%add_term(trim(strh))
     end if
@@ -1940,6 +1937,11 @@ contains
         cpakout = ' '
       end if
     end do
+    !
+    ! -- MPI parallel: package criterion
+    if (parallelrun) then !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(dpak) !PAR
+    endif !PAR
     !
     ! -- evaluate package convergence
     if (abs(dpak) > this%hclose) then
@@ -1981,7 +1983,7 @@ contains
     ! -- under-relaxation - only done if convergence not achieved
     if (this%icnvg /= 1) then
       if (this%nonmeth > 0) then
-        call this%sln_underrelax(kiter, this%hncg(kiter), this%neq,              &
+        call this%sln_underrelax(kiter, outer_hncg, this%neq,                    & !PAR
                                  this%active, this%x, this%xtemp)
       else
         call this%sln_calcdx(this%neq, this%active,                              &
@@ -2000,6 +2002,11 @@ contains
                           this%dxold(i0:i1), inewtonur, dxmax_nur, locmax_nur)
       end do
       !
+      ! -- MPI parallel: Newton flag
+      if (parallelrun) then !PAR
+        call this%MpiSol%mpi_global_exchange_all_max(inewtonur) !PAR
+      endif !PAR
+      !
       ! -- check for convergence if newton under-relaxation applied
       if (inewtonur /= 0) then
         !
@@ -2007,14 +2014,25 @@ contains
         !    not been adjusted by newton under-relxation
         call this%sln_maxval(this%neq, this%dxold, dxmax)
         !
+        ! -- MPI parallel: maximum change in head
+        if (parallelrun) then !PAR
+          call this%MpiSol%mpi_global_exchange_all_absmax(dxmax) !PAR
+        endif !PAR
+        !
         ! -- evaluate convergence
         if (abs(dxmax) <= this%hclose .and.                                      &
-            abs(this%hncg(kiter)) <= this%hclose .and.                           &
+            abs(outer_hncg) <= this%hclose .and.                                 & !PAR
             abs(dpak) <= this%hclose) then
           this%icnvg = 1
           !
           ! -- reset outer head change and location for output
           call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter))
+          !
+          ! -- MPI parallel: new outer head change
+          outer_hncg = this%hncg(kiter) !PAR
+          if (parallelrun) then !PAR
+            call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
+          endif !PAR
           !
           ! -- write revised head change data after 
           !    newton under-relaxation
@@ -2033,7 +2051,7 @@ contains
               call this%outertab%add_term(' ')
               call this%outertab%add_term(' ')
             end if
-            call this%outertab%add_term(this%hncg(kiter))
+            call this%outertab%add_term(outer_hncg) !PAR
             call this%outertab%add_term(cmsg)
             call this%outertab%add_term(trim(strh))
           end if
