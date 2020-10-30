@@ -25,6 +25,8 @@ module CommandArguments
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeGenModule, only: writestd !PAR
     ! -- dummy
     ! -- local
     character(len=LINELENGTH) :: tag
@@ -224,7 +226,7 @@ module CommandArguments
     !
     ! -- write blank line to stdout
     if (icountcmd > 0) then
-      call sim_message('')
+      call sim_message('',force_write=writestd) !PAR
     end if
     !
     ! -- return
