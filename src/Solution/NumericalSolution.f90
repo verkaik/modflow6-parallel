@@ -1761,7 +1761,7 @@ contains
     !
     ! MPI parallel: point-to-point of X, IACTIVE, and SAT (rewetting)
     if (parallelrun) then !PAR
-      call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE',      &
+      call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE',          & !PAR
                                           .false.) !PAR
     endif !PAR    
     !
@@ -3520,6 +3520,8 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeGenModule, only: parallelrun !PAR
     ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     class(NumericalModelType), pointer :: mp
@@ -3542,6 +3544,12 @@ contains
     ! -- refill amat and rhs with standard conductance
     ! -- Set amat and rhs to zero
     call this%sln_reset()
+    !
+    ! MPI parallel: point-to-point of X, IACTIVE, and SAT (rewetting)
+    if (parallelrun) then !PAR
+      call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE',              & !PAR
+                                          .false.) !PAR
+    endif !PAR    
     !
     ! -- Calculate matrix coefficients (CF) for each exchange
     do ic=1,this%exchangelist%Count()
@@ -3600,6 +3608,12 @@ contains
           !
           ! -- Set amat and rhs to zero
           call this%sln_reset()
+          !
+          ! MPI parallel: point-to-point of X, IACTIVE, and SAT (rewetting)
+          if (parallelrun) then !PAR
+            call this%MpiSol%mpi_local_exchange(this%name, 'X_IACTIVE',        &
+                                                .false.) !PAR
+          endif !PAR    
           !
           ! -- Calculate matrix coefficients (CF) for each exchange
           do ic=1,this%exchangelist%Count()
@@ -3682,6 +3696,8 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
+    ! -- modules
+    use MpiExchangeGenModule, only: parallelrun !PAR 
     ! -- dummy
     class(NumericalSolutionType), intent(inout) :: this
     integer(I4B), intent(inout) :: btflag
@@ -3701,6 +3717,11 @@ contains
       absdelx = abs(delx)
       if(absdelx > chmax) chmax = absdelx
     end do
+    !
+    if (parallelrun) then !PAR
+      call this%MpiSol%mpi_global_exchange_all_absmax(chmax) !PAR
+    endif !PAR
+    !
     ! perform backtracking if free of constraints and set counter and flag
     if (chmax >= this%hclose) then
       btflag = 1
