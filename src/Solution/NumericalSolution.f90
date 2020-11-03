@@ -1661,7 +1661,7 @@ contains
   ! it updates the convergence flag "this%icnvg" accordingly
   subroutine doIteration(this, kiter)
     use TdisModule, only: kstp, kper, totim
-    use MpiExchangeGenModule, only: parallelrun !PAR
+    use MpiExchangeGenModule, only: parallelrun, writestd !PAR
     class(NumericalSolutionType) :: this    
     integer(I4B), intent(in) :: kiter
     ! local
@@ -1670,6 +1670,7 @@ contains
     character(len=LINELENGTH) :: title
     character(len=LINELENGTH) :: tag
     character(len=LINELENGTH) :: line
+    character(len=LINELENGTH) :: s !PAR
     character(len=LENPAKLOC) :: cmod
     character(len=LENPAKLOC) :: cpak
     character(len=LENPAKLOC) :: cpakout
@@ -2019,6 +2020,18 @@ contains
           call this%MpiSol%mpi_global_exchange_all_absmax(dxmax) !PAR
         endif !PAR
         !
+        call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter)) !WORKAROUND
+        outer_hncg = this%hncg(kiter) !PAR
+        !
+        if (parallelrun) then !PAR
+          call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
+        endif !PAR
+        !
+        if (writestd) then !PAR
+          write(s,*) real(outer_hncg) !PAR
+          write(*,'(1x,a,1x,a)') 'Newton outer: bir =', trim(adjustl(s)) !PAR
+        end if !PAR
+        !
         ! -- evaluate convergence
         if (abs(dxmax) <= this%hclose .and.                                      &
             abs(outer_hncg) <= this%hclose .and.                                 & !PAR
@@ -2026,13 +2039,7 @@ contains
           this%icnvg = 1
           !
           ! -- reset outer head change and location for output
-          call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter))
-          !
-          ! -- MPI parallel: new outer head change
-          outer_hncg = this%hncg(kiter) !PAR
-          if (parallelrun) then !PAR
-            call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
-          endif !PAR
+          !call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter)) !WORKAROUND
           !
           ! -- write revised head change data after 
           !    newton under-relaxation
