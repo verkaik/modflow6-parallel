@@ -54,6 +54,7 @@ module MpiWrapper
   public :: mpiwrpallgatherv
   public :: mpiwrpreduce
   public :: mpiwrpallreduce
+  public :: mpiwrpallreduceloc
   public :: mpiwrpcommgroup
   public :: mpiwrpgroupincl
   public :: mpiwrpcommcreate
@@ -85,6 +86,10 @@ module MpiWrapper
   
   interface mpiwrpreduce
     module procedure mpiwrpreduced
+  end interface
+  
+  interface mpiwrpallreduceloc
+    module procedure mpiwrpallreducedloc
   end interface
   
   interface mpiwrpallreduce
@@ -464,13 +469,13 @@ module MpiWrapper
     endif
     select case(op)
       case('mpi_min')
-        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_min,            &
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double_precision, mpi_min, &
                            root, comm, ierr)
       case('mpi_max')
-        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_max,            &
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double_precision, mpi_max, &
                            root, comm, ierr)
       case('mpi_sum')
-        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double, mpi_sum,            &
+        call MPI_Reduce(sendbuf, recvbuf, count, mpi_double_precision, mpi_sum, &
                            root, comm, ierr)
       case default
         call mpiwrperror(comm, 'mpiwrpreduced', 'invalid operation')
@@ -605,14 +610,14 @@ module MpiWrapper
     endif
     select case(op)
       case('mpi_min')
-        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double, mpi_min,          &
-                           comm, ierr)
+        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double_precision,       &
+                           mpi_min, comm, ierr)
       case('mpi_max')
-        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double, mpi_max,          &
-                           comm, ierr)
+        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double_precision,       &
+                           mpi_max, comm, ierr)
       case('mpi_sum')
-        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double, mpi_sum,          &
-                           comm, ierr)
+        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_double_precision,       &
+                           mpi_sum, comm, ierr)
       case default
         call mpiwrperror(comm, 'mpiwrpallreduced', 'invalid operation')
     end select
@@ -627,6 +632,51 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallreduced
+  
+  subroutine mpiwrpallreducedloc(sendbuf, count, op, comm)
+! ******************************************************************************
+! Combines values (doubles) from all processes and distributes the result back 
+! to all processes.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    integer, intent(in)                                 :: count   ! Number of elements in send buffer
+    double precision, dimension(2,count), intent(inout) :: sendbuf ! Send buffer
+    character(len=*)                                    :: op      ! Operation
+    integer, intent(in)                                 :: comm    ! Communicator
+    ! -- local
+    integer  :: ierr, i
+    double precision, dimension(2,count) :: recvbuf ! receive buffer.
+! ------------------------------------------------------------------------------
+#ifdef MPI_PARALLEL
+    if (comm == MPI_COMM_NULL) then
+      return
+    endif
+    select case(op)
+      case('mpi_min')
+        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_2double_precision,      &
+                           mpi_minloc, comm, ierr)
+      case('mpi_max')
+        call MPI_Allreduce(sendbuf, recvbuf, count, mpi_2double_precision,      &
+                           mpi_maxloc, comm, ierr)
+      case default
+        call mpiwrperror(comm, 'mpiwrpallreducedloc', 'invalid operation')
+    end select
+    !
+    do i = 1, count
+      sendbuf(1,i) = recvbuf(1,i)
+      sendbuf(2,i) = recvbuf(2,i)
+    end do
+    !
+#else
+    call mpiwrperror(comm, 'mpiwrpallreduced', 'invalid operation')
+#endif
+    ! -- return
+    return
+  end subroutine mpiwrpallreducedloc
   
   subroutine mpiwrperror(comm, subname, message)
 ! ******************************************************************************
@@ -928,7 +978,7 @@ module MpiWrapper
     types(3) = MPI_INTEGER
     types(4) = MPI_INTEGER
     types(5) = MPI_REAL
-    types(6) = MPI_DOUBLE
+    types(6) = MPI_DOUBLE_PRECISION
     types(7) = MPI_INTEGER
     blocklengths(1)  = LENVARNAME
     blocklengths(2)  = LENORIGIN

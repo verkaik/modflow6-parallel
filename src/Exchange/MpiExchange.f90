@@ -17,7 +17,7 @@
                         mpiwrpmmtstruct, mpiwrpmtstruct, mpiwrpwaitall,        &
                         mpiwrpprobe, mpiwrpgetcount, mpiwrpallreduce,          &
                         mpiwrpcommgroup, mpiwrpgroupincl, mpiwrpcommcreate,    &
-                        mpiwrpreduce
+                        mpiwrpreduce, mpiwrpallreduceloc
   use MpiWrapper, only: MetaMemoryType
 
   implicit none
@@ -176,6 +176,8 @@
     procedure :: mpi_global_exchange_all_absmax2
     generic   :: mpi_global_exchange_all_absmax => mpi_global_exchange_all_absmax1, &
                                                    mpi_global_exchange_all_absmax2
+    procedure :: mpi_global_exchange_all_absmaxloc1
+    generic   :: mpi_global_exchange_all_absmaxloc => mpi_global_exchange_all_absmaxloc1
     procedure :: mpi_global_exchange_all_max => mpi_global_exchange_all_max_int
     procedure :: mpi_global_exchange_all_cgc !CGC
     procedure :: mpi_debug
@@ -1522,6 +1524,42 @@ subroutine mpi_clean_vg(this, vgname)
     ! -- return
     return
   end subroutine mpi_global_exchange_all_absmax1
+  
+  subroutine mpi_global_exchange_all_absmaxloc1(this, dval, rank)
+! ******************************************************************************
+! Collective maximum over all processes for one double precision value.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    ! -- dummy
+    class(MpiExchangeType) :: this
+    real(DP), intent(inout) :: dval
+    integer(I4B), intent(out) :: rank
+    ! -- local
+    real(DP), dimension(2,1) :: dwrk
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    dwrk(1,1) = abs(dval)
+    dwrk(2,1) = real(this%myrank,DP)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
+    call mpiwrpallreduceloc(dwrk, 1, 'mpi_max', this%comm)
+#ifdef MPI_TIMER
+    call code_timer(0, t, this%ttgmax)
+#endif
+    dval = dwrk(1,1)
+    rank = int(dwrk(2,1),I4B)
+    !
+    ! -- return
+    return
+  end subroutine mpi_global_exchange_all_absmaxloc1
 
   subroutine mpi_global_exchange_all_absmax2(this, dval1, dval2)
 ! ******************************************************************************

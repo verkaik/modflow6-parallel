@@ -1670,7 +1670,7 @@ contains
     character(len=LINELENGTH) :: title
     character(len=LINELENGTH) :: tag
     character(len=LINELENGTH) :: line
-    character(len=LINELENGTH) :: s !PAR
+    character(len=LINELENGTH) :: s1, s2 !PAR
     character(len=LENPAKLOC) :: cmod
     character(len=LENPAKLOC) :: cpak
     character(len=LENPAKLOC) :: cpakout
@@ -1701,6 +1701,7 @@ contains
     real(DP) :: ttsoln
     real(DP) :: dpak
     real(DP) :: outer_hncg
+    integer(I4B) :: rank !PAR
     ! formats
 !   -----------------------------------------------------------------------------
     !
@@ -2024,12 +2025,16 @@ contains
         outer_hncg = this%hncg(kiter) !PAR
         !
         if (parallelrun) then !PAR
-          call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
-        endif !PAR
-        !
-        if (writestd) then !PAR
-          write(s,*) real(outer_hncg) !PAR
-          write(*,'(1x,a,1x,a)') 'Newton outer: bir =', trim(adjustl(s)) !PAR
+          call this%MpiSol%mpi_global_exchange_all_absmaxloc(outer_hncg, rank) !PAR
+          if (writestd) then
+            write(s1,*) rank
+            write(s2,*) real(outer_hncg) !PAR
+            write(*,'(1x,a)') 'Newton outer: bir (rank '//trim(adjustl(s1))//      & !PAR
+              ') = '//trim(adjustl(s2)) !PAR
+          end if
+        else !PAR
+          write(s1,*) real(outer_hncg) !PAR
+          write(*,'(1x,a)') 'Newton outer: bir = '//trim(adjustl(s1)) !PAR
         end if !PAR
         !
         ! -- evaluate convergence
