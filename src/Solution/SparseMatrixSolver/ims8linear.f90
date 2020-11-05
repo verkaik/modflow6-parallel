@@ -2723,7 +2723,7 @@
         if (iprims == 3 .and. writestd) then !PAR
           write(sa(1),*) real(deltax) !PAR
           write(sa(2),*) real(rmax) !PAR
-          write(*,'(1x,a,1x,i4.4,a,1x,i5.5,a,1x,2a,1x,a)')                  & !PAR
+          write(*,'(1x,a,1x,i5.5,a,1x,i5.5,a,1x,2a,1x,a)')                  & !PAR
           'bicgstab: oit, iit, bih, bir =',                                 & !PAR
           niterc,',',innerit,',',trim(adjustl(sa(1))),                      & !PAR
           ',',trim(adjustl(sa(2))) !PAR
