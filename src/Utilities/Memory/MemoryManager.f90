@@ -2916,6 +2916,9 @@ subroutine setval_mt_id(mti, id, nid) !PAR
     mem_path = mti%path
     !
     call mem_get_ptr(name, mem_path, mt)
+    !if (mt%isize > 1) then
+    !  write(*,*) '@@@@ name, mem_path, isize ', '"'//trim(name)//'" "'//trim(mem_path)//'" "', mt%isize
+    !end if
     !
     if (mti%memitype /= mt%memitype) then
       call allocate_error(name, mem_path, 0, 0)

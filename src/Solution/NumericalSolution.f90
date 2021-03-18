@@ -2886,6 +2886,7 @@ contains
       isrcmvr, ipckmvr, itgtmvr, iunpmvr
     !use MpiExchangeGenModule, only: mpi_destroy_modelname_halo
     use MpiMvrModule,         only: MpiMvrType !PAR
+    use MemoryHelperModule, only: split_mem_path_ff
     !
     ! -- dummy
     class(NumericalSolutionType) :: this
@@ -2897,7 +2898,7 @@ contains
     type(MpiMvrType), pointer :: mvrmpi
     type(VarGroupType), pointer :: vgvar
     character(len=LINELENGTH) :: errmsg
-    character(len=LENMODELNAME) :: mname1, mname2
+    character(len=LENMODELNAME) :: mname1, mname2, id
     integer(I4B) :: ic, imvr, mvrflag, i1, i2, i, isub, ip, nex, ixp, iact
     integer(I4B) :: ivg, iv, nh
     integer(I4B), dimension(:), allocatable :: iwrk, iwrk2
@@ -2937,8 +2938,8 @@ contains
       if (cp%inmvr > 0) then
         mvr => cp%mvr
         do imvr = 1, mvr%nmvr
-          read(mvr%mvr(imvr)%pckNameSrc,*) mname1
-          read(mvr%mvr(imvr)%pckNameTgt,*) mname2
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc, mname1, id)
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt, mname2, id)
           i1 = ifind(this%MpiSol%lmodelnames, mname1)
           i2 = ifind(this%MpiSol%lmodelnames, mname2)
           if (i1 > 0 .and. i2 <= 0) then
@@ -2973,8 +2974,8 @@ contains
       ! -- loop over global movers
       do imvr = 1, mvrmpi%ngmvr
         ! -- get mover names
-        read(mvrmpi%gmvr(imvr)%pckNameSrc,*) mname1
-        read(mvrmpi%gmvr(imvr)%pckNameTgt,*) mname2
+        call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameSrc, mname1, id)
+        call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameTgt, mname2, id)
         ! -- check existence
         i1 = ifind(MpiWorld%gmodelnames, mname1)
         i2 = ifind(MpiWorld%gmodelnames, mname2)
@@ -3025,8 +3026,8 @@ contains
       mvr => cp%mvr
       ! -- loop over local movers
       do imvr = 1, mvr%nmvr
-        read(mvr%mvr(imvr)%pckNameSrc_read,*) mname1
-        read(mvr%mvr(imvr)%pckNameTgt_read,*) mname2
+        call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
+        call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
         i1 = ifind(this%MpiSol%lmodelnames, mname1)
         i2 = ifind(this%MpiSol%lmodelnames, mname2)
         laddvar1 = .false.
@@ -3093,8 +3094,8 @@ contains
         mvr => cp%mvr
         ! -- loop over local movers
         do imvr = 1, mvr%nmvr
-          read(mvr%mvr(imvr)%pckNameSrc_read,*) mname1
-          read(mvr%mvr(imvr)%pckNameTgt_read,*) mname2
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
           !write(*,*) '@@@@ mvr: "'//trim(mvr%mvr(imvr)%pname1)//'" "'//trim(mvr%mvr(imvr)%pname2)//'"'
           i1 = ifind(this%MpiSol%lmodelnames, mname1)
           i2 = ifind(this%MpiSol%lmodelnames, mname2)
