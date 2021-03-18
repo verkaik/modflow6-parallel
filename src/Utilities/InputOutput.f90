@@ -3,7 +3,7 @@
 module InputOutputModule
 
   use KindModule, only: DP, I4B, I8B !BINPOS
-  use SimVariablesModule, only: iunext
+  use SimVariablesModule, only: iunext, isim_mode
   use SimModule, only: store_error, ustop, store_error_unit,                   &
                        store_error_filename
   use ConstantsModule, only: IUSTART, IULAST,                                  &
@@ -25,12 +25,12 @@ module InputOutputModule
             GetFileFromPath, extract_idnum_or_bndname, urdaux,                 &
             get_jk, uget_block_line, print_format, BuildFixedFormat,           &
             BuildFloatFormat, BuildIntFormat, fseek_stream,                    &
-            get_nwords
+            get_nwords, u9rdcom
 
   contains
 
   subroutine openfile(iu, iout, fname, ftype, fmtarg_opt, accarg_opt,          & !BINPOS
-                      filstat_opt, filact_opt, master_write) !PAR
+                      filstat_opt, mode_opt, filact_opt, master_write) !PAR
 ! ******************************************************************************
 ! openfile -- Open a file using the specified arguments.
 !
@@ -42,6 +42,8 @@ module InputOutputModule
 !   accarg_opt is the access, default is 'sequential'
 !   filstat_opt is the file status, default is 'old'.  Use 'REPLACE' for an
 !     output file.
+!   mode_opt is a simulation mode that is evaluated to determine if the file
+!   should be opened  
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -58,23 +60,27 @@ module InputOutputModule
     character(len=*), intent(in), optional :: fmtarg_opt
     character(len=*), intent(in), optional :: accarg_opt
     character(len=*), intent(in), optional :: filstat_opt
+    integer(I4B), intent(in), optional :: mode_opt
     character(len=*), intent(in), optional :: filact_opt !BINPOS
     logical, intent(in), optional :: master_write !PAR
+
     ! -- local
     character(len=20) :: fmtarg
     character(len=20) :: accarg
     character(len=20) :: filstat
     character(len=20) :: filact
+    character(len=LINELENGTH) :: errmsg
+    integer(I4B) :: imode
     integer(I4B) :: iflen
     integer(I4B) :: ivar
     integer(I4B) :: iuop
-    character(len=LINELENGTH) :: errmsg
     logical :: mw !PAR
     ! -- formats
 50  FORMAT(1X,/1X,'OPENED ',A,/                                                &
                  1X,'FILE TYPE:',A,'   UNIT ',I4,3X,'STATUS:',A,/              &
                  1X,'FORMAT:',A,3X,'ACCESS:',A/                                &
                  1X,'ACTION:',A/)
+60  FORMAT(1X,/1X,'DID NOT OPEN ',A,/)
 2011  FORMAT('*** ERROR OPENING FILE "',A,'" ON UNIT ',I0)
 2017  format('*** FILE ALREADY OPEN ON UNIT: ',I0)
 2012  format('       SPECIFIED FILE STATUS: ',A)
@@ -85,90 +91,105 @@ module InputOutputModule
 2018  format('  -- STOP EXECUTION (openfile)')
 ! ------------------------------------------------------------------------------
     !
-    ! -- Default is to read an existing text file
-    fmtarg = 'FORMATTED'
-    accarg = 'SEQUENTIAL'
-    filstat = 'OLD'
-    !
-    ! -- Override defaults
-    if(present(fmtarg_opt)) then
-      fmtarg = fmtarg_opt
-      call upcase(fmtarg)
-    endif
-    if(present(accarg_opt)) then
-      accarg = accarg_opt
-      call upcase(accarg)
-    endif
-    if(present(filstat_opt)) then
-      filstat = filstat_opt
-      call upcase(filstat)
-    endif
-    if(filstat == 'OLD') then
-      filact = action(1)
+    ! -- process mode_opt
+    if (present(mode_opt)) then
+      imode = mode_opt
     else
-      filact = action(2)
-    endif
-    if(present(filact_opt)) then !BINPOS
-      filact = filact_opt !BINPOS
-      call upcase(filact) !BINPOS
-    endif !BINPOS
+      imode = isim_mode
+    end if
     !
-    mw = .false. !PAR
-    if (present(master_write)) then !PAR
-      mw = master_write !PAR
-    end if !PAR
-    if (mw) then !PAR
-      call mpi_append_fname(fname) !PAR
-    end if !PAR
-    !
-    ! -- size of fname
-    iflen = len_trim(fname)
-    !
-    ! -- Get a free unit number
-    if(iu <= 0) then
-      call freeunitnumber(iu)
-    endif
-    !
-    ! -- Check to see if file is already open, if not then open the file
-    inquire(file=fname(1:iflen), number=iuop)
-    if(iuop > 0) then
-      ivar = -1
+    ! -- evaluate if the file should be opened
+    if (isim_mode < imode) then
+      if(iout > 0) then
+        write(iout, 60) trim(fname)
+      end if
     else
-      open(unit=iu, file=fname(1:iflen), form=fmtarg, access=accarg,           &
-         status=filstat, action=filact, iostat=ivar,                           &
-         share='denynone') !PAR
-    endif
-    !
-    ! -- Check for an error
-    if(ivar /= 0) then
-      write(errmsg,2011) fname(1:iflen), iu
-      call store_error(errmsg)
-      if(iuop > 0) then
-        write(errmsg, 2017) iuop
-        call store_error(errmsg)
+      !
+      ! -- Default is to read an existing text file
+      fmtarg = 'FORMATTED'
+      accarg = 'SEQUENTIAL'
+      filstat = 'OLD'
+      !
+      ! -- Override defaults
+      if(present(fmtarg_opt)) then
+        fmtarg = fmtarg_opt
+        call upcase(fmtarg)
       endif
-      write(errmsg,2012) filstat
-      call store_error(errmsg)
-      write(errmsg,2013) fmtarg
-      call store_error(errmsg)
-      write(errmsg,2014) accarg
-      call store_error(errmsg)
-      write(errmsg,2015) filact
-      call store_error(errmsg)
-      write(errmsg,2016) ivar
-      call store_error(errmsg)
-      write(errmsg,2018)
-      call store_error(errmsg)
-      call ustop()
-    endif
-    !
-    ! -- Write a message
-    if(iout > 0) then
-      write(iout, 50) fname(1:iflen),                                         &
-                     ftype, iu, filstat,                                      &
-                     fmtarg, accarg,                                          &
-                     filact
-    endif
+      if(present(accarg_opt)) then
+        accarg = accarg_opt
+        call upcase(accarg)
+      endif
+      if(present(filstat_opt)) then
+        filstat = filstat_opt
+        call upcase(filstat)
+      endif
+      if(filstat == 'OLD') then
+        filact = action(1)
+      else
+        filact = action(2)
+      endif
+      if(present(filact_opt)) then !BINPOS
+        filact = filact_opt !BINPOS
+        call upcase(filact) !BINPOS
+      endif !BINPOS
+      !
+      mw = .false. !PAR
+      if (present(master_write)) then !PAR
+        mw = master_write !PAR
+      end if !PAR
+      if (mw) then !PAR
+        call mpi_append_fname(fname) !PAR
+      end if !PAR
+      !
+      ! -- size of fname
+      iflen = len_trim(fname)
+      !
+      ! -- Get a free unit number
+      if(iu <= 0) then
+        call freeunitnumber(iu)
+      endif
+      !
+      ! -- Check to see if file is already open, if not then open the file
+      inquire(file=fname(1:iflen), number=iuop)
+      if(iuop > 0) then
+        ivar = -1
+      else
+        open(unit=iu, file=fname(1:iflen), form=fmtarg, access=accarg,           &
+       status=filstat, action=filact, iostat=ivar,                           &
+         share='denynone') !PAR
+      endif
+      !
+      ! -- Check for an error
+      if(ivar /= 0) then
+        write(errmsg,2011) fname(1:iflen), iu
+        call store_error(errmsg)
+        if(iuop > 0) then
+          write(errmsg, 2017) iuop
+          call store_error(errmsg)
+        endif
+        write(errmsg,2012) filstat
+        call store_error(errmsg)
+        write(errmsg,2013) fmtarg
+        call store_error(errmsg)
+        write(errmsg,2014) accarg
+        call store_error(errmsg)
+        write(errmsg,2015) filact
+        call store_error(errmsg)
+        write(errmsg,2016) ivar
+        call store_error(errmsg)
+        write(errmsg,2018)
+        call store_error(errmsg)
+        call ustop()
+      endif
+      !
+      ! -- Write a message
+      if(iout > 0) then
+        write(iout, 50) fname(1:iflen),                                          &
+                       ftype, iu, filstat,                                       &
+                       fmtarg, accarg,                                           &
+                       filact
+      end if
+    end if
     !
     ! -- return
     return
@@ -222,7 +243,7 @@ module InputOutputModule
     ! -- Return
     return
   end function getunit
-
+  
   subroutine u8rdcom(iin, iout, line, ierr)
 ! ******************************************************************************
 ! Read until non-comment line found and then return line
@@ -250,7 +271,6 @@ module InputOutputModule
     line = comment
     pcomments: do
       read (iin,'(a)', iostat=ierr) line
-      !read (iin,'(a)', iostat=ierr, iomsg=readerrmsg) line
       if (ierr == IOSTAT_END) then
         ! -- End of file reached.
         ! -- Backspace is needed for gfortran.
@@ -262,8 +282,6 @@ module InputOutputModule
         call store_error('******Error in u8rdcom.')
         write(errmsg, *) 'Could not read from unit: ',iin
         call store_error(errmsg)
-        !write(errmsg,*)'Error reported as: ',trim(readerrmsg)
-        !call store_error(errmsg)
         call unitinquire(iin)
         call ustop()
       endif
@@ -367,7 +385,7 @@ module InputOutputModule
     integer(I4B),        intent(out) :: ierr
     logical,           intent(inout) :: isfound
     integer(I4B),      intent(inout) :: lloc
-    character (len=*), intent(inout) :: line
+    character (len=:), allocatable, intent(inout) :: line
     integer(I4B),      intent(inout) :: iuext
     logical, optional,    intent(in) :: blockRequired
     logical, optional,    intent(in) :: supportopenclose
@@ -377,7 +395,8 @@ module InputOutputModule
     integer(I4B) :: ival
     integer(I4B) :: lloc2
     real(DP) :: rval
-    character(len=LINELENGTH) :: fname, line2
+    character (len=:), allocatable :: line2
+    character(len=LINELENGTH) :: fname
     character(len=MAXCHARLEN) :: ermsg
     logical :: supportoc, blockRequiredLocal
 ! ------------------------------------------------------------------------------
@@ -395,7 +414,7 @@ module InputOutputModule
     isfound = .false.
     mainloop: do
       lloc = 1
-      call u8rdcom(iin, iout, line, ierr)
+      call u9rdcom(iin, iout, line, ierr)
       if (ierr < 0) exit
       call urword(line, lloc, istart, istop, 1, ival, rval, iin, iout)
       if (line(istart:istop) == 'BEGIN') then
@@ -404,7 +423,7 @@ module InputOutputModule
           isfound = .true.
           if (supportoc) then
             ! Look for OPEN/CLOSE on 1st line after line starting with BEGIN
-            call u8rdcom(iin,iout,line2,ierr)
+            call u9rdcom(iin, iout, line2, ierr)
             if (ierr < 0) exit
             lloc2 = 1
             call urword(line2, lloc2, istart, istop, 1, ival, rval, iin, iout)
@@ -470,7 +489,7 @@ module InputOutputModule
     integer(I4B), intent(in) :: iout
     logical, intent(inout) :: isfound
     integer(I4B), intent(inout) :: lloc
-    character (len=*), intent(inout) :: line
+    character (len=:), allocatable, intent(inout) :: line
     character(len=*), intent(out) :: ctagfound
     integer(I4B), intent(inout) :: iuext
     ! -- local
@@ -478,7 +497,8 @@ module InputOutputModule
     integer(I4B) :: ival, lloc2
     real(DP) :: rval
     character(len=100) :: ermsg
-    character(len=LINELENGTH) :: line2, fname
+    character (len=:), allocatable :: line2
+    character(len=LINELENGTH) :: fname
 ! ------------------------------------------------------------------------------
     !code
     isfound = .false.
@@ -486,7 +506,7 @@ module InputOutputModule
     iuext = iin
     do
       lloc = 1
-      call u8rdcom(iin,iout,line,ierr)
+      call u9rdcom(iin,iout,line,ierr)
       if (ierr < 0) exit
       call urword(line, lloc, istart, istop, 1, ival, rval, iin, iout)
       if (line(istart:istop) == 'BEGIN') then
@@ -494,7 +514,7 @@ module InputOutputModule
         if (line(istart:istop) /= '') then
           isfound = .true.
           ctagfound = line(istart:istop)
-          call u8rdcom(iin,iout,line2,ierr)
+          call u9rdcom(iin,iout,line2,ierr)
           if (ierr < 0) exit
           lloc2 = 1
           call urword(line2,lloc2,istart,istop,1,ival,rval,iout,iin)
@@ -1795,8 +1815,7 @@ module InputOutputModule
     return
   end subroutine extract_idnum_or_bndname
 
-  subroutine urdaux(naux, inunit, iout, lloc, istart, istop, auxname, line,  &
-                    text)
+  subroutine urdaux(naux, inunit, iout, lloc, istart, istop, auxname, line, text)
 ! ******************************************************************************
 ! Read auxiliary variables from an input line
 ! ******************************************************************************
@@ -1825,16 +1844,16 @@ module InputOutputModule
 ! ------------------------------------------------------------------------------
     linelen = len(line)
     if(naux > 0) then
-      write(errmsg,'(a)') '****ERROR. AUXILIARY VARIABLES ' //         &
-        'ALREADY SPECIFIED. AUXILIARY VARIABLES MUST BE SPECIFIED '//  &
-        'ON ONE LINE IN THE OPTIONS BLOCK.'
+      write(errmsg,'(a)') 'Auxiliary variables already specified. Auxiliary ' // &
+        'variables must be specified on one line in the options block.'
       call store_error(errmsg)
       call store_error_unit(inunit)
       call ustop()
     endif
     auxloop: do
       call urword(line, lloc, istart, istop, 1, n, rval, iout, inunit)
-      if(lloc >= linelen) exit auxloop
+      !if(lloc >= linelen) exit auxloop
+      if (istart >= linelen) exit auxloop
       naux = naux + 1
       call ExpandArray(auxname)
       auxname(naux) = line(istart:istop)
@@ -2228,6 +2247,167 @@ module InputOutputModule
     return
   end subroutine fseek_stream
   
-  
+  subroutine u9rdcom(iin, iout, line, ierr)
+! ******************************************************************************
+! Read until non-comment line found and then return line.  Different from
+! u8rdcom in that line is a deferred length character string, which allows
+! any length lines to be read using the get_line subroutine.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    use, intrinsic :: iso_fortran_env, only: IOSTAT_END
+    implicit none
+    ! -- dummy
+    integer(I4B),         intent(in) :: iin
+    integer(I4B),         intent(in) :: iout
+    character (len=:), allocatable, intent(inout) :: line
+    integer(I4B),        intent(out) :: ierr
+    ! -- local definitions
+    character (len=:), allocatable :: linetemp
+    character (len=2), parameter :: comment = '//'
+    character(len=LINELENGTH)    :: errmsg
+    character(len=1), parameter  :: tab = CHAR(9)
+    logical :: iscomment
+    integer(I4B) :: i, j, l, istart, lsize
+! ------------------------------------------------------------------------------
+    !code
+    !
+    !readerrmsg = ''
+    line = comment
+    pcomments: do
+      call get_line(iin, line, ierr)
+      if (ierr == IOSTAT_END) then
+        ! -- End of file reached.
+        ! -- Backspace is needed for gfortran.
+        backspace(iin)
+        line = ' '
+        exit pcomments
+      elseif (ierr /= 0) then
+        ! -- Other error...report it
+        call store_error('******Error in u9rdcom.')
+        write(errmsg, *) 'Could not read from unit: ',iin
+        call store_error(errmsg)
+        call unitinquire(iin)
+        call ustop()
+      endif
+      if (len_trim(line).lt.1) then
+        line = comment
+        cycle
+      end if
+      !
+      ! Ensure that any initial tab characters are treated as spaces
+      cleartabs: do
+        !
+        ! -- adjustl manually to avoid stack overflow
+        lsize = len(line)
+        istart = 1
+        allocate(character(len=lsize) :: linetemp)
+        do j = 1, lsize
+          if (line(j:j) /= ' ' .and. line(j:j) /= ',' .and. line(j:j) /= char(9)) then
+            istart = j
+            exit
+          end if
+        end do
+        linetemp(:) = ' '
+        linetemp(:) = line(istart:)
+        line(:) = linetemp(:)
+        deallocate(linetemp)
+        !
+        ! -- check for comment
+        iscomment = .false.
+        select case (line(1:1))
+          case ('#')
+            iscomment = .true.
+            exit cleartabs
+          case ('!')
+            iscomment = .true.
+            exit cleartabs
+          case (tab)
+            line(1:1) = ' '
+            cycle cleartabs
+          case default
+            if (line(1:2).eq.comment) iscomment = .true.
+            if (len_trim(line) < 1) iscomment = .true.
+            exit cleartabs
+        end select
+      end do cleartabs
+      !
+      if (.not.iscomment) then
+        exit pcomments
+      else
+        if (iout > 0) then
+          !find the last non-blank character.
+          l=len(line)
+          do i = l, 1, -1
+            if(line(i:i).ne.' ') then
+              exit
+            end if
+          end do
+          !print the line up to the last non-blank character.
+          write(iout,'(1x,a)') line(1:i)
+        end if
+      end if
+    end do pcomments
+    return
+  end subroutine u9rdcom
+
+  subroutine get_line(lun, line, iostat)
+! ******************************************************************************
+! Read an unlimited length line from unit number lun into a deferred-length
+! characater string (line).  Tack on a single space to the end so that 
+! routines like URWORD continue to function as before.
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    integer(I4B), intent(in) :: lun
+    character(len=:), intent(out), allocatable :: line
+    integer(I4B), intent(out) :: iostat
+    ! -- local
+    integer(I4B), parameter :: buffer_len = MAXCHARLEN
+    character(len=buffer_len) :: buffer
+    character(len=:), allocatable :: linetemp
+    integer(I4B) :: size_read, linesize
+! ------------------------------------------------------------------------------
+    !
+    ! -- initialize
+    line = ''
+    linetemp = ''
+    !
+    ! -- process
+    do
+      read ( lun, '(A)',  &
+          iostat = iostat,  &
+          advance = 'no',  &
+          size = size_read ) buffer
+      if (is_iostat_eor(iostat)) then
+        linesize = len(line)
+        deallocate(linetemp)
+        allocate(character(len=linesize) :: linetemp)
+        linetemp(:) = line(:)
+        deallocate(line)
+        allocate(character(len=linesize + size_read + 1) :: line)
+        line(:) = linetemp(:)
+        line(linesize+1:) = buffer(:size_read)
+        linesize = len(line)
+        line(linesize:linesize) = ' '
+        iostat = 0
+        exit
+      else if (iostat == 0) then
+        linesize = len(line)
+        deallocate(linetemp)
+        allocate(character(len=linesize) :: linetemp)
+        linetemp(:) = line(:)
+        deallocate(line)
+        allocate(character(len=linesize + size_read) :: line)
+        line(:) = linetemp(:)
+        line(linesize+1:) = buffer(:size_read)
+      else
+        exit
+      end if
+    end do
+  end subroutine get_line  
 
 END MODULE InputOutputModule

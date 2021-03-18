@@ -3,7 +3,7 @@
 module BaseModelModule
 
   use KindModule, only: DP, I4B
-  use ConstantsModule, only: LENMODELNAME
+  use ConstantsModule, only: LENMODELNAME, LINELENGTH, LENMEMPATH
   use ListModule, only: ListType
   implicit none
 
@@ -12,16 +12,18 @@ module BaseModelModule
             GetBaseModelFromList, GetBaseModelFromListByName !PAR
 
   type :: BaseModelType
-    character(len=LENMODELNAME), pointer :: name             => null()          ! name of the model
-    character(len=3), pointer            :: macronym         => null()          ! 3 letter model acronym (GWF, GWT, ...)
-    integer(I4B), pointer                :: idsoln           => null()          ! id of the solution model is in
-    integer(I4B), pointer                :: id               => null()          ! model id
-    integer(I4B), pointer                :: iout             => null()          ! output unit number
-    integer(I4B), pointer                :: inewton          => null()          ! newton-raphson flag
-    integer(I4B), pointer                :: iprpak           => null()          ! integer flag to echo input
-    integer(I4B), pointer                :: iprflow          => null()          ! flag to print simulated flows
-    integer(I4B), pointer                :: ipakcb           => null()          ! save_flows flag
-    logical, pointer                     :: single_model_run => null()          ! indicate if it is a single model run
+    character(len=LENMEMPATH)            :: memoryPath                           !< the location in the memory manager where the variables are stored
+
+    character(len=LENMODELNAME), pointer :: name             => null()           !< name of the model    
+    character(len=3), pointer            :: macronym         => null()           !< 3 letter model acronym (GWF, GWT, ...)
+    integer(I4B), pointer                :: idsoln           => null()           !< id of the solution model is in
+    integer(I4B), pointer                :: id               => null()           !< model id
+    integer(I4B), pointer                :: iout             => null()           !< output unit number
+    integer(I4B), pointer                :: inewton          => null()           !< newton-raphson flag
+    integer(I4B), pointer                :: iprpak           => null()           !< integer flag to echo input
+    integer(I4B), pointer                :: iprflow          => null()           !< flag to print simulated flows
+    integer(I4B), pointer                :: ipakcb           => null()           !< save_flows flag
+    logical, pointer                     :: single_model_run => null()           !< indicate if it is a single model run
     logical, pointer                     :: ishalo           => null()          ! indicate if the model is a halo model !PAR
   contains
     procedure :: model_df
@@ -31,6 +33,7 @@ module BaseModelModule
     procedure :: model_fp
     procedure :: model_da
     procedure :: allocate_scalars
+    procedure :: model_message
   end type BaseModelType
 
   contains
@@ -65,7 +68,7 @@ module BaseModelModule
   
   subroutine model_rp(this)
 ! ******************************************************************************
-! modelrp -- Read and prepare
+! model_rp -- Read and prepare
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -79,7 +82,7 @@ module BaseModelModule
   
   subroutine model_ot(this)
 ! ******************************************************************************
-! model_ot -- Read and prepare
+! model_ot -- output results
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -90,6 +93,35 @@ module BaseModelModule
     ! -- return
     return
   end subroutine model_ot
+  
+  subroutine model_message(this, line, fmt)
+! ******************************************************************************
+! model_message -- write line to model iout
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- dummy
+    class(BaseModelType) :: this
+    character(len=*), intent(in) :: line
+    character(len=*), intent(in), optional :: fmt
+    ! -- local
+    character(len=LINELENGTH) :: cfmt
+! ------------------------------------------------------------------------------
+    !
+    ! -- process optional variables
+    if (present(fmt)) then
+      cfmt = fmt
+    else
+      cfmt = '(1x,a)'
+    end if
+    !
+    ! -- write line
+    write(this%iout, trim(cfmt)) trim(line)
+    !
+    ! -- return
+    return
+  end subroutine model_message
   
   subroutine model_fp(this)
 ! ******************************************************************************
@@ -122,14 +154,14 @@ module BaseModelModule
     allocate(this%name)
     allocate(this%macronym)
     allocate(this%single_model_run)
-    call mem_allocate(this%id, 'ID', modelname)
-    call mem_allocate(this%iout, 'IOUT', modelname)
-    call mem_allocate(this%inewton, 'INEWTON', modelname)
-    call mem_allocate(this%iprpak, 'IPRPAK', modelname)
-    call mem_allocate(this%iprflow, 'IPRFLOW', modelname)
-    call mem_allocate(this%ipakcb, 'IPAKCB', modelname)
-    call mem_allocate(this%idsoln, 'IDSOLN', modelname)
-    call mem_allocate(this%ishalo, 'ISHALO', modelname) !PAR
+    call mem_allocate(this%id, 'ID', this%memoryPath)
+    call mem_allocate(this%iout, 'IOUT', this%memoryPath)
+    call mem_allocate(this%inewton, 'INEWTON', this%memoryPath)
+    call mem_allocate(this%iprpak, 'IPRPAK', this%memoryPath)
+    call mem_allocate(this%iprflow, 'IPRFLOW', this%memoryPath)
+    call mem_allocate(this%ipakcb, 'IPAKCB', this%memoryPath)
+    call mem_allocate(this%idsoln, 'IDSOLN', this%memoryPath)
+    call mem_allocate(this%ishalo, 'ISHALO', this%memoryPath) !PAR
     !
     this%name = modelname
     this%macronym = ''
@@ -222,7 +254,7 @@ module BaseModelModule
     !
     return
   end function GetBaseModelFromList
-  
+
   function GetBaseModelFromListByName(list, name) result (res) !PAR
     use SimModule, only: store_error, store_error_unit, ustop
     implicit none
@@ -252,5 +284,4 @@ module BaseModelModule
     !
     return
   end function GetBaseModelFromListByName
-  
 end module BaseModelModule

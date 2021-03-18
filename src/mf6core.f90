@@ -1,5 +1,5 @@
-module Mf6CoreModule
-  use KindModule,             only: I4B
+module Mf6CoreModule 
+  use KindModule,             only: I4B, LGP
   use ListsModule,            only: basesolutionlist, solutiongrouplist, basemodellist, baseexchangelist
   use BaseModelModule,        only: BaseModelType, GetBaseModelFromList
   use BaseExchangeModule,     only: BaseExchangeType, GetBaseExchangeFromList
@@ -7,7 +7,7 @@ module Mf6CoreModule
   use SolutionGroupModule,    only: SolutionGroupType, GetSolutionGroupFromList
   use NumericalSolutionModule, only: NumericalSolutionType !PAR
   use SimVariablesModule,      only: isimdd !PAR
-  implicit none
+  implicit none  
 contains
   
   subroutine Mf6Run
@@ -18,16 +18,17 @@ contains
   !    SPECIFICATIONS:
   ! ------------------------------------------------------------------------------
     ! -- modules 
-    
     use CommandArguments, only: GetCommandLineArguments
-    use TdisModule, only: totim, totalsimtime
+    use TdisModule, only: totim, totalsimtime  
     use KindModule, only: DP
     use MpiExchangeModule, only: mpi_initialize_world !PAR
-    logical :: hasConverged
+    ! -- dummy
+    ! -- local
+    logical(LGP) :: hasConverged
     !
     ! -- Initialize MPI if required
     call mpi_initialize_world() !PAR
-    !
+    ! 
     ! -- parse any command line arguments
     call GetCommandLineArguments()
     !
@@ -52,6 +53,8 @@ contains
   
   subroutine Mf6Initialize()
     use SimulationCreateModule, only: simulation_cr
+    ! -- dummy
+    ! -- local
     
     ! -- print banner and info to screen
     call printInfo()
@@ -68,7 +71,9 @@ contains
   end subroutine Mf6Initialize
   
   function Mf6Update() result(hasConverged)
-    logical :: hasConverged
+    ! -- dummy
+    logical(LGP) :: hasConverged
+    ! -- local
     !
     ! -- prepare timestep
     call Mf6PrepareTimestep()
@@ -86,18 +91,22 @@ contains
     use MpiExchangeModule, only: MpiWorld !PAR
     use, intrinsic :: iso_fortran_env, only: output_unit
     use ListsModule,            only: lists_da
-    use MemoryManagerModule,    only: mem_usage, mem_da,                         &
-                                      mem_timing,                                & !TIM
-                                      bytes !PAR
+    use MemoryManagerModule,    only: mem_write_usage, mem_da, &
+                                      mem_timing, & !TIM
+                                      simbytes !PAR
     use TimerModule,            only: elapsed_time
     use SimVariablesModule,     only: iout
-    use SimulationCreateModule, only: simulation_cr, simulation_da  
+    use SimulationCreateModule, only: simulation_da
     use TdisModule,             only: tdis_tu, tdis_da
     use SimModule,              only: final_message
     use MpiExchangeModule,      only: mpi_world_da !PAR
     use MpiExchangeGenModule,   only: writestd !PAR
-
-    integer(I4B) :: im, ic, is, isg
+    ! -- dummy
+    ! -- local
+    integer(I4B) :: im
+    integer(I4B) :: ic
+    integer(I4B) :: is
+    integer(I4B) :: isg
     class(SolutionGroupType), pointer :: sgp => null()
     class(BaseSolutionType), pointer :: sp => null()
     class(BaseModelType), pointer :: mp => null()
@@ -156,9 +165,9 @@ contains
     call simulation_da()
     call lists_da()
     !
-    ! -- Calculate memory usage, elapsed time and terminate
-    call mem_usage(iout)
-    call MpiWorld%mpi_total_memory(bytes) !PAR
+    ! -- Write memory usage, elapsed time and terminate
+    call mem_write_usage(iout)
+    call MpiWorld%mpi_total_memory(simbytes) !PAR
     !
     call mem_timing(iout) !TIM
     call MpiWorld%mpi_barrier() !PAR
@@ -173,40 +182,29 @@ contains
     !        
   end subroutine Mf6Finalize
   
-  subroutine printInfo()         
-    use CompilerVersion
-    use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,   &
-                                      IDEVELOPMODE
-    use TimerModule,            only: start_time    
-    use GenericUtilitiesModule, only: write_centered, sim_message
-    use MpiExchangeGenModule,   only: serialrun, writestd !PAR
-    use MpiExchangeModule,      only: MpiWorld !PAR
-    use SimVariablesModule,     only: istdout !PAR
-    character(len=80) :: compiler
-    
+  subroutine printInfo()
+    use SimVariablesModule, only: istdout
+    use VersionModule, only: write_listfile_header
+    use TimerModule, only: start_time
+    use MpiExchangeModule, only: MpiWorld !PAR
+    use MpiExchangeGenModule, only: serialrun, writestd !PAR
+    !
     ! -- Write banner to screen (unit stdout) and start timer
-    call write_centered('MODFLOW'//MFVNAM, 80)
-    call write_centered(MFTITLE, 80)
-    call write_centered('VERSION '//VERSION, 80)
-    if (.not.serialrun) call write_centered('***RUNNING IN PARALLEL MODE WITH '  & !PAR
-      //TRIM(MpiWorld%nrprocstr)//' MPI PROCESSES***', 80) !PAR
+    if (writestd) then !PAR
+      if (serialrun) then !PAR
+        call write_listfile_header(istdout, write_kind_info=.false., &
+                                   write_sys_command=.false.)
+      else !PAR
+        call write_listfile_header(istdout, write_kind_info=.false., & !PAR
+                                   write_sys_command=.false.,        & !PAR
+                                   nrprocstr=MpiWorld%nrprocstr) !PAR
+      end if !PAR
+    end if !PAR
     !
-    ! -- Write if develop mode
-    if (IDEVELOPMODE == 1) then
-      call write_centered('***DEVELOP MODE***', 80)
-    end if
-    !
-    ! -- Write compiler version
-    call get_compiler(compiler)
-    call write_centered(' ', 80)
-    call write_centered(trim(adjustl(compiler)), 80)
-    !
-    ! -- Write disclaimer
-    if (writestd) call sim_message('', fmt=FMTDISCLAIMER) !PAR
     ! -- get start time
     call MpiWorld%mpi_barrier() !PAR
     call start_time(writestd) !PAR
-
+    return
   end subroutine printInfo
   
   subroutine simulation_df()
@@ -214,11 +212,15 @@ contains
                                     mpi_set_gwfhalo_world_mvr !PAR
     use GwfGwfExchangeModule, only: gwf_mpi_halo_init !PAR
     use MpiExchangeModule,    only: MpiWorld !PAR
-    integer(I4B) :: im, ic, is
+    ! -- dummy
+    ! -- local
+    integer(I4B) :: im
+    integer(I4B) :: ic
+    integer(I4B) :: is
     class(BaseSolutionType), pointer :: sp => null()
     class(BaseModelType), pointer :: mp => null()
     class(BaseExchangeType), pointer :: ep => null()
-
+    
     ! -- Define each model
     do im = 1, basemodellist%Count()
       mp => GetBaseModelFromList(basemodellist, im)
@@ -248,7 +250,6 @@ contains
       ep => GetBaseExchangeFromList(baseexchangelist, ic) !HALO2
       call ep%exg_df(2) !HALO2
     enddo !HALO2
-    !
     ! -- Define each solution
     do is = 1, basesolutionlist%Count()
       sp => GetBaseSolutionFromList(basesolutionlist, is)
@@ -257,15 +258,19 @@ contains
   
   end subroutine simulation_df
   
-  subroutine simulation_ar()
+  subroutine simulation_ar()  
     use MpiExchangeModule, only: MpiWorld !PAR
     use MpiExchangeGwfModule, only: mpi_gwfhalo_world !PAR
-    integer(I4B) :: im, ic, is
+    ! -- dummy
+    ! -- local
+    integer(I4B) :: im
+    integer(I4B) :: ic
+    integer(I4B) :: is
     class(BaseSolutionType), pointer :: sp => null()
     class(BaseModelType), pointer :: mp => null()
     class(BaseExchangeType), pointer :: ep => null()
     class(NumericalSolutionType), pointer :: nsp => null() !PAR
-
+    
     ! -- Allocate and read each model
     do im = 1, basemodellist%Count()
       mp => GetBaseModelFromList(basemodellist, im)
@@ -305,25 +310,48 @@ contains
   
   subroutine Mf6PrepareTimestep()
     use KindModule,             only: I4B
-    use TdisModule,             only: tdis_tu
-    use ListsModule,            only: basesolutionlist, basemodellist, baseexchangelist
+    use ConstantsModule,        only: LINELENGTH, MNORMAL, MVALIDATE
+    use TdisModule,             only: tdis_tu, kstp, kper
+    use ListsModule,            only: basemodellist, baseexchangelist
     use BaseModelModule,        only: BaseModelType, GetBaseModelFromList
     use BaseExchangeModule,     only: BaseExchangeType, GetBaseExchangeFromList
     use BaseSolutionModule,     only: BaseSolutionType, GetBaseSolutionFromList
     use SimModule,              only: converge_reset
-    
-    integer(I4B) :: im, ic, is
-    class(BaseSolutionType), pointer :: sp => null()
+    use SimVariablesModule,     only: isim_mode
+    ! -- dummy
+    ! -- local
+    class(BaseSolutionType), pointer :: sp => null() !PAR
     class(BaseModelType), pointer :: mp => null()
     class(BaseExchangeType), pointer :: ep => null()
     class(NumericalSolutionType), pointer :: nsp !PAR
-    
+    character(len=LINELENGTH) :: line
+    character(len=LINELENGTH) :: fmt
+    integer(I4B) :: im
+    integer(I4B) :: ic
+    integer(I4B) :: is !PAR
+    !
+    ! -- initialize fmt
+    fmt = "(/,a,/)"
+    !
     ! -- time update
     call tdis_tu()
+    !
+    ! -- set base line
+    write(line, '(a,i0,a,i0,a)')                                                 &
+      'start timestep kper="', kper, '" kstp="', kstp, '" mode="'
+    !
+    ! -- evaluate simulation mode
+    select case (isim_mode)
+      case (MVALIDATE)
+        line = trim(line) // 'validate"'
+      case(MNORMAL)
+        line = trim(line) // 'normal"'
+    end select
     
     ! -- Read and prepare each model
     do im = 1, basemodellist%Count()
       mp => GetBaseModelFromList(basemodellist, im)
+      call mp%model_message(line, fmt=fmt)
       call mp%model_rp()
     enddo
     !
@@ -333,7 +361,7 @@ contains
       call ep%exg_rp()
     enddo
     !
-    ! -- MPI parallel: initialize point-to-point mover
+   ! -- MPI parallel: initialize point-to-point mover
     if (isimdd == 1) then !PAR
       do is=1,basesolutionlist%Count() !PAR
         sp => GetBaseSolutionFromList(basesolutionlist, is) !PAR
@@ -345,12 +373,7 @@ contains
       enddo !PAR
     endif !PAR
     !
-    ! -- Read and prepare each solution
-    do is=1,basesolutionlist%Count()
-      sp => GetBaseSolutionFromList(basesolutionlist, is)
-      call sp%sln_rp()
-    enddo
-    !
+    ! -- reset simulation convergence flag
     call converge_reset()
     
   end subroutine Mf6PrepareTimestep
@@ -371,37 +394,66 @@ contains
   
   function Mf6FinalizeTimestep() result(hasConverged)
     use KindModule,             only: I4B
+    use ConstantsModule,        only: LINELENGTH, MNORMAL, MVALIDATE
     use ListsModule,            only: basesolutionlist, basemodellist, baseexchangelist    
     use BaseModelModule,        only: BaseModelType, GetBaseModelFromList
     use BaseExchangeModule,     only: BaseExchangeType, GetBaseExchangeFromList
     use BaseSolutionModule,     only: BaseSolutionType, GetBaseSolutionFromList
     use SimModule,              only: converge_check
-    logical :: hasConverged    
-    integer(I4B) :: im, ic, is
+    use SimVariablesModule,     only: isim_mode
+    ! -- dummy
+    logical(LGP) :: hasConverged    
+    ! -- local
     class(BaseSolutionType), pointer :: sp => null()
     class(BaseModelType), pointer :: mp => null()
     class(BaseExchangeType), pointer :: ep => null()
-    
-    ! -- Write output for each model
-    do im = 1, basemodellist%Count()
-      mp => GetBaseModelFromList(basemodellist, im)
-      call mp%model_ot()
-    enddo
+    character(len=LINELENGTH) :: line
+    character(len=LINELENGTH) :: fmt
+    integer(I4B) :: im
+    integer(I4B) :: ic
+    integer(I4B) :: is
+    ! -- code
     !
-    ! -- Write output for each exchange
-    do ic = 1, baseexchangelist%Count()
-      ep => GetBaseExchangeFromList(baseexchangelist, ic)
-      call ep%exg_ot()
-    enddo
+    ! -- initialize format and line
+    fmt = "(/,a,/)"
+    line = 'end timestep'
     !
-    ! -- Write output for each solution
-    do is=1,basesolutionlist%Count()
-      sp => GetBaseSolutionFromList(basesolutionlist, is)
-      call sp%sln_ot()
-    enddo
+    ! -- evaluate simulation mode
+    select case (isim_mode)
+      case(MVALIDATE)
+        !
+        ! -- Write final message for timestep for each model 
+        do im = 1, basemodellist%Count()
+          mp => GetBaseModelFromList(basemodellist, im)
+          call mp%model_message(line, fmt=fmt)
+        end do
+      case(MNORMAL)
+        !
+        ! -- Write output and final message for timestep for each model 
+        do im = 1, basemodellist%Count()
+          mp => GetBaseModelFromList(basemodellist, im)
+          call mp%model_ot()
+          call mp%model_message(line, fmt=fmt)
+        enddo
+        !
+        ! -- Write output for each exchange
+        do ic = 1, baseexchangelist%Count()
+          ep => GetBaseExchangeFromList(baseexchangelist, ic)
+          call ep%exg_ot()
+        enddo
+        !
+        ! -- Write output for each solution
+        do is=1,basesolutionlist%Count()
+          sp => GetBaseSolutionFromList(basesolutionlist, is)
+          call sp%sln_ot()
+        enddo
+    end select
     !
     ! -- Check if we're done
     call converge_check(hasConverged)
+    !
+    ! -- return
+    return    
     
   end function Mf6FinalizeTimestep
   

@@ -8,7 +8,10 @@ module NumericalSolutionModule
                                      DEM4, DEM3, DEM2, DEM1, DHALF,            &
                                      DONE, DTHREE, DEP6, DEP20, DNODATA,       &
                                      TABLEFT, TABRIGHT,                        &
+                                     MNORMAL, MVALIDATE,                       &
+                                     LENMEMPATH,                               &
                                      IZERO !BJ
+  use MemoryHelperModule,      only: create_mem_path                                     
   use TableModule,             only: TableType, table_cr
   use GenericUtilitiesModule,  only: IS_SAME, sim_message, stop_with_error
   use VersionModule,           only: IDEVELOPMODE
@@ -23,7 +26,7 @@ module NumericalSolutionModule
                                      AddNumericalExchangeToList,               &
                                      GetNumericalExchangeFromList
   use SparseModule,            only: sparsematrix
-  use SimVariablesModule,      only: iout
+  use SimVariablesModule,      only: iout, isim_mode
   use BlockParserModule,       only: BlockParserType
   use IMSLinearModule
   use MpiExchangeModule,       only: MpiExchangeType !PAR
@@ -32,13 +35,11 @@ module NumericalSolutionModule
   private
   
   public :: solution_create
-  
-  ! expose for use in the bmi++
   public :: NumericalSolutionType
   public :: GetNumericalSolutionFromList
-  public :: prepareIteration, doIteration, finalizeIteration
   
   type, extends(BaseSolutionType) :: NumericalSolutionType
+    character(len=LENMEMPATH)                            :: memoryPath !< the path for storing solution variables in the memory manager
     character(len=LINELENGTH)                            :: fname
     type(ListType), pointer                              :: modellist !PAR
     type(ListType), pointer                              :: exchangelist !PAR
@@ -59,7 +60,6 @@ module NumericalSolutionModule
     type(BlockParserType) :: parser
     !
     ! -- sparse matrix data
-    real(DP), pointer                                    :: rclosebnd => NULL()
     real(DP), pointer                                    :: theta => NULL()
     real(DP), pointer                                    :: akappa => NULL()
     real(DP), pointer                                    :: gamma => NULL()
@@ -67,7 +67,7 @@ module NumericalSolutionModule
     real(DP), pointer                                    :: breduc => NULL()
     real(DP), pointer                                    :: btol => NULL()
     real(DP), pointer                                    :: res_lim => NULL()
-    real(DP), pointer                                    :: hclose => NULL()
+    real(DP), pointer                                    :: dvclose => NULL()
     real(DP), pointer                                    :: hiclose => NULL()
     real(DP), pointer                                    :: bigchold => NULL()
     real(DP), pointer                                    :: bigch => NULL()
@@ -77,8 +77,8 @@ module NumericalSolutionModule
     real(DP), pointer                                    :: res_in  => NULL()
     integer(I4B), pointer                                :: ibcount => NULL()
     integer(I4B), pointer                                :: icnvg => NULL()
-    integer(I4B), pointer                                :: itertot => NULL() ! total nr. of linear solves per call to sln_ca
-    integer(I4B), pointer                                :: innertot => NULL() ! total nr. of inner iterations for simulation
+    integer(I4B), pointer                                :: itertot_timestep => NULL()   !< total nr. of linear solves per call to sln_ca
+    integer(I4B), pointer                                :: itertot_sim => NULL()        !< total nr. of inner iterations for simulation
     integer(I4B), pointer                                :: icnvgprev => NULL() !SOL
     integer(I4B), pointer                                :: mxiter => NULL()
     integer(I4B), pointer                                :: linmeth => NULL()
@@ -123,7 +123,7 @@ module NumericalSolutionModule
     real(DP), pointer                                    :: ptcrat => NULL()
     !
     ! -- linear accelerator storage
-    type(IMSLINEAR_DATA), POINTER                        :: imslinear => NULL()
+    type(ImsLinearDataType), POINTER                        :: imslinear => NULL()
     !
     ! -- sparse object
     type(sparsematrix)                                   :: sparse
@@ -156,7 +156,7 @@ module NumericalSolutionModule
     integer(I4B), dimension(:), pointer, contiguous      :: cgcc2gid => NULL() !CGC: coarse --> global mapping
     !
     integer(I4B), dimension(:), pointer, contiguous      :: cgccizc  => NULL() !CGC
-
+    !
     ! -- table objects
     type(TableType), pointer :: innertab => null()
     type(TableType), pointer :: outertab => null()
@@ -164,7 +164,7 @@ module NumericalSolutionModule
   contains
     procedure :: sln_df
     procedure :: sln_ar
-    procedure :: sln_rp
+    procedure :: sln_ad
     procedure :: sln_ot
     procedure :: sln_ca
     procedure :: sln_fp
@@ -198,15 +198,14 @@ module NumericalSolutionModule
     procedure, private :: convergence_summary
     procedure, private :: csv_convergence_summary
     procedure, private :: sln_cgc_allocate !CGC
-
-    ! for BMI refactoring:
-    procedure, public :: prepareIteration
-    procedure, public :: doIteration
-    procedure, public :: finalizeIteration
     procedure, private :: writeCSVHeader
     procedure, private :: writePTCInfoToFile
-    procedure, private :: advanceSolution
     
+    ! Expose these for use through the BMI/XMI:
+    procedure, public :: prepareSolve
+    procedure, public :: solve
+    procedure, public :: finalizeSolve
+  
   end type NumericalSolutionType
 
 contains
@@ -240,7 +239,12 @@ contains
     allocate(solution)
     solbase => solution
     write(solutionname,'(a, i0)') 'SLN_', id
-    call solution%allocate_scalars(solutionname)
+    !
+    solution%name = solutionname
+    solution%memoryPath = create_mem_path(solutionname)
+    !
+    call solution%allocate_scalars()
+    !
     call AddBaseSolutionToList(basesolutionlist, solbase)
     !
     solution%id = id
@@ -268,7 +272,7 @@ contains
     return
   end subroutine solution_create
 
-  subroutine allocate_scalars(this, solutionname)
+  subroutine allocate_scalars(this)
 ! ******************************************************************************
 ! allocate_scalars -- Allocate scalars
 ! ******************************************************************************
@@ -279,61 +283,57 @@ contains
     use MemoryManagerModule, only: mem_allocate
     ! -- dummy
     class(NumericalSolutionType) :: this
-    character(len=*), intent(in) :: solutionname
     ! -- local
 ! ------------------------------------------------------------------------------
     !
-    ! -- set value for solution name, which is a member of the base solution
-    this%name = solutionname
-    !
     ! -- allocate scalars
-    call mem_allocate(this%id, 'ID', solutionname)
-    call mem_allocate(this%iu, 'IU', solutionname)
-    call mem_allocate(this%ttform, 'TTFORM', solutionname)
-    call mem_allocate(this%ttsoln, 'TTSOLN', solutionname)
-    call mem_allocate(this%neq, 'NEQ', solutionname)
-    call mem_allocate(this%nja, 'NJA', solutionname)
-    call mem_allocate (this%hclose, 'HCLOSE', solutionname)
-    call mem_allocate (this%hiclose, 'HICLOSE', solutionname)
-    call mem_allocate (this%bigchold, 'BIGCHOLD', solutionname)
-    call mem_allocate (this%bigch, 'BIGCH', solutionname)
-    call mem_allocate (this%relaxold, 'RELAXOLD', solutionname)
-    call mem_allocate (this%res_prev, 'RES_PREV', solutionname)
-    call mem_allocate (this%res_new, 'RES_NEW', solutionname)
-    call mem_allocate (this%res_in, 'RES_IN', solutionname)
-    call mem_allocate (this%ibcount, 'IBCOUNT', solutionname)
-    call mem_allocate (this%icnvg, 'ICNVG', solutionname)
-    call mem_allocate (this%icnvgprev, 'ICNVGPREV', solutionname) !SOL
-    call mem_allocate(this%itertot, 'ITERTOT', solutionname)
-    call mem_allocate(this%innertot, 'INNERTOT', solutionname)
-    call mem_allocate(this%mxiter, 'MXITER', solutionname)
-    call mem_allocate(this%linmeth, 'LINMETH', solutionname)
-    call mem_allocate(this%nonmeth, 'NONMETH', solutionname)
-    call mem_allocate(this%iprims, 'IPRIMS', solutionname)
-    call mem_allocate(this%theta, 'THETA', solutionname)
-    call mem_allocate(this%akappa, 'AKAPPA', solutionname)
-    call mem_allocate(this%gamma, 'GAMMA', solutionname)
-    call mem_allocate(this%amomentum, 'AMOMENTUM', solutionname)
-    call mem_allocate(this%breduc, 'BREDUC', solutionname)
-    call mem_allocate(this%btol, 'BTOL', solutionname)
-    call mem_allocate(this%res_lim, 'RES_LIM', solutionname)
-    call mem_allocate(this%numtrack, 'NUMTRACK', solutionname)
-    call mem_allocate(this%ibflag, 'IBFLAG', solutionname)
-    call mem_allocate(this%icsvouterout, 'ICSVOUTEROUT', solutionname)
-    call mem_allocate(this%icsvinnerout, 'ICSVINNEROUT', solutionname)
-    call mem_allocate(this%nitermax, 'NITERMAX', solutionname)
-    call mem_allocate(this%convnmod, 'CONVNMOD', solutionname)
-    call mem_allocate (this%iallowptc, 'IALLOWPTC', solutionname)
-    call mem_allocate (this%iptcopt, 'IPTCOPT', solutionname)
-    call mem_allocate (this%iptcout, 'IPTCOUT', solutionname)
-    call mem_allocate (this%l2norm0, 'L2NORM0', solutionname)
-    call mem_allocate (this%ptcfact, 'PTCFACT', solutionname)
-    call mem_allocate (this%ptcdel, 'PTCDEL', solutionname)
-    call mem_allocate (this%ptcdel0, 'PTCDEL0', solutionname)
-    call mem_allocate (this%ptcexp, 'PTCEXP', solutionname)
-    call mem_allocate (this%ptcthresh, 'PTCTHRESH', solutionname)
-    call mem_allocate (this%ptcrat, 'PTCRAT', solutionname)
-    call mem_allocate (this%ibjflag, 'IBJFLAG', solutionname) !BJ
+    call mem_allocate(this%id, 'ID', this%memoryPath)
+    call mem_allocate(this%iu, 'IU', this%memoryPath)
+    call mem_allocate(this%ttform, 'TTFORM', this%memoryPath)
+    call mem_allocate(this%ttsoln, 'TTSOLN', this%memoryPath)
+    call mem_allocate(this%neq, 'NEQ', this%memoryPath)
+    call mem_allocate(this%nja, 'NJA', this%memoryPath)
+    call mem_allocate(this%dvclose, 'DVCLOSE', this%memoryPath)
+    call mem_allocate(this%hiclose, 'HICLOSE', this%memoryPath)
+    call mem_allocate(this%bigchold, 'BIGCHOLD', this%memoryPath)
+    call mem_allocate(this%bigch, 'BIGCH', this%memoryPath)
+    call mem_allocate(this%relaxold, 'RELAXOLD', this%memoryPath)
+    call mem_allocate(this%res_prev, 'RES_PREV', this%memoryPath)
+    call mem_allocate(this%res_new, 'RES_NEW', this%memoryPath)
+    call mem_allocate(this%res_in, 'RES_IN', this%memoryPath)
+    call mem_allocate(this%ibcount, 'IBCOUNT', this%memoryPath)
+    call mem_allocate(this%icnvg, 'ICNVG', this%memoryPath)
+    call mem_allocate(this%icnvgprev, 'ICNVGPREV', this%memoryPath) !SOL
+    call mem_allocate(this%itertot_timestep, 'ITERTOT_TIMESTEP', this%memoryPath)
+    call mem_allocate(this%itertot_sim, 'INNERTOT_SIM', this%memoryPath)
+    call mem_allocate(this%mxiter, 'MXITER', this%memoryPath)
+    call mem_allocate(this%linmeth, 'LINMETH', this%memoryPath)
+    call mem_allocate(this%nonmeth, 'NONMETH', this%memoryPath)
+    call mem_allocate(this%iprims, 'IPRIMS', this%memoryPath)
+    call mem_allocate(this%theta, 'THETA', this%memoryPath)
+    call mem_allocate(this%akappa, 'AKAPPA', this%memoryPath)
+    call mem_allocate(this%gamma, 'GAMMA', this%memoryPath)
+    call mem_allocate(this%amomentum, 'AMOMENTUM', this%memoryPath)
+    call mem_allocate(this%breduc, 'BREDUC', this%memoryPath)
+    call mem_allocate(this%btol, 'BTOL', this%memoryPath)
+    call mem_allocate(this%res_lim, 'RES_LIM', this%memoryPath)
+    call mem_allocate(this%numtrack, 'NUMTRACK', this%memoryPath)
+    call mem_allocate(this%ibflag, 'IBFLAG', this%memoryPath)
+    call mem_allocate(this%icsvouterout, 'ICSVOUTEROUT', this%memoryPath)
+    call mem_allocate(this%icsvinnerout, 'ICSVINNEROUT', this%memoryPath)
+    call mem_allocate(this%nitermax, 'NITERMAX', this%memoryPath)
+    call mem_allocate(this%convnmod, 'CONVNMOD', this%memoryPath)
+    call mem_allocate(this%iallowptc, 'IALLOWPTC', this%memoryPath)
+    call mem_allocate(this%iptcopt, 'IPTCOPT', this%memoryPath)
+    call mem_allocate(this%iptcout, 'IPTCOUT', this%memoryPath)
+    call mem_allocate(this%l2norm0, 'L2NORM0', this%memoryPath)
+    call mem_allocate(this%ptcfact, 'PTCFACT', this%memoryPath)
+    call mem_allocate(this%ptcdel, 'PTCDEL', this%memoryPath)
+    call mem_allocate(this%ptcdel0, 'PTCDEL0', this%memoryPath)
+    call mem_allocate(this%ptcexp, 'PTCEXP', this%memoryPath)
+    call mem_allocate(this%ptcthresh, 'PTCTHRESH', this%memoryPath)
+    call mem_allocate(this%ptcrat, 'PTCRAT', this%memoryPath)
+    call mem_allocate (this%ibjflag, 'IBJFLAG', this%memoryPath) !BJ
     !
     ! -- initialize
     this%id = 0
@@ -342,7 +342,7 @@ contains
     this%ttsoln = DZERO
     this%neq = 0
     this%nja = 0
-    this%hclose = DZERO
+    this%dvclose = DZERO
     this%hiclose = DZERO
     this%bigchold = DZERO
     this%bigch = DZERO
@@ -351,15 +351,15 @@ contains
     this%res_in = DZERO
     this%ibcount = 0
     this%icnvg = 0
-    this%itertot = 0
-    this%innertot = 0
+    this%itertot_timestep = 0
+    this%itertot_sim = 0
     this%mxiter = 0
     this%linmeth = 1
     this%nonmeth = 0
     this%iprims = 0
-    this%theta = DZERO
+    this%theta = DONE
     this%akappa = DZERO
-    this%gamma = DZERO
+    this%gamma = DONE
     this%amomentum = DZERO
     this%breduc = DZERO
     this%btol = 0
@@ -407,27 +407,27 @@ contains
     this%convnmod = this%modellist%Count()
     !
     ! -- allocate arrays
-    call mem_allocate(this%ia, this%neq + 1, 'IA', this%name)
-    call mem_allocate(this%x, this%neq, 'X', this%name)
-    call mem_allocate(this%rhs, this%neq, 'RHS', this%name)
-    call mem_allocate(this%active, this%neq, 'IACTIVE', this%name)
-    call mem_allocate(this%xtemp, this%neq, 'XTEMP', this%name)
-    call mem_allocate(this%dxold, this%neq, 'DXOLD', this%name)
-    call mem_allocate(this%hncg, 0, 'HNCG', this%name)
-    call mem_allocate(this%lrch, 3, 0, 'LRCH', this%name)
-    call mem_allocate(this%wsave, 0, 'WSAVE', this%name)
-    call mem_allocate(this%hchold, 0, 'HCHOLD', this%name)
-    call mem_allocate(this%deold, 0, 'DEOLD', this%name)
-    call mem_allocate(this%convmodstart, this%convnmod+1, 'CONVMODSTART', this%name)
-    call mem_allocate(this%locdv, this%convnmod, 'LOCDV', this%name)
-    call mem_allocate(this%locdr, this%convnmod, 'LOCDR', this%name)
-    call mem_allocate(this%itinner, 0, 'ITINNER', this%name)
-    call mem_allocate(this%convlocdv, this%convnmod, 0, 'CONVLOCDV', this%name)
-    call mem_allocate(this%convlocdr, this%convnmod, 0, 'CONVLOCDR', this%name)
-    call mem_allocate(this%dvmax, this%convnmod, 'DVMAX', this%name)
-    call mem_allocate(this%drmax, this%convnmod, 'DRMAX', this%name)
-    call mem_allocate(this%convdvmax, this%convnmod, 0, 'CONVDVMAX', this%name)
-    call mem_allocate(this%convdrmax, this%convnmod, 0, 'CONVDRMAX', this%name)
+    call mem_allocate(this%ia, this%neq + 1, 'IA', this%memoryPath)
+    call mem_allocate(this%x, this%neq, 'X', this%memoryPath)
+    call mem_allocate(this%rhs, this%neq, 'RHS', this%memoryPath)
+    call mem_allocate(this%active, this%neq, 'IACTIVE', this%memoryPath)
+    call mem_allocate(this%xtemp, this%neq, 'XTEMP', this%memoryPath)
+    call mem_allocate(this%dxold, this%neq, 'DXOLD', this%memoryPath)
+    call mem_allocate(this%hncg, 0, 'HNCG', this%memoryPath)
+    call mem_allocate(this%lrch, 3, 0, 'LRCH', this%memoryPath)
+    call mem_allocate(this%wsave, 0, 'WSAVE', this%memoryPath)
+    call mem_allocate(this%hchold, 0, 'HCHOLD', this%memoryPath)
+    call mem_allocate(this%deold, 0, 'DEOLD', this%memoryPath)
+    call mem_allocate(this%convmodstart, this%convnmod+1, 'CONVMODSTART', this%memoryPath)
+    call mem_allocate(this%locdv, this%convnmod, 'LOCDV', this%memoryPath)
+    call mem_allocate(this%locdr, this%convnmod, 'LOCDR', this%memoryPath)
+    call mem_allocate(this%itinner, 0, 'ITINNER', this%memoryPath)
+    call mem_allocate(this%convlocdv, this%convnmod, 0, 'CONVLOCDV', this%memoryPath)
+    call mem_allocate(this%convlocdr, this%convnmod, 0, 'CONVLOCDR', this%memoryPath)
+    call mem_allocate(this%dvmax, this%convnmod, 'DVMAX', this%memoryPath)
+    call mem_allocate(this%drmax, this%convnmod, 'DRMAX', this%memoryPath)
+    call mem_allocate(this%convdvmax, this%convnmod, 0, 'CONVDVMAX', this%memoryPath)
+    call mem_allocate(this%convdrmax, this%convnmod, 0, 'CONVDRMAX', this%memoryPath)
     !
     ! -- initialize allocated arrays
     do i = 1, this%neq
@@ -478,13 +478,13 @@ contains
     integer(I4B) :: mid, m1id, m2id, iact, nja, cid, c1id, c2id
     integer(I4b), dimension(:), allocatable :: wrk
 ! ------------------------------------------------------------------------------
-    call mem_allocate(this%cgcgneq, 'CGCGNEQ', this%name)
-    call mem_allocate(this%cgcgnia, 'CGCGNIA', this%name)
-    call mem_allocate(this%cgcgnja, 'CGCGNJA', this%name)
+    call mem_allocate(this%cgcgneq, 'CGCGNEQ', this%memoryPath)
+    call mem_allocate(this%cgcgnia, 'CGCGNIA', this%memoryPath)
+    call mem_allocate(this%cgcgnja, 'CGCGNJA', this%memoryPath)
     !
     ! -- global block to coarse matrix mapping and vice versa
     maxid = maxval(this%blkgid)
-    call mem_allocate(this%cgcg2cid, maxid, 'CGCG2CID', this%name)
+    call mem_allocate(this%cgcg2cid, maxid, 'CGCG2CID', this%memoryPath)
     this%cgcg2cid = 0
     n = 0
     do i = 1, size(this%blkgid)
@@ -492,7 +492,7 @@ contains
       n = n + 1
       this%cgcg2cid(mid) = n
     end do
-    call mem_allocate(this%cgcc2gid, n, 'CGCC2GID', this%name)
+    call mem_allocate(this%cgcc2gid, n, 'CGCC2GID', this%memoryPath)
     do i = 1, maxid
       cid = this%cgcg2cid(i)
       if (cid > 0) then
@@ -503,7 +503,7 @@ contains
     ! -- create global topology based on model IDs
     this%cgcgneq = n
     this%cgcgnia = this%cgcgneq + 1
-    call mem_allocate(this%cgcgia, this%cgcgnia, 'CGCGIA', this%name)
+    call mem_allocate(this%cgcgia, this%cgcgnia, 'CGCGIA', this%memoryPath)
     !
     allocate(wrk(maxid))
     !
@@ -553,7 +553,7 @@ contains
       !
       if (iact == 1) then
         this%cgcgnja = nja
-        call mem_allocate(this%cgcgja, this%cgcgnja, 'CGCGJA', this%name)
+        call mem_allocate(this%cgcgja, this%cgcgnja, 'CGCGJA', this%memoryPath)
         iia = 1
         this%cgcgia(iia) = 1
       end if
@@ -565,8 +565,8 @@ contains
     !
     ! -- local block to global block mapping, and vice versa
     nlblk = this%modellist%Count()
-    call mem_allocate(this%cgcl2gid, nlblk, 'CGCL2GID', this%name)
-    call mem_allocate(this%cgcg2lid, maxid, 'CGCG2LID', this%name)
+    call mem_allocate(this%cgcl2gid, nlblk, 'CGCL2GID', this%memoryPath)
+    call mem_allocate(this%cgcg2lid, maxid, 'CGCG2LID', this%memoryPath)
     this%cgcg2lid = 0
     do i = 1, nlblk
       mp => GetNumericalModelFromList(this%modellist, i)
@@ -575,10 +575,10 @@ contains
     end do
     !
     ! -- create local topology
-    call mem_allocate(this%cgclnia, 'CGCLNIA', this%name)
+    call mem_allocate(this%cgclnia, 'CGCLNIA', this%memoryPath)
     this%cgclnia = nlblk + 1
-    call mem_allocate(this%cgclia, this%cgclnia, 'CGCGIA', this%name)
-    call mem_allocate(this%cgclnja, 'CGCLNJA', this%name)
+    call mem_allocate(this%cgclia, this%cgclnia, 'CGCGIA', this%memoryPath)
+    call mem_allocate(this%cgclnja, 'CGCLNJA', this%memoryPath)
     allocate(wrk(maxid))
     wrk = 0
     do iact = 1, 2
@@ -606,8 +606,8 @@ contains
         end if
       end do
       if (iact == 1) then
-        call mem_allocate(this%cgclja,  this%cgclnja,  'CGCLJA', this%name)
-        call mem_allocate(this%cgclgja, this%cgclnja, 'CGCLGJA', this%name)
+        call mem_allocate(this%cgclja,  this%cgclnja,  'CGCLJA', this%memoryPath)
+        call mem_allocate(this%cgclgja, this%cgclnja, 'CGCLGJA', this%memoryPath)
         j = 0
         do i = 1, maxid
           if (wrk(i) > 0) then
@@ -622,7 +622,7 @@ contains
     deallocate(wrk)
     
     ! -- ZC mapping
-    call mem_allocate(this%cgccizc, this%cgcgneq, 'CGCCIZC', this%name)
+    call mem_allocate(this%cgccizc, this%cgcgneq, 'CGCCIZC', this%memoryPath)
     n = size(this%blkgizc)
     m = maxval(this%blkgizc)
     if (n /= size(this%blkgid)) then
@@ -698,9 +698,9 @@ contains
     ! -- Go through each model and point x, ibound, and rhs to solution
     do i = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, i)
-      call mp%set_xptr(this%x)
-      call mp%set_rhsptr(this%rhs)
-      call mp%set_iboundptr(this%active)
+      call mp%set_xptr(this%x, 'X', this%name)
+      call mp%set_rhsptr(this%rhs, 'RHS', this%name)
+      call mp%set_iboundptr(this%active, 'IBOUND', this%name)
     enddo
     !
     ! -- Create the sparsematrix instance
@@ -733,7 +733,8 @@ contains
     use MemoryManagerModule, only: mem_reallocate,                              &
       mem_allocate !BJ
     use SimVariablesModule, only: iout
-    use SimModule, only: ustop, store_error, count_errors
+    use SimModule, only: ustop, store_error, count_errors,                       &
+                         deprecation_warning
     use InputOutputModule, only: getunit, openfile
     use MpiExchangeGenModule, only: parallelrun !PAR
     use MpiExchangeModule, only: MpiWorld !PAR
@@ -742,12 +743,15 @@ contains
     ! -- local
     class(NumericalModelType), pointer :: mp
     class(NumericalExchangeType), pointer :: cp
+    character(len=linelength) :: errmsg
+    character(len=linelength) :: warnmsg
+    character(len=linelength) :: keyword
+    character(len=linelength) :: fname
+    character(len=linelength) :: msg
     integer(I4B) :: i
     integer(I4B) :: im
     integer(I4B) :: ifdparam, mxvl, npp
     integer(I4B) :: imslinear
-    character(len=linelength) :: errmsg, keyword, fname
-    character(len=linelength) :: msg
     integer(I4B) :: isymflg=1
     integer(I4B) :: ierr
     logical :: isfound, endOfBlock
@@ -796,8 +800,8 @@ contains
           else if (keyword.eq.'ALLITER') then !PAR
             this%iprims = 3 !PAR
           else
-            write(errmsg,'(4x,a,a)') 'IMS sln_ar: UNKNOWN IMS PRINT OPTION: ', &
-              trim(keyword)
+            write(errmsg,'(3a)')                                                 &
+              'UNKNOWN IMS PRINT OPTION (', trim(keyword), ').'
             call store_error(errmsg)
           end if
         case ('COMPLEXITY')
@@ -812,22 +816,21 @@ contains
             ifdparam = 3
             WRITE(IOUT,25)
           else
-            write(errmsg,'(4x,a,a)')                                           &
-              'IMS sln_ar: UNKNOWN IMS COMPLEXITY OPTION: ',                   &
-              trim(keyword)
+            write(errmsg,'(3a)')                                                 &
+              'UNKNOWN IMS COMPLEXITY OPTION (', trim(keyword), ').'
             call store_error(errmsg)
           end if
-         case ('CSV_OUTER_OUTPUT')
+        case ('CSV_OUTER_OUTPUT')
           call MpiWorld%mpi_not_supported('CSV_OUTER_OUTPUT') !PAR
           call this%parser%GetStringCaps(keyword)
           if (keyword == 'FILEOUT') then
             call this%parser%GetString(fname)
             this%icsvouterout = getunit()
-            call openfile(this%icsvouterout, iout, fname, 'CSV_OUTER_OUTPUT',  &
+            call openfile(this%icsvouterout, iout, fname, 'CSV_OUTER_OUTPUT',    &
                           filstat_opt='REPLACE')
             write(iout,fmtcsvout) trim(fname), this%icsvouterout
           else
-            write(errmsg,'(4x,a)') 'IMS sln_ar: OPTIONAL CSV_OUTER_OUTPUT ' // &
+            write(errmsg,'(a)') 'OPTIONAL CSV_OUTER_OUTPUT ' //                  &
               'KEYWORD MUST BE FOLLOWED BY FILEOUT'
             call store_error(errmsg)
           end if
@@ -837,11 +840,11 @@ contains
           if (keyword == 'FILEOUT') then
             call this%parser%GetString(fname)
             this%icsvinnerout = getunit()
-            call openfile(this%icsvinnerout, iout, fname, 'CSV_INNER_OUTPUT',  &
+            call openfile(this%icsvinnerout, iout, fname, 'CSV_INNER_OUTPUT',    &
                           filstat_opt='REPLACE')
             write(iout,fmtcsvout) trim(fname), this%icsvinnerout
           else
-            write(errmsg,'(4x,a)') 'IMS sln_ar: OPTIONAL CSV_INNER_OUTPUT ' // &
+            write(errmsg,'(a)') 'OPTIONAL CSV_INNER_OUTPUT ' //                  &
               'KEYWORD MUST BE FOLLOWED BY FILEOUT'
             call store_error(errmsg)
           end if
@@ -862,6 +865,29 @@ contains
           write(IOUT,'(1x,A)') 'PSEUDO-TRANSIENT CONTINUATION DISABLED FOR' // &
             ' ' // trim(adjustl(msg)) // ' STRESS-PERIOD(S)'
         !
+        ! -- DEPRECATED OPTIONS
+        case ('CSV_OUTPUT')
+          call this%parser%GetStringCaps(keyword)
+          if (keyword == 'FILEOUT') then
+            call this%parser%GetString(fname)
+            this%icsvouterout = getunit()
+            call openfile(this%icsvouterout, iout, fname, 'CSV_OUTPUT',          &
+                          filstat_opt='REPLACE')
+            write(iout,fmtcsvout) trim(fname), this%icsvouterout
+            !
+            ! -- create warning message
+            write(warnmsg,'(a)')                                                 &
+              'OUTER ITERATION INFORMATION WILL BE SAVED TO ' // trim(fname)
+            !
+            ! -- create deprecation warning
+            call deprecation_warning('OPTIONS', 'CSV_OUTPUT', '6.1.1',            &
+                                     warnmsg, this%parser%GetUnit())
+          else
+            write(errmsg,'(a)') 'OPTIONAL CSV_OUTPUT ' //                        &
+              'KEYWORD MUST BE FOLLOWED BY FILEOUT'
+            call store_error(errmsg)
+          end if
+        !
         ! -- right now these are options that are only available in the
         !    development version and are not included in the documentation.
         !    These options are only available when IDEVELOPMODE in
@@ -877,60 +903,60 @@ contains
           if (keyword == 'FILEOUT') then
             call this%parser%GetString(fname)
             this%iptcout = getunit()
-            call openfile(this%iptcout, iout, fname, 'PTC-OUT',                &
+            call openfile(this%iptcout, iout, fname, 'PTC-OUT',                  &
                           filstat_opt='REPLACE')
             write(iout,fmtptcout) trim(fname), this%iptcout
           else
-            write(errmsg,'(4x,a)') 'IMS sln_ar: OPTIONAL PTC_OUTPUT ' //       &
-              'KEYWORD MUST BE FOLLOWED BY FILEOUT'
+            write(errmsg,'(a)')                                                  &
+              'OPTIONAL PTC_OUTPUT KEYWORD MUST BE FOLLOWED BY FILEOUT'
             call store_error(errmsg)
           end if
         case ('DEV_PTC_OPTION')
           call this%parser%DevOpt()
           this%iallowptc = 1
           this%iptcopt = 1
-          write(IOUT,'(1x,A)')                                                 &
-            'PSEUDO-TRANSIENT CONTINUATION USES BNORM AND L2NORM TO ' //       &
+          write(IOUT,'(1x,A)')                                                   &
+            'PSEUDO-TRANSIENT CONTINUATION USES BNORM AND L2NORM TO ' //         &
             'SET INITIAL VALUE'
         case ('DEV_PTC_EXPONENT')
           call this%parser%DevOpt()
           rval = this%parser%GetDouble()
           if (rval < DZERO) then
-            write(errmsg,'(4x,a)') 'IMS sln_ar: PTC_EXPONENT MUST BE > 0.'
+            write(errmsg,'(a)') 'PTC_EXPONENT MUST BE > 0.'
             call store_error(errmsg)
           else
             this%iallowptc = 1
             this%ptcexp = rval
-            write(IOUT,'(1x,A,1x,g15.7)')                                      &
+            write(IOUT,'(1x,A,1x,g15.7)')                                        &
               'PSEUDO-TRANSIENT CONTINUATION EXPONENT', this%ptcexp
           end if
         case ('DEV_PTC_THRESHOLD')
           call this%parser%DevOpt()
           rval = this%parser%GetDouble()
           if (rval < DZERO) then
-            write(errmsg,'(4x,a)')'IMS sln_ar: PTC_THRESHOLD MUST BE > 0.'
+            write(errmsg,'(a)') 'PTC_THRESHOLD MUST BE > 0.'
             call store_error(errmsg)
           else
             this%iallowptc = 1
             this%ptcthresh = rval
-            write(IOUT,'(1x,A,1x,g15.7)')                                      &
+            write(IOUT,'(1x,A,1x,g15.7)')                                        &
               'PSEUDO-TRANSIENT CONTINUATION THRESHOLD', this%ptcthresh
           end if
         case ('DEV_PTC_DEL0')
           call this%parser%DevOpt()
           rval = this%parser%GetDouble()
           if (rval < DZERO) then
-            write(errmsg,'(4x,a)')'IMS sln_ar: PTC_DEL0 MUST BE > 0.'
+            write(errmsg,'(a)')'IMS sln_ar: PTC_DEL0 MUST BE > 0.'
             call store_error(errmsg)
           else
             this%iallowptc = 1
             this%ptcdel0 = rval
-            write(IOUT,'(1x,A,1x,g15.7)')                                      &
+            write(IOUT,'(1x,A,1x,g15.7)')                                        &
               'PSEUDO-TRANSIENT CONTINUATION INITIAL TIMESTEP', this%ptcdel0
           end if
         case default
-          write(errmsg,'(4x,a,a)') 'IMS sln_ar: UNKNOWN IMS OPTION: ',         &
-            trim(keyword)
+          write(errmsg,'(a,2(1x,a))')                                            &
+            'UNKNOWN IMS OPTION  (', trim(keyword), ').'
           call store_error(errmsg)
         end select
       end do
@@ -939,11 +965,11 @@ contains
       write(iout,'(1x,a)')'NO IMS OPTION BLOCK DETECTED.'
     end if
 
-00021 FORMAT(1X,'SIMPLE OPTION:',/,                                            &
+00021 FORMAT(1X,'SIMPLE OPTION:',/,                                              &
     &       1X,'DEFAULT SOLVER INPUT VALUES FOR FAST SOLUTIONS')
-00023 FORMAT(1X,'MODERATE OPTION:',/,1X,'DEFAULT SOLVER',                      &
+00023 FORMAT(1X,'MODERATE OPTION:',/,1X,'DEFAULT SOLVER',                        &
     &          ' INPUT VALUES REFLECT MODERETELY NONLINEAR MODEL')
-00025 FORMAT(1X,'COMPLEX OPTION:',/,1X,'DEFAULT SOLVER',                       &
+00025 FORMAT(1X,'COMPLEX OPTION:',/,1X,'DEFAULT SOLVER',                         &
     & ' INPUT VALUES REFLECT STRONGLY NONLINEAR MODEL')
 
     !-------READ NONLINEAR ITERATION PARAMETERS AND LINEAR SOLVER SELECTION INDEX
@@ -963,8 +989,8 @@ contains
         call this%parser%GetStringCaps(keyword)
         ! -- parse keyword
         select case (keyword)
-        case ('OUTER_HCLOSE')
-          this%hclose  = this%parser%GetDouble()
+        case ('OUTER_DVCLOSE')
+          this%dvclose  = this%parser%GetDouble()
         case ('OUTER_MAXIMUM')
           this%mxiter  = this%parser%GetInteger()
         case ('UNDER_RELAXATION')
@@ -979,18 +1005,20 @@ contains
           else if (keyword == 'DBD') then
             ival = 3
           else
-            write(errmsg,'(1x,a)') 'IMS sln_ar: UNKNOWN UNDER_RELAXATION SPECIFIED.'
+            write(errmsg,'(3a)')                                                 &
+              'UNKNOWN UNDER_RELAXATION SPECIFIED (', trim(keyword), ').'
             call store_error(errmsg)
           end if
           this%nonmeth = ival
         case ('LINEAR_SOLVER')
           call this%parser%GetStringCaps(keyword)
           ival = 1
-          if (keyword.eq.'DEFAULT' .or.                                        &
+          if (keyword.eq.'DEFAULT' .or.                                          &
               keyword.eq.'LINEAR') then
             ival = 1
           else
-            write(errmsg,'(1x,a)') 'IMS sln_ar: UNKNOWN LINEAR_SOLVER SPECIFIED.'
+            write(errmsg,'(3a)')                                                 &
+              'UNKNOWN LINEAR_SOLVER SPECIFIED (', trim(keyword), ').'
             call store_error(errmsg)
           end if
           this%linmeth = ival
@@ -1013,21 +1041,44 @@ contains
           this%breduc = this%parser%GetDouble()
         case ('BACKTRACKING_RESIDUAL_LIMIT')
           this%res_lim = this%parser%GetDouble()
+        !
+        ! -- deprecated variables
+        case ('OUTER_HCLOSE')
+          this%dvclose  = this%parser%GetDouble()
+          !
+          ! -- create warning message
+          write(warnmsg,'(a)')                                                   &
+            'SETTING OUTER_DVCLOSE TO OUTER_HCLOSE VALUE'
+          !
+          ! -- create deprecation warning
+          call deprecation_warning('NONLINEAR', 'OUTER_HCLOSE', '6.1.1',         &
+                                   warnmsg, this%parser%GetUnit())
+        case ('OUTER_RCLOSEBND')
+          !
+          ! -- create warning message
+          write(warnmsg,'(a)')                                                   &
+            'OUTER_DVCLOSE IS USED TO EVALUATE PACKAGE CONVERGENCE'
+          !
+          ! -- create deprecation warning
+          call deprecation_warning('NONLINEAR', 'OUTER_RCLOSEBND', '6.1.1',      &
+                                   warnmsg, this%parser%GetUnit())
         case default
-          write(errmsg,'(4x,a,a)')'IMS sln_ar: UNKNOWN IMS NONLINEAR KEYWORD: ', &
-            trim(keyword)
+          write(errmsg,'(3a)')                                                   &
+            'UNKNOWN IMS NONLINEAR KEYWORD (', trim(keyword), ').'
           call store_error(errmsg)
         end select
       end do
       write(iout,'(1x,a)') 'END OF IMS NONLINEAR DATA'
     else
       if (IFDPARAM.EQ.0) then
-        write(errmsg,'(1x,a)') 'NO IMS NONLINEAR BLOCK DETECTED.'
+        write(errmsg,'(a)') 'NO IMS NONLINEAR BLOCK DETECTED.'
         call store_error(errmsg)
       end if
     end if
     !
-    IF ( THIS%THETA < DEM3 ) this%theta = DEM3
+    if (THIS%THETA < DEM3) then
+      this%theta = DEM3
+    end if
     !
     ! -- backtracking should only be used if this%nonmeth > 0
     if (this%nonmeth < 1) then
@@ -1036,7 +1087,7 @@ contains
     !
     ! -- check that MXITER is greater than zero
     if (this%mxiter <= 0) then
-      write(errmsg,'(a)') 'IMS sln_ar: OUTER ITERATION NUMBER MUST BE > 0.'
+      write(errmsg,'(a)') 'OUTER ITERATION NUMBER MUST BE > 0.'
       call store_error(errmsg)
     END IF
     !
@@ -1050,12 +1101,22 @@ contains
       WRITE(IOUT,*) '***UNDER-RELAXATION WILL NOT BE USED***'
       WRITE(IOUT,*)
     ELSE
-      WRITE(errmsg,'(a)') '***INCORRECT VALUE FOR VARIABLE NONMETH ',          &
-        &                      'WAS SPECIFIED. CHECK INPUT.***'
+      WRITE(errmsg,'(a)')                                                      &
+        'INCORRECT VALUE FOR VARIABLE NONMETH WAS SPECIFIED.'
       call store_error(errmsg)
     END IF
-    ! call secondary subroutine to initialize and read linear solver parameters
-    ! IMSLINEAR solver
+    !
+    ! -- ensure gamma is > 0 for simple
+    if (this%nonmeth == 1) then
+      if (this%gamma == 0) then
+        WRITE(errmsg, '(a)')                                                   &
+          'GAMMA must be greater than zero if SIMPLE under-relaxation is used.'
+        call store_error(errmsg)
+      end if
+    end if
+    !
+    ! -- call secondary subroutine to initialize and read linear 
+    !    solver parameters IMSLINEAR solver
     if ( this%linmeth == 1 )then
       allocate(this%imslinear)
       WRITE(IOUT,*) '***IMS LINEAR SOLVER WILL BE USED***'
@@ -1064,28 +1125,28 @@ contains
       if (parallelrun) then !PAR
         this%imslinear%MpiSol => this%MpiSol !PAR
       end if !PAR
-      call this%imslinear%imslinear_allocate(this%name, this%iu, IOUT,         &
-                                             this%iprims, this%mxiter,         &
-                                             ifdparam, imslinear,              &
-                                             this%neq, this%nja, this%ia,      &
-                                             this%ja, this%amat, this%rhs,     &
-                                             this%x, this%nitermax,            &
+      call this%imslinear%imslinear_allocate(this%name, this%iu, IOUT,           &
+                                             this%iprims, this%mxiter,           &
+                                             ifdparam, imslinear,                &
+                                             this%neq, this%nja, this%ia,        &
+                                             this%ja, this%amat, this%rhs,       &
+                                             this%x, this%nitermax,              &
                                              this%ibjflag) !BJ
       if (this%icgc == 1) then !CGC
-        call this%imslinear%imslinear_allocate_cgc(this%icgc,                 & !CGC
-          this%cgcgneq, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja, & !CGC
-          this%cgclnia, this%cgclnja, this%cgclia, this%cgclja, this%cgclgja, & !CGC
-          this%cgcl2gid, this%cgcg2lid, this%cgcg2cid, this%cgcc2gid,         & !CGC
+        call this%imslinear%imslinear_allocate_cgc(this%icgc,                    & !CGC
+          this%cgcgneq, this%cgcgnia, this%cgcgnja, this%cgcgia, this%cgcgja,    & !CGC
+          this%cgclnia, this%cgclnja, this%cgclia, this%cgclja, this%cgclgja,    & !CGC
+          this%cgcl2gid, this%cgcg2lid, this%cgcg2cid, this%cgcc2gid,            & !CGC
           this%cgccizc) !CGC
       end if !CGC
-      
       WRITE(IOUT,*)
       isymflg = 0
       if ( imslinear.eq.1 ) isymflg = 1
-    ! incorrect linear solver flag
+    !
+    ! -- incorrect linear solver flag
     ELSE
-      WRITE(errmsg, *) '***INCORRECT VALUE FOR LINEAR SOLUTION ', &
-        &                'METHOD SPECIFIED. CHECK INPUT.***'
+      WRITE(errmsg, '(a)')                                                       &
+        'INCORRECT VALUE FOR LINEAR SOLUTION METHOD SPECIFIED.'
       call store_error(errmsg)
     END IF
     !
@@ -1116,31 +1177,39 @@ contains
     ! -- write solver data to output file
     !
     ! -- non-linear solver data
-    WRITE(IOUT,9002) this%hclose, this%mxiter,                                 &
+    WRITE(IOUT,9002) this%dvclose, this%mxiter,                                &
                      this%iprims, this%nonmeth, this%linmeth
     !
     ! -- standard outer iteration formats
-9002 FORMAT(1X,'OUTER ITERATION CONVERGENCE CRITERION     (HCLOSE) = ', E15.6, &
-    &      /1X,'MAXIMUM NUMBER OF OUTER ITERATIONS        (MXITER) = ', I9,    &
-    &      /1X,'SOLVER PRINTOUT INDEX                     (IPRIMS) = ', I9,    &
-    &      /1X,'NONLINEAR ITERATION METHOD            (NONLINMETH) = ', I9,    &
-    &      /1X,'LINEAR SOLUTION METHOD                   (LINMETH) = ', I9)
+9002 FORMAT(1X,'OUTER ITERATION CONVERGENCE CRITERION    (DVCLOSE) = ', E15.6, &
+    &      /1X,'MAXIMUM NUMBER OF OUTER ITERATIONS        (MXITER) = ', I0,    &
+    &      /1X,'SOLVER PRINTOUT INDEX                     (IPRIMS) = ', I0,    &
+    &      /1X,'NONLINEAR ITERATION METHOD            (NONLINMETH) = ', I0,    &
+    &      /1X,'LINEAR SOLUTION METHOD                   (LINMETH) = ', I0)
     !
-    IF(this%nonmeth /= 0)THEN
-      WRITE(IOUT,9003) this%theta, this%akappa, this%gamma, this%amomentum,    &
-                       this%numtrack
-      IF(this%numtrack /= 0) WRITE(IOUT,9004) this%btol,this%breduc,this%res_lim
-    END IF
+    if (this%nonmeth == 1) then ! simple
+      write(iout, 9003) this%gamma
+    else if (this%nonmeth == 2) then ! cooley
+      write(iout, 9004) this%gamma
+    else if (this%nonmeth == 3) then ! delta bar delta
+      write(iout, 9005) this%theta, this%akappa, this%gamma, this%amomentum
+    end if
     !
-    ! -- under-relaxation formats
-9003 FORMAT(1X,'UNDER-RELAXATION WEIGHT REDUCTION FACTOR   (THETA) = ', E15.6, &
+    ! -- write backtracking information
+    if(this%numtrack /= 0) write(iout, 9006) this%numtrack, this%btol,       &
+                                             this%breduc,this%res_lim
+    !
+    ! -- under-relaxation formats (simple, cooley, dbd)
+9003 FORMAT(1X,'UNDER-RELAXATION FACTOR                    (GAMMA) = ', E15.6)
+9004 FORMAT(1X,'UNDER-RELAXATION PREVIOUS HISTORY FACTOR   (GAMMA) = ', E15.6)
+9005 FORMAT(1X,'UNDER-RELAXATION WEIGHT REDUCTION FACTOR   (THETA) = ', E15.6, &
     &      /1X,'UNDER-RELAXATION WEIGHT INCREASE INCREMENT (KAPPA) = ', E15.6, &
     &      /1X,'UNDER-RELAXATION PREVIOUS HISTORY FACTOR   (GAMMA) = ', E15.6, &
-    &      /1X,'UNDER-RELAXATIONMOMENTUM TERM          (AMOMENTUM) = ', E15.6, &
-    &      /1X,'   MAXIMUM NUMBER OF BACKTRACKS         (NUMTRACK) = ',I9)
+    &      /1X,'UNDER-RELAXATION MOMENTUM TERM         (AMOMENTUM) = ', E15.6)
     !
     ! -- backtracking formats
-9004 FORMAT(1X,'BACKTRACKING TOLERANCE FACTOR               (BTOL) = ', E15.6, &
+9006 FORMAT(1X,'MAXIMUM NUMBER OF BACKTRACKS            (NUMTRACK) = ', I0,    &
+    &      /1X,'BACKTRACKING TOLERANCE FACTOR               (BTOL) = ', E15.6, &
     &      /1X,'BACKTRACKING REDUCTION FACTOR             (BREDUC) = ', E15.6, &
     &      /1X,'BACKTRACKING RESIDUAL LIMIT              (RES_LIM) = ', E15.6)
     !
@@ -1159,7 +1228,7 @@ contains
     call mem_reallocate(this%lrch, 3, this%mxiter, 'LRCH', this%name)
 
     ! delta-bar-delta under-relaxation
-    if(this%nonmeth.eq.3)then
+    if(this%nonmeth == 3)then
       call mem_reallocate(this%wsave, this%neq, 'WSAVE', this%name)
       call mem_reallocate(this%hchold, this%neq, 'HCHOLD', this%name)
       call mem_reallocate(this%deold, this%neq, 'DEOLD', this%name)
@@ -1202,34 +1271,49 @@ contains
       end do
     end do
     !
-    ! close ims input file
+    ! -- check for numerical solution errors
+    ierr = count_errors()
+    if (ierr > 0) then
+      call this%parser%StoreErrorUnit()
+      call ustop()
+    end if
+    !
+    ! -- close ims input file
     call this%parser%Clear()
     !
     ! -- return
     return
   end subroutine sln_ar
 
-  subroutine sln_rp(this)
+   subroutine sln_ad(this)
 ! ******************************************************************************
-! sln_rp -- Read and Prepare
+! sln_ad -- Advance solution
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use TdisModule, only: readnewdata
+    use TdisModule, only: kstp, kper
     ! -- dummy
     class(NumericalSolutionType) :: this
     ! -- local
 ! ------------------------------------------------------------------------------
-    !
-    ! -- Check with TDIS on whether or not it is time to RP
-    if (.not. readnewdata) return
-    !
-    ! -- return
+    ! write headers to CSV file
+    
+    if (kper == 1 .and. kstp == 1) then
+      call this%writeCSVHeader()
+    end if
+      
+    ! write PTC info on models to iout
+    call this%writePTCInfoToFile(kper)
+            
+    ! reset convergence flag and inner solve counter
+    this%icnvg = 0
+    this%itertot_timestep = 0   
+    
     return
-  end subroutine sln_rp
-
+  end subroutine sln_ad
+  
   subroutine sln_ot(this)
 ! ******************************************************************************
 ! sln_ot -- Output
@@ -1346,7 +1430,7 @@ contains
     call mem_deallocate(this%ttsoln)
     call mem_deallocate(this%neq)
     call mem_deallocate(this%nja)
-    call mem_deallocate(this%hclose)
+    call mem_deallocate(this%dvclose)
     call mem_deallocate(this%hiclose)
     call mem_deallocate(this%bigchold)
     call mem_deallocate(this%bigch)
@@ -1357,8 +1441,8 @@ contains
     call mem_deallocate(this%ibcount)
     call mem_deallocate(this%icnvg)
     call mem_deallocate(this%icnvgprev) !SOL
-    call mem_deallocate(this%itertot)
-    call mem_deallocate(this%innertot)
+    call mem_deallocate(this%itertot_timestep)
+    call mem_deallocate(this%itertot_sim)
     call mem_deallocate(this%mxiter)
     call mem_deallocate(this%linmeth)
     call mem_deallocate(this%nonmeth)
@@ -1416,120 +1500,62 @@ contains
     ! -- return
     return
   end subroutine sln_da
-
-  subroutine sln_ca(this, kpicard, isgcnvg, isuppress_output)
+ 
+  subroutine sln_ca(this, isgcnvg, isuppress_output)
 ! ******************************************************************************
-! sln_ca -- Solve the models in this solution for kper and kstp.  If necessary
-!           use subtiming to get to the end of the time step
+! sln_ca -- Solve the models in this solution for kper and kstp.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use TdisModule, only: kper, subtiming_begin, subtiming_end, perlen, totimsav
     use MpiExchangeGenModule, only: parallelrun !PAR
     ! -- dummy
     class(NumericalSolutionType) :: this
-    integer(I4B), intent(in) :: kpicard
     integer(I4B), intent(inout) :: isgcnvg
     integer(I4B), intent(in) :: isuppress_output    
     ! -- local
     class(NumericalModelType), pointer :: mp
-    class(NumericalExchangeType), pointer :: cp
+    character(len=LINELENGTH) :: line
+    character(len=LINELENGTH) :: fmt
+    integer(I4B) :: im
     integer(I4B) :: kiter   ! non-linear iteration counter
-    integer(I4B) :: im, ic
-    integer(I4B) :: nsubtimes, nstm, isubtime    
-    real(DP) :: dt
-    real(DP) :: totim
-
 ! ------------------------------------------------------------------------------
-  
-    ! TODO_MJR: the subtime loop is now around the sln_ca body, easy to discard, do we still want this?
     
-    ! -- Find the number of sub-timesteps for each model and then use
-    !    the largest one.
-    nsubtimes = 1
-    do im=1,this%modellist%Count()
-      mp => GetNumericalModelFromList(this%modellist, im)
-      nstm = mp%get_nsubtimes()
-      if(nstm > nsubtimes) nsubtimes = nstm
-    enddo
+    ! advance the models, exchanges, and solution
+    call this%prepareSolve()
     
-    dt = perlen(kper) / REAL(nsubtimes, DP)
-    totim = totimsav
-    !
-    do isubtime = 1, nsubtimes
-      !
-      ! -- update totim
-      totim = totim + dt
-      !
-      ! -- Start subtiming
-      call subtiming_begin(isubtime, nsubtimes, this%id)
-      
-      ! prepare for the nonlinear iteration loop
-      call this%prepareIteration(kpicard, isubtime)
-      
-      ! nonlinear iteration loop for this solution      
-      outerloop: do kiter = 1, this%mxiter
+    select case (isim_mode)
+      case (MVALIDATE)
+        line = 'mode="validation" -- Skipping matrix assembly and solution.'
+        fmt = "(/,1x,a,/)"
+        do im = 1, this%modellist%Count()
+          mp => GetNumericalModelFromList(this%modellist, im)
+          call mp%model_message(line, fmt=fmt)
+        end do
+      case(MNORMAL)
+        ! nonlinear iteration loop for this solution
+        outerloop: do kiter = 1, this%mxiter
+           
+          ! perform a single iteration
+          call this%solve(kiter)     
         
-        ! perform a single iteration
-        call this%doIteration(kiter)        
+          ! exit if converged
+          if (this%icnvg == 1) then
+            exit outerloop
+          end if
         
-        ! exit if converged
-        if (this%icnvg == 1) then
-          exit outerloop
-        end if
-        
-      end do outerloop
+        end do outerloop
       
-      ! finish up, write convergence info, CSV file, budgets and flows, ...
-      call this%finalizeIteration(kiter, isgcnvg, isubtime, isuppress_output)      
-      
-    ! -- End of the sub-timestep loop
-    end do 
-    
-    ! -- end the subtiming
-    call subtiming_end()
-    !
-    !
-    ! -- Check if convergence for the exchange packages
-    ! TODO_MJR: shouldn't this be in the subtiming loop?
-    do ic = 1, this%exchangelist%Count()
-      cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      call cp%exg_cnvg(this%id, isgcnvg)
-    enddo
+        ! finish up, write convergence info, CSV file, budgets and flows, ...
+        call this%finalizeSolve(kiter, isgcnvg, isuppress_output)   
+    end select
     !
     ! -- return
     return
-  end subroutine sln_ca
-
-  ! prepare for iteration loop, use isubtime == 1 when there is no subtiming
-  ! and the default kpicard == 1 when no picard loop (c.f. sgp_ca())
-  subroutine prepareIteration(this, kpicard, isubtime)
-    use TdisModule, only: kper, kstp
-    class(NumericalSolutionType) :: this
-    integer(I4B), intent(in) :: kpicard
-    integer(I4B), intent(in) :: isubtime
-        
-    ! write headers to CSV file
-    if (kper == 1 .and. kstp == 1 .and. isubtime == 1) then
-      call this%writeCSVHeader()
-    end if
-      
-    ! advance models and exchanges
-    call this%advanceSolution(kpicard, isubtime)
-      
-    ! write PTC info on models to iout
-    call this%writePTCInfoToFile(kper)
-
-    ! reset convergence flag and inner solve counter
-    this%icnvg = 0
-    if (isubtime == 1) then
-      this%itertot = 0
-    end if
     
-  end subroutine      
-      
+  end subroutine sln_ca
+       
   ! write the header for the solver output to the CSV files
   subroutine writeCSVHeader(this)  
     class(NumericalSolutionType) :: this
@@ -1579,31 +1605,6 @@ contains
     return
   end subroutine writeCSVHeader
   
-  ! advances the exchanges and models in this solution by 1 (sub)timestep
-  ! kpicard will change if we are running the outer picard loop,
-  ! if not (the current use cases) then we use kpicard == 1  
-  subroutine advanceSolution(this, isubtime, kpicard)
-    class(NumericalSolutionType) :: this
-    integer(I4B), intent(in) :: isubtime, kpicard
-    ! local
-    integer(I4B) :: ic, im
-    class(NumericalExchangeType), pointer :: cp
-    class(NumericalModelType), pointer :: mp
-    
-    ! -- Exchange advance
-    do ic=1,this%exchangelist%Count()
-      cp => GetNumericalExchangeFromList(this%exchangelist, ic)
-      call cp%exg_ad(this%id, kpicard, isubtime)
-    enddo
-    
-    ! -- Model advance
-    do im = 1, this%modellist%Count()
-      mp => GetNumericalModelFromList(this%modellist, im)
-      call mp%model_ad(kpicard, isubtime)
-    enddo
-    
-  end subroutine advanceSolution
-  
   ! write the PTC header information to file
   subroutine writePTCInfoToFile(this, kper)
     class(NumericalSolutionType) :: this
@@ -1644,8 +1645,33 @@ contains
     
   end subroutine writePTCInfoToFile
   
-  ! this routine performs a single iteration, with the following steps:
-  ! (TODO_MJR: refactor this routine, it is long)
+  ! prepare for the system solve by advancing the simulation
+  subroutine prepareSolve(this)
+    class(NumericalSolutionType) :: this
+    ! local
+    integer(I4B) :: ic, im
+    class(NumericalExchangeType), pointer :: cp
+    class(NumericalModelType), pointer :: mp    
+    
+     ! -- Exchange advance
+    do ic=1,this%exchangelist%Count()
+      cp => GetNumericalExchangeFromList(this%exchangelist, ic)
+      call cp%exg_ad()
+    enddo
+    
+    ! -- Model advance
+    do im = 1, this%modellist%Count()
+      mp => GetNumericalModelFromList(this%modellist, im)
+      call mp%model_ad()
+    enddo
+    
+    ! advance models and exchanges
+    call this%sln_ad()
+    
+  end subroutine prepareSolve
+  
+  ! This routine builds and solves the system for this numerical solution. 
+  ! It roughly consists of the following steps:
   !
   ! - backtracking
   ! - reset amat and rhs
@@ -1659,7 +1685,8 @@ contains
   ! - underrelaxation
   !
   ! it updates the convergence flag "this%icnvg" accordingly
-  subroutine doIteration(this, kiter)
+  !
+  subroutine solve(this, kiter)
     use TdisModule, only: kstp, kper, totim
     use MpiExchangeGenModule, only: parallelrun, writestd !PAR
     class(NumericalSolutionType) :: this    
@@ -1680,6 +1707,7 @@ contains
     integer(I4B) :: ic
     integer(I4B) :: im    
     integer(I4B) :: icsv0
+    integer(I4B) :: kcsv0
     integer(I4B) :: ntabrows
     integer(I4B) :: ntabcols
     integer(I4B) :: i0, i1    
@@ -1708,7 +1736,8 @@ contains
     ! -- code
     !
     ! -- initialize local variables
-    icsv0 = max(1, this%innertot + 1)
+    icsv0 = max(1, this%itertot_sim + 1)
+    kcsv0 = max(1, this%itertot_timestep + 1)
     !
     ! -- create header for outer iteration table
     if (this%iprims > 0) then
@@ -1832,8 +1861,8 @@ contains
     !
     ! -- increment counters storing the total number of linear iterations
     !    for this timestep and all timesteps
-    this%itertot = this%itertot + iter
-    this%innertot = this%innertot + iter
+    this%itertot_timestep = this%itertot_timestep + iter
+    this%itertot_sim = this%itertot_sim + iter
     !
     ! -- save matrix to a file
     !    to enable set itestmat to 1 and recompile
@@ -1855,12 +1884,13 @@ contains
     outer_hncg = this%hncg(kiter) !PAR
     if (parallelrun) then !PAR
       call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
-    endif !PAR
+      this%hncg(kiter) = outer_hncg !PAR
+    endif !PAR 
     !
     if (this%icnvg /= 0) then
       this%icnvgprev = this%icnvg !SOL
       this%icnvg = 0
-      if (abs(outer_hncg) <= this%hclose) then !PAR
+      if (abs(outer_hncg) <= this%dvclose) then !PAR
         this%icnvg = 1
       end if
     end if
@@ -1923,13 +1953,15 @@ contains
     !
     ! -- additional convergence check for model packages
     icnvgmod = this%icnvg
+    !
     cpak = ' '
     ipak = 0
     dpak = DZERO
     do im = 1, this%modellist%Count()
       mp => GetNumericalModelFromList(this%modellist, im)
       call mp%get_mcellid(0, cmod)
-      call mp%model_cc(this%innertot, kiter, iend, icnvgmod, cpak, ipak, dpak)
+      call mp%model_cc(this%itertot_sim, kiter, iend, icnvgmod,                  &
+                       cpak, ipak, dpak)
       if (ipak /= 0) then
         ipos0 = index(cpak, '-', back=.true.)
         ipos1 = len_trim(cpak)
@@ -1946,7 +1978,7 @@ contains
     endif !PAR
     !
     ! -- evaluate package convergence
-    if (abs(dpak) > this%hclose) then
+    if (abs(dpak) > this%dvclose) then
       this%icnvg = 0
       ! -- write message to stdout
       if (iend /= 0) then
@@ -2009,7 +2041,6 @@ contains
         call this%MpiSol%mpi_global_exchange_all_max(inewtonur) !PAR
       endif !PAR
       !
-      ! -- check for convergence if newton under-relaxation applied
       if (inewtonur /= 0) then
         !
         ! -- calculate maximum change in heads in cells that have
@@ -2020,9 +2051,6 @@ contains
         if (parallelrun) then !PAR
           call this%MpiSol%mpi_global_exchange_all_absmax(dxmax) !PAR
         endif !PAR
-        !
-        call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter)) !WORKAROUND
-        outer_hncg = this%hncg(kiter) !PAR
         !
         if (parallelrun) then !PAR
           call this%MpiSol%mpi_global_exchange_all_absmaxloc(outer_hncg, rank) !PAR
@@ -2038,14 +2066,21 @@ contains
         end if !PAR
         !
         ! -- evaluate convergence
-        if (abs(dxmax) <= this%hclose .and.                                      &
-            abs(outer_hncg) <= this%hclose .and.                                 & !PAR
-            abs(dpak) <= this%hclose) then
+        if (abs(dxmax) <= this%dvclose .and.                                     &
+            abs(outer_hncg) <= this%dvclose .and.                                & !PAR
+            abs(dpak) <= this%dvclose) then
           this%icnvg = 1
           !
           ! -- reset outer head change and location for output
-          !call this%sln_outer_check(this%hncg(kiter), this%lrch(1,kiter)) !WORKAROUND
+          call this%sln_outer_check(this%hncg(kiter) , this%lrch(1,kiter))
           !
+          ! -- MPI parallel: new outer head change
+          outer_hncg = this%hncg(kiter) !PAR
+          if (parallelrun) then !PAR
+            call this%MpiSol%mpi_global_exchange_all_absmax(outer_hncg) !PAR
+            this%hncg(kiter) = outer_hncg !PAR
+          endif !PAR
+          !          
           ! -- write revised head change data after 
           !    newton under-relaxation
           if (this%iprims > 0) then
@@ -2099,26 +2134,23 @@ contains
       !
       ! -- write line to outer iteration csv file
       write(this%icsvouterout, '(*(G0,:,","))')                                  &
-          this%innertot, totim, kper, kstp, kiter, iter,                         &
+          this%itertot_sim, totim, kper, kstp, kiter, iter,                      &
           outer_hncg, im, trim(cpakout), nodeu
     end if
     !
     ! -- write to inner iteration csv file
     if (this%icsvinnerout > 0) then
       call this%csv_convergence_summary(this%icsvinnerout, totim, kper, kstp,    &
-                                        kiter, iter, icsv0)
+                                        kiter, iter, icsv0, kcsv0)
     end if
-    
-  end subroutine doIteration
+  end subroutine solve
   
-  ! finalize the solution calculate, called after the non-linear iteration loop
-  ! when used without subtiming, do isubtime == 1
-  subroutine finalizeIteration(this, kiter, isgcnvg, isubtime, isuppress_output)
+  ! finalize the solution calculate, called after the outer iteration loop
+  subroutine finalizeSolve(this, kiter, isgcnvg, isuppress_output)
     use TdisModule, only: kper, kstp
     class(NumericalSolutionType) :: this
     integer(I4B), intent(in) :: kiter ! the number at which the iteration loop was exited
     integer(I4B), intent(inout) :: isgcnvg
-    integer(I4B), intent(in) :: isubtime
     integer(I4B), intent(in) :: isuppress_output
     ! local
     integer(I4B) :: ic, im
@@ -2144,7 +2176,7 @@ contains
     ! -- convergence was achieved
     if (this%icnvg /= 0) then
       if (this%iprims > 0) then
-        write(iout, fmtcnvg) kiter, kstp, kper, this%itertot
+        write(iout, fmtcnvg) kiter, kstp, kper, this%itertot_timestep
       end if
     !
     ! -- convergence was not achieved
@@ -2158,11 +2190,11 @@ contains
       ! -- write summary for each model
       do im=1,this%modellist%Count()
         mp => GetNumericalModelFromList(this%modellist, im)
-        call this%convergence_summary(mp%iout, im, this%itertot)
+        call this%convergence_summary(mp%iout, im, this%itertot_timestep)
       end do
       !
       ! -- write summary for entire solution
-      call this%convergence_summary(iout, this%convnmod+1, this%itertot)
+      call this%convergence_summary(iout, this%convnmod+1, this%itertot_timestep)
     end if
     !
     ! -- set solution goup convergence flag
@@ -2192,9 +2224,9 @@ contains
       call cp%exg_bd(isgcnvg, isuppress_output, this%id)
     enddo
     
-  end subroutine finalizeIteration
+  end subroutine finalizeSolve
   
-  subroutine convergence_summary(this, iu, im, itertot)
+  subroutine convergence_summary(this, iu, im, itertot_timestep)
 ! ******************************************************************************
 ! convergence_summary -- Save convergence summary to a File
 ! ******************************************************************************
@@ -2207,7 +2239,7 @@ contains
     class(NumericalSolutionType) :: this
     integer(I4B), intent(in) :: iu
     integer(I4B), intent(in) :: im
-    integer(I4B), intent(in) :: itertot
+    integer(I4B), intent(in) :: itertot_timestep
     ! -- local
     character(len=LINELENGTH) :: title
     character(len=LINELENGTH) :: tag
@@ -2234,7 +2266,7 @@ contains
       !
       ! -- create outer iteration table
       ! -- table dimensions
-      ntabrows = itertot
+      ntabrows = itertot_timestep
       ntabcols = 7
       !
       ! -- initialize table and define columns
@@ -2258,13 +2290,13 @@ contains
     !
     ! -- reset the output unit and the number of rows (maxbound)
     else
-      call this%innertab%set_maxbound(itertot)
+      call this%innertab%set_maxbound(itertot_timestep)
       call this%innertab%set_iout(iu)
     end if
     !
     ! -- write the inner iteration summary to unit iu
     i0 = 0
-    do k = 1, itertot
+    do k = 1, itertot_timestep
       i = this%itinner(k)
       if (i <= i0) then
         iouter = iouter + 1
@@ -2310,7 +2342,7 @@ contains
 
 
   subroutine csv_convergence_summary(this, iu, totim, kper, kstp, kouter,        &
-                                     niter, istart)
+                                     niter, istart, kstart)
 ! ******************************************************************************
 ! csv_convergence_summary -- Save convergence summary to a csv file
 ! ******************************************************************************
@@ -2328,11 +2360,13 @@ contains
     integer(I4B), intent(in) :: kouter
     integer(I4B), intent(in) :: niter
     integer(I4B), intent(in) :: istart
+    integer(I4B), intent(in) :: kstart
     ! -- local
     integer(I4B) :: itot
     integer(I4B) :: im
     integer(I4B) :: j
     integer(I4B) :: k
+    integer(I4B) :: kpos
     integer(I4B) :: locdv
     integer(I4B) :: locdr
     integer(I4B) :: nodeu
@@ -2345,6 +2379,7 @@ contains
     !
     ! -- write inner iteration results to the inner csv output file
     do k = 1, niter
+      kpos = kstart + k - 1
       write(iu, '(*(G0,:,","))', advance='NO')                                 &
         itot, totim, kper, kstp, kouter, k
       !
@@ -2352,13 +2387,13 @@ contains
       dv = DZERO
       dr = DZERO
       do j = 1, this%convnmod
-        if (ABS(this%convdvmax(j, k)) > ABS(dv)) then
-          locdv = this%convlocdv(j, k)
-          dv = this%convdvmax(j, k)
+        if (ABS(this%convdvmax(j, kpos)) > ABS(dv)) then
+          locdv = this%convlocdv(j, kpos)
+          dv = this%convdvmax(j, kpos)
         end if
-        if (ABS(this%convdrmax(j, k)) > ABS(dr)) then
-          locdr = this%convlocdr(j, k)
-          dr = this%convdrmax(j, k)
+        if (ABS(this%convdrmax(j, kpos)) > ABS(dr)) then
+          locdr = this%convlocdr(j, kpos)
+          dr = this%convdrmax(j, kpos)
         end if
       end do
       !
@@ -2371,15 +2406,16 @@ contains
       write(iu, '(*(G0,:,","))', advance='NO') '', dr, im, nodeu
       !
       ! -- write acceleration parameters
-      write(iu, '(*(G0,:,","))', advance='NO') '', trim(adjustl(this%caccel(k)))
+      write(iu, '(*(G0,:,","))', advance='NO')                                   &
+        '', trim(adjustl(this%caccel(kpos)))
       !
       ! -- write information for each model
       if (this%convnmod > 1) then
         do j = 1, this%convnmod
-          locdv = this%convlocdv(j, k)
-          dv = this%convdvmax(j, k)
-          locdr = this%convlocdr(j, k)
-          dr = this%convdrmax(j, k)
+          locdv = this%convlocdv(j, kpos)
+          dv = this%convdvmax(j, kpos)
+          locdr = this%convlocdr(j, kpos)
+          dr = this%convdrmax(j, kpos)
           !
           ! -- get model number and user node number for dv
           call this%sln_get_nodeu(locdv, im, nodeu)
@@ -2456,7 +2492,7 @@ contains
     ! -- return
     return
   end subroutine allocatemodellist
-  
+
   subroutine addmodel(this, mp)
 ! ******************************************************************************
 ! addmodel -- Add Model
@@ -2482,7 +2518,7 @@ contains
     return
   end subroutine addmodel
 
- subroutine allocateexchangelist(this)
+  subroutine allocateexchangelist(this) !PAR
 ! ******************************************************************************
 ! allocateexchangelist -- Allocate exchangelist
 ! Subroutine: (1) allocate exchangelist
@@ -2500,7 +2536,6 @@ contains
     !
     return
   end subroutine allocateexchangelist
-  
   subroutine addexchange(this, exchange)
 ! ******************************************************************************
 ! addexchange -- Add exchange
@@ -2839,7 +2874,7 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule,      only: LENMODELNAME, LENPACKAGENAME, LENORIGIN
+    use ConstantsModule,      only: LENMODELNAME, LENPACKAGENAME
     use ArrayHandlersModule, only: ifind, ExpandArray
     use MpiExchangeGenModule, only: serialrun
     use BaseExchangeModule,   only: BaseExchangeType, GetBaseExchangeFromList
@@ -2902,8 +2937,8 @@ contains
       if (cp%inmvr > 0) then
         mvr => cp%mvr
         do imvr = 1, mvr%nmvr
-          read(mvr%mvr(imvr)%pname1,*) mname1
-          read(mvr%mvr(imvr)%pname2,*) mname2
+          read(mvr%mvr(imvr)%pckNameSrc,*) mname1
+          read(mvr%mvr(imvr)%pckNameTgt,*) mname2
           i1 = ifind(this%MpiSol%lmodelnames, mname1)
           i2 = ifind(this%MpiSol%lmodelnames, mname2)
           if (i1 > 0 .and. i2 <= 0) then
@@ -2938,8 +2973,8 @@ contains
       ! -- loop over global movers
       do imvr = 1, mvrmpi%ngmvr
         ! -- get mover names
-        read(mvrmpi%gmvr(imvr)%pname1,*) mname1
-        read(mvrmpi%gmvr(imvr)%pname2,*) mname2
+        read(mvrmpi%gmvr(imvr)%pckNameSrc,*) mname1
+        read(mvrmpi%gmvr(imvr)%pckNameTgt,*) mname2
         ! -- check existence
         i1 = ifind(MpiWorld%gmodelnames, mname1)
         i2 = ifind(MpiWorld%gmodelnames, mname2)
@@ -2990,8 +3025,8 @@ contains
       mvr => cp%mvr
       ! -- loop over local movers
       do imvr = 1, mvr%nmvr
-        read(mvr%mvr(imvr)%pname1_read,*) mname1
-        read(mvr%mvr(imvr)%pname2_read,*) mname2
+        read(mvr%mvr(imvr)%pckNameSrc_read,*) mname1
+        read(mvr%mvr(imvr)%pckNameTgt_read,*) mname2
         i1 = ifind(this%MpiSol%lmodelnames, mname1)
         i2 = ifind(this%MpiSol%lmodelnames, mname2)
         laddvar1 = .false.
@@ -3058,8 +3093,8 @@ contains
         mvr => cp%mvr
         ! -- loop over local movers
         do imvr = 1, mvr%nmvr
-          read(mvr%mvr(imvr)%pname1_read,*) mname1
-          read(mvr%mvr(imvr)%pname2_read,*) mname2
+          read(mvr%mvr(imvr)%pckNameSrc_read,*) mname1
+          read(mvr%mvr(imvr)%pckNameTgt_read,*) mname2
           !write(*,*) '@@@@ mvr: "'//trim(mvr%mvr(imvr)%pname1)//'" "'//trim(mvr%mvr(imvr)%pname2)//'"'
           i1 = ifind(this%MpiSol%lmodelnames, mname1)
           i2 = ifind(this%MpiSol%lmodelnames, mname2)
@@ -3115,16 +3150,14 @@ contains
               call ustop()
             endif
             vgvar%nvar = iv
-            vgvar%var(iv)%origin = mvr%mvr(imvr)%pname1
+            vgvar%var(iv)%path = mvr%mvr(imvr)%pckNameSrc
             vgvar%var(iv)%name   = 'QFORMVR'
-!            vgvar%var(iv)%origin = mvr%mvr(imvr)%origin_qformvr_ptr
-!            vgvar%var(iv)%name   = 'QFORMVR_PTR_HALO'
             vgvar%var(iv)%nameext = ''
             vgvar%var(iv)%srctype = isrcmvr
             vgvar%var(iv)%pcktype = ipckmvr
             vgvar%var(iv)%tgttype = itgtmvr
             vgvar%var(iv)%unptype = iunpmvr
-            vgvar%var(iv)%id      = mvr%mvr(imvr)%irch1
+            vgvar%var(iv)%id      = mvr%mvr(imvr)%iRchNrSrc
             if (laddvar1) then
               vgvar%var(iv)%lrcv = .false.
             endif
@@ -3480,12 +3513,12 @@ contains
     ! -- simple option
     select case ( ifdparam )
     case ( 1 )
-      this%hclose = dem3
+      this%dvclose = dem3
       this%mxiter = 25
       this%nonmeth = 0
-      this%theta = 1.0
+      this%theta = DONE
       this%akappa = DZERO
-      this%gamma = DZERO
+      this%gamma = DONE
       this%amomentum = DZERO
       this%numtrack = 0
       this%btol = DZERO
@@ -3494,7 +3527,7 @@ contains
     !
     ! -- moderate
     case ( 2 )
-      this%hclose = dem2
+      this%dvclose = dem2
       this%mxiter = 50
       this%nonmeth = 3
       this%theta = 0.9d0
@@ -3508,7 +3541,7 @@ contains
     !
     ! -- complex
     case ( 3 )
-      this%hclose = dem1
+      this%dvclose = dem1
       this%mxiter = 100
       this%nonmeth = 3
       this%theta = 0.8d0
@@ -3610,7 +3643,7 @@ contains
           ! -- backtrack heads
           call this%sln_backtracking_xupdate(btflag)
           !
-          ! -- head change less than hclose
+          ! -- head change less than dvclose
           if (btflag == 0) then
             ibflag = 4
             exit btloop
@@ -3735,7 +3768,7 @@ contains
     endif !PAR
     !
     ! perform backtracking if free of constraints and set counter and flag
-    if (chmax >= this%hclose) then
+    if (chmax >= this%dvclose) then
       btflag = 1
       do n = 1, this%neq
         if (this%active(n) < 1) cycle
@@ -3911,6 +3944,7 @@ contains
     ! -- option for using simple dampening (as done by MODFLOW-2005 PCG)
     if (this%nonmeth == 1) then
       do n = 1, neq
+        !
         ! -- skip inactive nodes
         if (active(n) < 1) cycle
         !
@@ -3924,12 +3958,17 @@ contains
     !
     ! -- option for using cooley underrelaxation
     else if (this%nonmeth == 2) then
+      !
+      ! -- set bigch
+      this%bigch = bigch
+      !
+      ! -- initialize values for first iteration
       if (kiter == 1) then
-        relax = done
+        relax = DONE
         this%relaxold = DONE
-        this%bigch = bigch
         this%bigchold = bigch
       else
+        !
         ! -- compute relaxation factor
         es = this%bigch / (this%bigchold * this%relaxold)
         aes = abs(es)
@@ -3941,16 +3980,18 @@ contains
       end if
       this%relaxold = relax
       !
-      ! -- modify cooley to use exponential average of past changes
+      ! -- modify cooley to use weighted average of past changes
       this%bigchold = (DONE - this%gamma) * this%bigch  + this%gamma *         &
                       this%bigchold
-      ! -- this method does it right after newton - need to do it after
-      !    underrelaxation and backtracking.
       !
       ! -- compute new head after under-relaxation
       if (relax < DONE) then
         do n = 1, neq
+          !
+          ! -- skip inactive nodes
           if (active(n) < 1) cycle
+          !
+          ! -- update dependent variable
           delx = x(n) - xtemp(n)
           this%dxold(n) = delx
           x(n) = xtemp(n) + relax * delx
@@ -3960,12 +4001,14 @@ contains
     ! -- option for using delta-bar-delta scheme to under-relax for all equations
     else if (this%nonmeth == 3) then
       do n = 1, neq
+        !
         ! -- skip inactive nodes
         if (active(n) < 1) cycle
         !
         ! -- compute step-size (delta x) and initialize d-b-d parameters
         delx = x(n) - xtemp(n)
-
+        !
+        ! -- initialize values for first iteration
         if ( kiter == 1 ) then
           this%wsave(n) = DONE
           this%hchold(n) = DEM20
@@ -3974,7 +4017,7 @@ contains
         !
         ! -- compute new relaxation term as per delta-bar-delta
         ww = this%wsave(n)
-
+        !
         ! for flip-flop condition, decrease factor
         if ( this%deold(n)*delx < DZERO ) then
           ww = this%theta * this%wsave(n)
@@ -3984,11 +4027,9 @@ contains
         end if
         if ( ww > DONE ) ww = DONE
         this%wsave(n) = ww
-
-        ! -- compute exponential average of past changes in hchold
+        !
+        ! -- compute weighted average of past changes in hchold
         if (kiter == 1) then
-          ! -- this method does it right after newton
-          ! -- need to do it after underrelaxation and backtracking.
           this%hchold(n) = delx
         else
           this%hchold(n) = (DONE - this%gamma) * delx +                        &

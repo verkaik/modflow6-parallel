@@ -4,7 +4,7 @@
 
   module TdisModule
 
-  use KindModule, only: DP, I4B
+  use KindModule, only: DP, I4B, LGP
   use SimVariablesModule, only: iout
   use BlockParserModule, only: BlockParserType
   use ConstantsModule, only: LINELENGTH, LENDATETIME, VALL
@@ -12,32 +12,30 @@
   implicit none
   !
   private
-  public :: subtiming_begin
-  public :: subtiming_end
   public :: tdis_cr
   public :: tdis_tu
   public :: tdis_ot
   public :: tdis_da
   !
-  integer(I4B), public, pointer                            :: nper               !number of stress period
-  integer(I4B), public, pointer                            :: itmuni             !flag indicating time units
-  integer(I4B), public, pointer                            :: kper               !current stress period number
-  integer(I4B), public, pointer                            :: kstp               !current time step number
-  logical, public, pointer                                 :: readnewdata        !flag indicating time to read new data
-  logical, public, pointer                                 :: endofperiod        !flag indicating end of stress period
-  logical, public, pointer                                 :: endofsimulation    !flag indicating end of simulation
-  real(DP), public, pointer                                :: delt               !length of the current time step
-  real(DP), public, pointer                                :: pertim             !time relative to start of stress period
-  real(DP), public, pointer                                :: totim              !time relative to start of simulation
-  real(DP), public, pointer                                :: totimc             !simulation time at start of time step
-  real(DP), public, pointer                                :: deltsav            !saved value for delt, used for subtiming
-  real(DP), public, pointer                                :: totimsav           !saved value for totim, used for subtiming
-  real(DP), public, pointer                                :: pertimsav          !saved value for pertim, used for subtiming
-  real(DP), public, pointer                                :: totalsimtime       !time at end of simulation
-  real(DP), public, dimension(:), pointer, contiguous      :: perlen             !length of each stress period
-  integer(I4B), public, dimension(:), pointer, contiguous  :: nstp               !number of time steps in each stress period
-  real(DP), public, dimension(:), pointer, contiguous      :: tsmult             !time step multiplier for each stress period
-  character(len=LENDATETIME), pointer                      :: datetime0          !starting date and time for the simulation
+  integer(I4B), public, pointer                            :: nper               !< number of stress period
+  integer(I4B), public, pointer                            :: itmuni             !< flag indicating time units
+  integer(I4B), public, pointer                            :: kper               !< current stress period number
+  integer(I4B), public, pointer                            :: kstp               !< current time step number
+  logical(LGP), public, pointer                            :: readnewdata        !< flag indicating time to read new data
+  logical(LGP), public, pointer                            :: endofperiod        !< flag indicating end of stress period
+  logical(LGP), public, pointer                            :: endofsimulation    !< flag indicating end of simulation
+  real(DP), public, pointer                                :: delt               !< length of the current time step
+  real(DP), public, pointer                                :: pertim             !< time relative to start of stress period
+  real(DP), public, pointer                                :: totim              !< time relative to start of simulation
+  real(DP), public, pointer                                :: totimc             !< simulation time at start of time step
+  real(DP), public, pointer                                :: deltsav            !< saved value for delt, used for subtiming
+  real(DP), public, pointer                                :: totimsav           !< saved value for totim, used for subtiming
+  real(DP), public, pointer                                :: pertimsav          !< saved value for pertim, used for subtiming
+  real(DP), public, pointer                                :: totalsimtime       !< time at end of simulation
+  real(DP), public, dimension(:), pointer, contiguous      :: perlen             !< length of each stress period
+  integer(I4B), public, dimension(:), pointer, contiguous  :: nstp               !< number of time steps in each stress period
+  real(DP), public, dimension(:), pointer, contiguous      :: tsmult             !< time step multiplier for each stress period
+  character(len=LENDATETIME), pointer                      :: datetime0          !< starting date and time for the simulation
   !
   type(BlockParserType), private :: parser
 
@@ -105,7 +103,8 @@
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MpiExchangeGenModule, only: writestd !PAR
-    use ConstantsModule, only: DONE, DZERO
+    use ConstantsModule, only: DONE, DZERO, MNORMAL, MVALIDATE
+    use SimVariablesModule, only: isim_mode
     use GenericUtilitiesModule, only: sim_message
     ! -- local
     character(len=LINELENGTH) :: line
@@ -118,11 +117,13 @@
     character(len=*),parameter :: fmttsi =                                     &
       "(1X,/28X,'INITIAL TIME STEP SIZE =',G15.7)"
     character(len=*),parameter :: fmtspts =                                    &
-      "(' Solving:  Stress period: ',i5,4x,'Time step: ',i5,4x)"
+      "('    Solving:  Stress period: ',i5,4x,'Time step: ',i5,4x)"
+    character(len=*),parameter :: fmtvspts =                                   &
+      "(' Validating:  Stress period: ',i5,4x,'Time step: ',i5,4x)"
 ! ------------------------------------------------------------------------------
     !
     ! -- Increment kstp and kper
-    if(endofperiod) then
+    if (endofperiod) then
       kstp = 1
       kper = kper + 1
     else
@@ -145,7 +146,7 @@
               (DONE - tsmult(kper) ** nstp(kper))
       !
       ! -- Print length of first time step
-       write (iout, fmttsi) delt
+       write(iout, fmttsi) delt
       !
       ! -- Initialize pertim (Elapsed time within stress period)
       pertim = DZERO
@@ -159,11 +160,18 @@
     endif
     !
     ! -- Calculate delt for kstp > 1
-    if(kstp /= 1) delt = tsmult(kper) * delt
+    if (kstp /= 1) then
+      delt = tsmult(kper) * delt
+    end if
     !
     ! -- Print stress period and time step to console
     if (writestd) then !PAR
-      write(line, fmtspts) kper, kstp
+      select case(isim_mode)
+        case(MVALIDATE)  
+          write(line, fmtvspts) kper, kstp
+        case(MNORMAL)
+          write(line, fmtspts) kper, kstp
+      end select
       call sim_message(line, level=VALL)
     endif !PAR
     !
@@ -177,8 +185,10 @@
     pertim = pertimsav + delt
     !
     ! -- End of stress period and/or simulation?
-    if(kstp == nstp(kper)) endofperiod = .true.
-    if(endofperiod .and. kper==nper) then
+    if (kstp == nstp(kper)) then
+      endofperiod = .true.
+    end if
+    if (endofperiod .and. kper==nper) then
       endofsimulation = .true.
       totim = totalsimtime  
     end if
@@ -561,7 +571,7 @@
         perlen(n) = parser%GetDouble()
         nstp(n) = parser%GetInteger()
         tsmult(n) = parser%GetDouble()
-        write (iout, fmtrow) n, perlen(n), nstp(n), tsmult(n)
+        write(iout, fmtrow) n, perlen(n), nstp(n), tsmult(n)
         totalsimtime = totalsimtime + perlen(n)
       enddo
       !
@@ -679,55 +689,6 @@
     ! -- Return
     return
   end subroutine check_tdis_timing
-
-  subroutine subtiming_begin(isubtime, nsubtimes, idsolution)
-! ******************************************************************************
-! subtiming_begin -- start subtiming
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    integer(I4B), intent(in) :: isubtime
-    integer(I4B), intent(in) :: nsubtimes
-    integer(I4B), intent(in) :: idsolution
-    ! -- formats
-    character(len=*), parameter :: fmtsub = "(a, i0, a, a, i0, a, i0, a)"
-    character(len=*), parameter :: fmtdelt = "(a, i0, a, 1pg15.6)"
-! ------------------------------------------------------------------------------
-    !
-    ! -- Save and calculate delt if first subtimestep
-    if(isubtime == 1) then
-      deltsav = delt
-      delt = delt / nsubtimes
-    else
-      totimc = totimc + delt
-    endif
-    !
-    ! -- Write message
-    if(nsubtimes > 1) then
-      write(iout, fmtsub) 'SOLUTION ID (', idsolution, '): ', &
-                     'SUB-TIMESTEP ', isubtime, ' OF ', nsubtimes, ' TOTAL'
-      write(iout, fmtdelt) 'SOLUTION ID (', idsolution, '): DELT = ', delt
-    endif
-    !
-    ! -- return
-    return
-  end subroutine subtiming_begin
-
-  subroutine subtiming_end()
-! ******************************************************************************
-! subtiming_end -- start subtiming
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    !
-    ! -- Reset delt to what it was prior to subtiming
-    delt = deltsav
-    !
-    ! -- return
-    return
-  end subroutine subtiming_end
 
 end module TdisModule
 

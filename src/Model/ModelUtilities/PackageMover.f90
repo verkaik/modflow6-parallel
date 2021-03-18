@@ -1,7 +1,7 @@
 module PackageMoverModule
   
   use KindModule,          only: DP, I4B
-  use ConstantsModule,     only: LENORIGIN, DZERO
+  use ConstantsModule,     only: LENMEMPATH, DZERO
   use MemoryManagerModule, only: mem_allocate, mem_reallocate, mem_setptr,     &
                                  mem_deallocate
 
@@ -13,10 +13,11 @@ module PackageMoverModule
   
   type PackageMoverType
     
-    character(len=LENORIGIN)                     :: origin
-    integer, pointer                             :: nproviders
-    integer, pointer                             :: nreceivers
+    character(len=LENMEMPATH)                    :: memoryPath                !< the location in the memory manager where the variables are stored
+    integer(I4B), pointer                        :: nproviders
+    integer(I4B), pointer                        :: nreceivers
     logical, pointer                             :: bympi !PAR
+    integer(I4B), dimension(:), pointer, contiguous :: iprmap => null()       !< map between id1 and feature (needed for lake to map from outlet to lake number)
     real(DP), dimension(:), pointer, contiguous  :: qtformvr      => null()
     real(DP), dimension(:), pointer, contiguous  :: qformvr       => null()
     real(DP), dimension(:), pointer, contiguous  :: qtomvr        => null()
@@ -38,54 +39,58 @@ module PackageMoverModule
   
   contains
   
-  subroutine set_packagemover_pointer(packagemover, origin)
+  subroutine set_packagemover_pointer(packagemover, memPath)
     use MpiExchangeGenModule, only: parallelrun !PAR
     use MpiExchangeModule, only: MpiWorld !PAR
     use SimModule, only: ustop !PAR
     use ConstantsModule, only: LENMODELNAME, LENPACKAGENAME !PAR
+    use MemoryHelperModule, only: create_mem_path, split_mem_path_ff !PAR
     type(PackageMoverType), intent(inout) :: packagemover
-    character(len=*), intent(in) :: origin
+    character(len=*), intent(in) :: memPath
     logical :: lok !PAR
     character(len=LENMODELNAME+LENPACKAGENAME+1) :: mname, pname !PAR
-    !
+
     if (parallelrun) then !PAR
-      read(origin,*) mname, pname !PAR
+      call split_mem_path_ff(memPath, mname, pname) !PAR
       call MpiWorld%mpi_getmodel(mname, lok) !PAR
       if (.not.lok) then !PAR
         call ustop('Program error set_packagemover_pointer.') !PAR
       end if !PAR
-      packagemover%origin = trim(mname)//' '//trim(pname)
+      packagemover%memoryPath = create_mem_path(trim(mname), trim(pname)) !PAR
     else !PAR
-      packagemover%origin = origin
+      packagemover%memoryPath = memPath
     end if !PAR
     !
-    call mem_setptr(packagemover%nproviders, 'NPROVIDERS', packagemover%origin) !PAR
-    call mem_setptr(packagemover%nreceivers, 'NRECEIVERS', packagemover%origin) !PAR
-    call mem_setptr(packagemover%qtformvr, 'QTFORMVR', packagemover%origin) !PAR
-    call mem_setptr(packagemover%qformvr, 'QFORMVR', packagemover%origin) !PAR
-    call mem_setptr(packagemover%qtomvr, 'QTOMVR', packagemover%origin) !PAR
-    call mem_setptr(packagemover%qfrommvr, 'QFROMMVR', packagemover%origin) !PAR
+    call mem_setptr(packagemover%nproviders, 'NPROVIDERS', packagemover%memoryPath)
+    call mem_setptr(packagemover%nreceivers, 'NRECEIVERS', packagemover%memoryPath)
+    call mem_setptr(packagemover%iprmap, 'IPRMAP', packagemover%memoryPath)
+    call mem_setptr(packagemover%qtformvr, 'QTFORMVR', packagemover%memoryPath)
+    call mem_setptr(packagemover%qformvr, 'QFORMVR', packagemover%memoryPath)
+    call mem_setptr(packagemover%qtomvr, 'QTOMVR', packagemover%memoryPath)
+    call mem_setptr(packagemover%qfrommvr, 'QFROMMVR', packagemover%memoryPath)
   end subroutine set_packagemover_pointer
 
   subroutine nulllify_packagemover_pointer(packagemover)
     type(PackageMoverType), intent(inout) :: packagemover
-    packagemover%origin = ''
+    packagemover%memoryPath = ''
     packagemover%nproviders => null()
     packagemover%nreceivers => null()
+    packagemover%iprmap => null()
     packagemover%qtformvr => null()
     packagemover%qformvr => null()
     packagemover%qtomvr => null()
     packagemover%qfrommvr => null()
   end subroutine nulllify_packagemover_pointer
 
-  subroutine ar(this, nproviders, nreceivers, origin, bympi) !PAR
+  subroutine ar(this, nproviders, nreceivers, memoryPath, bympi) !PAR
     class(PackageMoverType) :: this
     integer, intent(in) :: nproviders
     integer, intent(in) :: nreceivers
-    character(len=*), intent(in) :: origin
+    character(len=*), intent(in) :: memoryPath
     logical, intent(in) :: bympi !PAR
     !
-    call this%allocate_scalars(origin)
+    this%memoryPath = memoryPath
+    call this%allocate_scalars()
     this%nproviders = nproviders
     this%nreceivers = nreceivers
     this%bympi      = bympi !PAR
@@ -144,6 +149,7 @@ module PackageMoverModule
     class(PackageMoverType) :: this
     !
     ! -- arrays
+    call mem_deallocate(this%iprmap)
     call mem_deallocate(this%qtformvr)
     call mem_deallocate(this%qformvr)
     call mem_deallocate(this%qtomvr)
@@ -153,21 +159,22 @@ module PackageMoverModule
     call mem_deallocate(this%nproviders)
     call mem_deallocate(this%nreceivers)
     !
+    ! -- pointers
+    nullify(this%iprmap)
+    !
     ! -- return
     return
   end subroutine da
   
-  subroutine allocate_scalars(this, origin)
+  subroutine allocate_scalars(this)
     class(PackageMoverType) :: this
-    character(len=*), intent(in) :: origin
     !
-    call mem_allocate(this%nproviders, 'NPROVIDERS', origin)
-    call mem_allocate(this%nreceivers, 'NRECEIVERS', origin)
-    call mem_allocate(this%bympi, 'BYMPI', origin) !PAR
+    call mem_allocate(this%nproviders, 'NPROVIDERS', this%memoryPath)
+    call mem_allocate(this%nreceivers, 'NRECEIVERS', this%memoryPath)
+    call mem_allocate(this%bympi, 'BYMPI', this%memoryPath) !PAR
     !
     this%nproviders = 0
     this%nreceivers = 0
-    this%origin = origin
     this%bympi = .false. !PAR
     !
     ! -- return
@@ -178,13 +185,15 @@ module PackageMoverModule
     class(PackageMoverType) :: this
     integer(I4B) :: i
     !
-    call mem_allocate(this%qtformvr, this%nproviders, 'QTFORMVR', this%origin)
-    call mem_allocate(this%qformvr, this%nproviders, 'QFORMVR', this%origin)
-    call mem_allocate(this%qtomvr, this%nproviders, 'QTOMVR', this%origin)
-    call mem_allocate(this%qfrommvr, this%nreceivers, 'QFROMMVR', this%origin)
+    call mem_allocate(this%iprmap, this%nproviders, 'IPRMAP', this%memoryPath)
+    call mem_allocate(this%qtformvr, this%nproviders, 'QTFORMVR', this%memoryPath)
+    call mem_allocate(this%qformvr, this%nproviders, 'QFORMVR', this%memoryPath)
+    call mem_allocate(this%qtomvr, this%nproviders, 'QTOMVR', this%memoryPath)
+    call mem_allocate(this%qfrommvr, this%nreceivers, 'QFROMMVR', this%memoryPath)
     !
     ! -- initialize
     do i = 1, this%nproviders
+      this%iprmap(i) = i
       this%qtformvr(i) = DZERO
       this%qformvr(i) = DZERO
       this%qtomvr(i) = DZERO

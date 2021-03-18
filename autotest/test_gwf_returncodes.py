@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import subprocess
 from nose.tools import raises
@@ -16,6 +17,9 @@ import targets
 mf6_exe = os.path.abspath(targets.target_dict['mf6'])
 name = 'gwf_ret_codes01'
 ws = os.path.join('temp', name)
+app = 'mf6'
+if sys.platform.lower() == 'win32':
+    app += '.exe'
 
 
 def run_mf6(argv, ws):
@@ -80,11 +84,11 @@ def idomain_runtime_error():
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration=imsla,
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -102,12 +106,6 @@ def idomain_runtime_error():
     npf = flopy.mf6.ModflowGwfnpf(gwf, save_flows=False,
                                   icelltype=1,
                                   k=hk)
-
-    # chd files
-    chd = flopy.mf6.modflow.mfgwfchd.ModflowGwfchd(gwf,
-                                                   maxbound=maxchd,
-                                                   stress_period_data=cd6,
-                                                   save_flows=False)
 
     # output control
     oc = flopy.mf6.ModflowGwfoc(gwf,
@@ -150,7 +148,7 @@ def test_unknown_keyword_error():
     returncode, buff = run_mf6([mf6_exe, '--unknown_keyword'], ws)
     msg = 'could not run {}'.format('unknown_keyword')
     if returncode != 0:
-        err_str = 'mf6: illegal option'
+        err_str = '{}: illegal option'.format(app)
         err = any(err_str in s for s in buff)
         if err:
             raise RuntimeError(msg)
@@ -173,28 +171,28 @@ def run_argv(arg, return_str):
 
 def test_help_argv():
     argv = ['-h', '--help', '-?']
-    return_str = 'mf6 [options]     retrieve program information'
+    return_str = '{} [options]     retrieve program information'.format(app)
     for arg in argv:
         yield run_argv, arg, return_str
 
 
 def test_version_argv():
     argv = ['-v', '--version']
-    return_str = 'mf6: 6'
+    return_str = '{}: 6'.format(app)
     for arg in argv:
         yield run_argv, arg, return_str
 
 
 def test_develop_argv():
     argv = ['-dev', '--develop']
-    return_str = 'mf6: develop version'
+    return_str = '{}: develop version'.format(app)
     for arg in argv:
         yield run_argv, arg, return_str
 
 
 def test_compiler_argv():
     argv = ['-c', '--compiler']
-    return_str = 'mf6: MODFLOW 6 compiled'
+    return_str = '{}: MODFLOW 6 compiled'.format(app)
     for arg in argv:
         yield run_argv, arg, return_str
 

@@ -16,7 +16,7 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 ex = ['csub_sub02a', 'csub_sub02b', 'csub_sub02c', 'csub_sub02d',
@@ -33,10 +33,10 @@ cdelay = [False, True, False, True, True]
 ndelaycells = [None, 19, None, 19, 19]
 
 # run all examples on Travis
-# travis = [True for idx in range(len(exdirs))]
+# continuous_integration = [True for idx in range(len(exdirs))]
 # the delay bed problems only run on the development version of MODFLOW-2005
 # set travis to True when version 1.13.0 is released
-travis = [True, False, True, False, False]
+continuous_integration = [True, False, True, False, False]
 
 # set replace_exe to None to use default executable
 replace_exe = {'mf2005': 'mf2005devdbl'}
@@ -118,7 +118,7 @@ def get_model(idx, dir):
         cdelays = 'nodelay'
 
     sub6 = [[0, (0, 0, 0), cdelays, ini_stress, thick[0],
-             1., cc, cr, theta, kv, 0.]]
+             1., cc, cr, theta, kv, 0., 'db01']]
 
     # build MODFLOW 6 files
     ws = dir
@@ -135,11 +135,11 @@ def get_model(idx, dir):
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration='CG',
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -173,7 +173,10 @@ def get_model(idx, dir):
                                   save_flows=False)
 
     # csub files
-    csub = flopy.mf6.ModflowGwfcsub(gwf, head_based=True,
+    csub = flopy.mf6.ModflowGwfcsub(gwf,
+                                    print_input=True,
+                                    boundnames=True,
+                                    head_based=True,
                                     ndelaycells=ndelaycells[idx],
                                     ninterbeds=1,
                                     beta=0., cg_ske_cr=cg_ske,
@@ -229,10 +232,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -244,7 +247,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exe_dict=r_exe)
 

@@ -18,7 +18,7 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 ex = ['csub_wc01a', 'csub_wc02b']
@@ -35,7 +35,7 @@ paktest = 'csub'
 isnewton = [None, '']
 
 # set travis to True when version 1.13.0 is released
-travis = [True for s in ex]
+continuous_integration = [True for s in ex]
 
 # set replace_exe to None to use default executable
 replace_exe = None
@@ -60,6 +60,8 @@ shape3d = (nlay, nrow, ncol)
 size3d = nlay * nrow * ncol
 nactive = np.count_nonzero(ib0) * nlay
 
+print(nlay, nrow, ncol)
+
 delr, delc = 2000., 2000.
 top = 150.
 botm = [50., -100., -150., -350.]
@@ -68,8 +70,9 @@ strt = 100.
 # create ibound/idomain
 ib = []
 for k in range(nlay):
-    ib.append(ib0.astype(np.int).copy())
-
+    ib.append(ib0.astype(int).copy())
+ib = np.array(ib)
+print(ib[0])
 
 hnoflo = 1e30
 hdry = -1e30
@@ -95,12 +98,15 @@ w1 = []
 ws0 = []
 ws1 = []
 for idx, (k, i, j) in enumerate(zip(wnlays, wnrows, wncols)):
+    if ib0[i, j] < 1:
+        continue
     w0.append((k, i, j, wrates0[idx]))
     w1.append((k, i, j, wrates1[idx]))
     ws0.append(((k, i, j), wrates0[idx]))
     ws1.append(((k, i, j), wrates1[idx]))
 wd = {0: w0, 1: w1, 2: w0}
 wd6 = {0: ws0, 1: ws1, 2: ws0}
+print(wd6)
 
 # build chd stress period data
 chead = 100.
@@ -192,11 +198,11 @@ def build_mf6(idx, ws, interbed=False):
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration='BICGSTAB',
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -380,7 +386,7 @@ def cbc_compare(sim):
             qout = 0.
             v = cobj.get_data(kstpkper=k, text=text)[0]
             if isinstance(v, np.recarray):
-                vt = np.zeros(size3d, dtype=np.float)
+                vt = np.zeros(size3d, dtype=float)
                 for jdx, node in enumerate(v['node']):
                     vt[node - 1] += v['q'][jdx]
                 v = vt.reshape(shape3d)
@@ -400,7 +406,7 @@ def cbc_compare(sim):
             key = '{}_OUT'.format(text)
             d[key][idx] = qout
 
-    diff = np.zeros((nbud, len(bud_lst)), dtype=np.float)
+    diff = np.zeros((nbud, len(bud_lst)), dtype=float)
     for idx, key in enumerate(bud_lst):
         diff[:, idx] = d0[key] - d[key]
     diffmax = np.abs(diff).max()
@@ -448,10 +454,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -463,7 +469,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exe_dict=r_exe,
                                        exfunc=eval_wcomp)

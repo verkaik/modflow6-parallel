@@ -1,10 +1,11 @@
 module NumericalExchangeModule
 
   use KindModule,            only: DP, I4B
+  use SimVariablesModule,    only: errmsg
   use BaseExchangeModule,    only: BaseExchangeType
   use NumericalModelModule,  only: NumericalModelType
   use BaseExchangeModule,    only: BaseExchangeType, AddBaseExchangeToList
-  use ConstantsModule,       only: LINELENGTH, DZERO
+  use ConstantsModule,       only: LINELENGTH, LENAUXNAME, DZERO
   use ListModule,            only: ListType
   use BlockParserModule,     only: BlockParserType
 
@@ -32,7 +33,8 @@ module NumericalExchangeModule
     class(NumericalModelType), pointer              :: m1        => null()       !pointer to model 1
     class(NumericalModelType), pointer              :: m2        => null()       !pointer to model 2
     integer(I4B), pointer                           :: naux      => null()       !number of auxiliary variables
-    character(len=16), allocatable, dimension(:)    :: auxname                   !array of auxiliary variable names
+    character(len=LENAUXNAME), dimension(:), pointer,                         &
+                                 contiguous :: auxname => null()                 !vector of auxname
     real(DP), dimension(:, :), pointer, contiguous  :: auxvar    => null()       !array of auxiliary variable values
     type(BlockParserType)                           :: parser                    !block parser
     logical, pointer                                :: m2_bympi                  ! flag indicating that model 2 is of type halo !PAR 
@@ -50,7 +52,6 @@ module NumericalExchangeModule
     procedure :: exg_cc
     procedure :: exg_cq
     procedure :: exg_bd
-    procedure :: exg_cnvg
     procedure :: exg_ot
     procedure :: exg_da
     procedure :: allocate_scalars
@@ -176,7 +177,7 @@ contains
     return
   end subroutine exg_ar
 
-  subroutine exg_ad(this, isolnid, kpicard, isubtime)
+  subroutine exg_ad(this)
 ! ******************************************************************************
 ! exg_ad -- Advance
 ! ******************************************************************************
@@ -185,9 +186,6 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- dummy
     class(NumericalExchangeType) :: this
-    integer(I4B), intent(in) :: isolnid
-    integer(I4B), intent(in) :: kpicard
-    integer(I4B), intent(in) :: isubtime
     ! -- local
 ! ------------------------------------------------------------------------------
     !
@@ -195,7 +193,7 @@ contains
     ! -- return
     return
   end subroutine exg_ad
-
+  
   subroutine exg_cf(this, kiter)
 ! ******************************************************************************
 ! exg_cf -- Calculate conductance, and for explicit exchanges, set the
@@ -242,16 +240,16 @@ contains
           amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i) !PAR
         enddo !PAR
       else !PAR
-        do i = 1, this%nexg
-          amatsln(this%idxglo(i)) = this%cond(i)
-          amatsln(this%idxsymglo(i)) = this%cond(i)
-          nodem1sln = this%nodem1(i) + this%m1%moffset
-          nodem2sln = this%nodem2(i) + this%m2%moffset
-          idiagsln = iasln(nodem1sln)
-          amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
-          idiagsln = iasln(nodem2sln)
-          amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
-        enddo
+      do i = 1, this%nexg
+        amatsln(this%idxglo(i)) = this%cond(i)
+        amatsln(this%idxsymglo(i)) = this%cond(i)
+        nodem1sln = this%nodem1(i) + this%m1%moffset
+        nodem2sln = this%nodem2(i) + this%m2%moffset
+        idiagsln = iasln(nodem1sln)
+        amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
+        idiagsln = iasln(nodem2sln)
+        amatsln(idiagsln) = amatsln(idiagsln) - this%cond(i)
+      enddo
       endif !PAR
     else
       ! -- nothing to do here
@@ -340,27 +338,6 @@ contains
     return
   end subroutine exg_bd
 
-  subroutine exg_cnvg(this, isolnid, icnvg)
-! ******************************************************************************
-! exg_cnvg -- Check for convergence for explicit exchange
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use ConstantsModule, only: DZERO
-    ! -- dummy
-    class(NumericalExchangeType) :: this
-    integer(I4B), intent(in) :: isolnid
-    integer(I4B), intent(inout) :: icnvg
-    ! -- local
-! ------------------------------------------------------------------------------
-    !
-    !
-    ! -- return
-    return
-  end subroutine exg_cnvg
-
   subroutine exg_ot(this)
 ! ******************************************************************************
 ! exg_ot
@@ -413,7 +390,6 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate
-    use ConstantsModule, only: LENORIGIN
     ! -- dummy
     class(NumericalExchangeType) :: this
     ! -- local
@@ -421,15 +397,14 @@ contains
     !
     allocate(this%filename)
     allocate(this%typename)
-    call mem_allocate(this%implicit, 'IMPLICIT', this%name)
-    call mem_allocate(this%iprpak, 'IPRPAK', this%name)
-    call mem_allocate(this%iprflow, 'IPRFLOW', this%name)
-    call mem_allocate(this%ipakcb, 'IPAKCB', this%name)
-    call mem_allocate(this%nexg, 'NEXG', this%name)
-    call mem_allocate(this%naux, 'NAUX', this%name)
-    call mem_allocate(this%m2_bympi,'M2_BYMPI', this%name) !PAR
-    call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%name) !PAR
-    allocate(this%auxname(0))
+    call mem_allocate(this%implicit, 'IMPLICIT', this%memoryPath)
+    call mem_allocate(this%iprpak, 'IPRPAK', this%memoryPath)
+    call mem_allocate(this%iprflow, 'IPRFLOW', this%memoryPath)
+    call mem_allocate(this%ipakcb, 'IPAKCB', this%memoryPath)
+    call mem_allocate(this%nexg, 'NEXG', this%memoryPath)
+    call mem_allocate(this%naux, 'NAUX', this%memoryPath)
+    call mem_allocate(this%m2_bympi,'M2_BYMPI', this%memoryPath) !PAR
+    call mem_allocate(this%m1m2_swap , 'M1M2_SWAP', this%memoryPath) !PAR
     this%filename = ''
     this%typename = ''
     this%implicit = .false.
@@ -454,24 +429,18 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate
-    use ConstantsModule, only: LENORIGIN
     ! -- dummy
     class(NumericalExchangeType) :: this
-    ! -- local
-    character(len=LENORIGIN) :: origin
 ! ------------------------------------------------------------------------------
     !
-    ! -- create the origin name
-    origin = trim(this%name)
-    !
-    call mem_allocate(this%nodem1, this%nexg, 'NODEM1', origin)
-    call mem_allocate(this%nodem2, this%nexg, 'NODEM2', origin)
-    call mem_allocate(this%nodeum2, this%nexg, 'NODEUM2', origin) !PAR
-    call mem_allocate(this%cond, this%nexg, 'COND', origin)
-    call mem_allocate(this%newtonterm, this%nexg, 'NEWTONTERM', origin) !PAR
-    call mem_allocate(this%idxglo, this%nexg, 'IDXGLO', origin)
-    call mem_allocate(this%idxsymglo, this%nexg, 'IDXSYMGLO', origin)
-    call mem_allocate(this%auxvar, this%naux, this%nexg, 'AUXVAR', origin)
+    call mem_allocate(this%nodem1, this%nexg, 'NODEM1', this%memoryPath)
+    call mem_allocate(this%nodem2, this%nexg, 'NODEM2', this%memoryPath)
+    call mem_allocate(this%nodeum2, this%nexg, 'NODEUM2', this%memoryPath) !PAR
+    call mem_allocate(this%cond, this%nexg, 'COND', this%memoryPath)
+    call mem_allocate(this%newtonterm, this%nexg, 'NEWTONTERM', this%memoryPath) !PAR
+    call mem_allocate(this%idxglo, this%nexg, 'IDXGLO', this%memoryPath)
+    call mem_allocate(this%idxsymglo, this%nexg, 'IDXSYMGLO', this%memoryPath)
+    call mem_allocate(this%auxvar, this%naux, this%nexg, 'AUXVAR', this%memoryPath)
     !
     ! -- return
     return
@@ -486,7 +455,6 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_deallocate
-    use ConstantsModule, only: LENORIGIN
     ! -- dummy
     class(NumericalExchangeType) :: this
     ! -- local
@@ -501,12 +469,12 @@ contains
     call mem_deallocate(this%ipakcb)
     call mem_deallocate(this%nexg)
     call mem_deallocate(this%naux)
-    deallocate(this%auxname)
+    call mem_deallocate(this%auxname, 'AUXNAME', trim(this%memoryPath))
     !
     ! -- arrays
     call mem_deallocate(this%nodem1)
     call mem_deallocate(this%nodem2)
-    call mem_deallocate(this%nodeum2) !PAR
+   call mem_deallocate(this%nodeum2) !PAR
     call mem_deallocate(this%cond)
     call mem_deallocate(this%newtonterm) !PAR
     call mem_deallocate(this%idxglo)
@@ -525,7 +493,8 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
-    use ConstantsModule, only: LINELENGTH
+    use ConstantsModule, only: LINELENGTH, LENAUXNAME
+    use MemoryManagerModule, only: mem_allocate
     use SimModule, only: store_error, ustop
     use InputOutputModule, only: urdaux
     use ArrayHandlersModule, only: expandarray
@@ -533,9 +502,16 @@ contains
     class(NumericalExchangeType) :: this
     integer(I4B), intent(in) :: iout
     ! -- local
-    character(len=LINELENGTH) :: line, errmsg, keyword
-    integer(I4B) :: istart,istop,lloc,ierr
-    logical :: isfound, endOfBlock
+    character(len=:), allocatable :: line
+    character(len=LINELENGTH) :: keyword
+    character(len=LENAUXNAME), dimension(:), allocatable :: caux
+    logical :: isfound
+    logical :: endOfBlock
+    integer(I4B) :: istart
+    integer(I4B) :: istop
+    integer(I4B) :: lloc
+    integer(I4B) :: ierr
+    integer(I4B) :: n
 ! ------------------------------------------------------------------------------
     !
     ! -- get options block
@@ -547,14 +523,22 @@ contains
       write(iout,'(1x,a)')'PROCESSING EXCHANGE OPTIONS'
       do
         call this%parser%GetNextLine(endOfBlock)
-        if (endOfBlock) exit
+        if (endOfBlock) then
+          exit
+        end if
         call this%parser%GetStringCaps(keyword)
         select case (keyword)
           case('AUX', 'AUXILIARY')
             call this%parser%GetRemainingLine(line)
             lloc = 1
-            call urdaux(this%naux, this%parser%iuactive, iout, lloc, istart,   &
-                        istop, this%auxname, line, 'NM_NM_Exchange')
+            call urdaux(this%naux, this%parser%iuactive, iout, lloc, istart,     &
+                        istop, caux, line, 'NM_NM_Exchange')
+            call mem_allocate(this%auxname, LENAUXNAME, this%naux,               &
+                                'AUXNAME', trim(this%name))
+            do n = 1, this%naux
+              this%auxname(n) = caux(n)
+            end do
+            deallocate(caux)
           case ('PRINT_INPUT')
             this%iprpak = 1
             write(iout,'(4x,a)') &
@@ -564,14 +548,13 @@ contains
             write(iout,'(4x,a)') &
               'EXCHANGE FLOWS WILL BE PRINTED TO LIST FILES.'
           case default
-            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN EXCHANGE OPTION: ',    &
-                                     trim(keyword)
+            errmsg = "Unknown exchange option '" // trim(keyword) // "'."
             call store_error(errmsg)
             call this%parser%StoreErrorUnit()
             call ustop()
         end select
       end do
-      write(iout,'(1x,a)')'END OF EXCHANGE OPTIONS'
+      write(iout,'(1x,a)') 'END OF EXCHANGE OPTIONS'
     end if
     !
     ! -- return
@@ -593,7 +576,7 @@ contains
     class(NumericalExchangeType) :: this
     integer(I4B), intent(in) :: iout
     ! -- local
-    character(len=LINELENGTH) :: errmsg, keyword
+    character(len=LINELENGTH) :: keyword
     integer(I4B) :: ierr
     logical :: isfound, endOfBlock
 ! ------------------------------------------------------------------------------
@@ -604,7 +587,7 @@ contains
     !
     ! -- parse options block if detected
     if (isfound) then
-      write(iout,'(1x,a)')'PROCESSING EXCHANGE DIMENSIONS'
+      write(iout,'(1x,a)') 'PROCESSING EXCHANGE DIMENSIONS'
       do
         call this%parser%GetNextLine(endOfBlock)
         if (endOfBlock) exit
@@ -612,18 +595,17 @@ contains
         select case (keyword)
           case ('NEXG')
             this%nexg = this%parser%GetInteger()
-            write(iout,'(4x,a,i7)')'NEXG = ', this%nexg
+            write(iout,'(4x,a,i0)') 'NEXG = ', this%nexg
           case default
-            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN DIMENSION: ',          &
-                                     trim(keyword)
+            errmsg = "Unknown dimension '" // trim(keyword) // "'."
             call store_error(errmsg)
             call this%parser%StoreErrorUnit()
             call ustop()
         end select
       end do
-      write(iout,'(1x,a)')'END OF EXCHANGE DIMENSIONS'
+      write(iout,'(1x,a)') 'END OF EXCHANGE DIMENSIONS'
     else
-      call store_error('ERROR.  REQUIRED DIMENSIONS BLOCK NOT FOUND.')
+      call store_error('Required dimensions block not found.')
       call this%parser%StoreErrorUnit()
       call ustop()
     end if

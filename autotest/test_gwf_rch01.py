@@ -32,7 +32,7 @@ from framework import testing_framework
 from simulation import Simulation
 
 ex = ['rch01a', 'rch01b', 'rch01c']
-irch = [None, 1, [2, 2, 1, 2, 2]]
+irch = [None, 0, [1, 1, 0, 1, 1]]
 exdirs = []
 for s in ex:
     exdirs.append(os.path.join('temp', s))
@@ -49,7 +49,7 @@ def get_model(idx, dir):
 
     delr = delc = 1.
     strt = [[[25., 25., 75., 25., 25.], [25., 25., 75., 25., 25.]]]
-    strt = np.array(strt, dtype=np.float)
+    strt = np.array(strt, dtype=float)
 
     nouter, ninner = 100, 300
     hclose, rclose, relax = 1e-9, 1e-3, 0.97
@@ -78,11 +78,11 @@ def get_model(idx, dir):
                                print_option='ALL',
                                csv_outer_output_filerecord=csv0,
                                csv_inner_output_filerecord=csv1,
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='DBD',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration='BICGSTAB',
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -145,7 +145,6 @@ def eval_model(sim):
 
     answer = np.array([( 6, 1, 0. ), ( 7, 2, 0.1), ( 3, 3, 0.1), ( 9, 4, 0.1),
                        (10, 5, 0. )], dtype=records.dtype)
-
     assert np.allclose(records['node'], answer['node'])
     assert np.allclose(records['node2'], answer['node2'])
     assert np.allclose(records['q'], answer['q'])

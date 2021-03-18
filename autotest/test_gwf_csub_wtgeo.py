@@ -17,7 +17,7 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 ex = ['csub_wtgeoa', 'csub_wtgeob',
@@ -30,19 +30,22 @@ for s in ex:
 constantcv = [True for idx in range(len(exdirs))]
 
 cmppth = 'mfnwt'
-compare = [True, True, True, True, False, False, False]
+compare = [True, True, True, False, False, False, False]
 tops = [0., 0., 150., 0., 0., 150., 150.]
 ump = [None, None, True, None, True, None, True]
 iump = [0, 0, 1, 0, 1, 0, 1]
 eslag = [True for idx in range(len(exdirs) - 2)] + 2 * [False]
+# eslag = [True, True, True, False, True, False, False]
 headformulation = [True, False, False, True, True, False, False]
 ndc = [None, None, None, 19, 19, 19, 19]
 delay = [False, False, False, True, True, True, True]
+# newton = ["", "", "", "", "", None, ""]
+newton = ["" for idx in range(len(exdirs))]
 
 ddir = 'data'
 
 ## run all examples on Travis
-travis = [True for idx in range(len(exdirs))]
+continuous_integration = [True for idx in range(len(exdirs))]
 
 # set replace_exe to None to use default executable
 replace_exe = None
@@ -75,7 +78,7 @@ hdry = -1e30
 
 # calculate hk
 hk1fact = 1. / 50.
-hk1 = np.ones((nrow, ncol), dtype=np.float) * 0.5 * hk1fact
+hk1 = np.ones((nrow, ncol), dtype=float) * 0.5 * hk1fact
 hk1[0, :] = 1000. * hk1fact
 hk1[-1, :] = 1000. * hk1fact
 hk1[:, 0] = 1000. * hk1fact
@@ -91,8 +94,8 @@ ib = 1
 # solver options
 nouter, ninner = 500, 300
 hclose, rclose, relax = 1e-9, 1e-6, 1.
-newtonoptions = ''
-imsla = 'BICGSTAB'
+# newtonoptions = None
+imsla = "BICGSTAB"
 
 # chd data
 c = []
@@ -122,7 +125,7 @@ maxwel = len(wd[1])
 
 # recharge data
 q = 3000. / (delr * delc)
-v = np.zeros((nrow, ncol), dtype=np.float)
+v = np.zeros((nrow, ncol), dtype=float)
 for r, c in zip(wr, wc):
     v[r, c] = q
 rech = {0: v}
@@ -200,6 +203,18 @@ def get_model(idx, dir):
     # create tdis package
     tdis = flopy.mf6.ModflowTdis(sim, time_units='DAYS',
                                  nper=nper, perioddata=tdis_rc)
+
+    # create iterative model solution and register the gwf model with it
+    ims = flopy.mf6.ModflowIms(sim, print_option='ALL',
+                               outer_dvclose=hclose,
+                               outer_maximum=nouter,
+                               under_relaxation='NONE',
+                               inner_maximum=ninner,
+                               inner_dvclose=hclose, rcloserecord=rclose,
+                               linear_acceleration=imsla,
+                               scaling_method='NONE',
+                               reordering_method='NONE',
+                               relaxation_factor=relax)
 
     # create gwf model
     top = tops[idx]
@@ -363,20 +378,7 @@ def get_model(idx, dir):
         wc = 0.
 
     gwf = flopy.mf6.ModflowGwf(sim, modelname=name,
-                               newtonoptions=newtonoptions)
-
-    # create iterative model solution and register the gwf model with it
-    ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
-                               outer_maximum=nouter,
-                               under_relaxation='NONE',
-                               inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
-                               linear_acceleration=imsla,
-                               scaling_method='NONE',
-                               reordering_method='NONE',
-                               relaxation_factor=relax)
-    sim.register_ims_package(ims, [gwf.name])
+                               newtonoptions=newton[idx])
 
     dis = flopy.mf6.ModflowGwfdis(gwf, nlay=nlay, nrow=nrow, ncol=ncol,
                                   delr=delr, delc=delc,
@@ -631,7 +633,7 @@ def cbc_compare(sim):
             qout = 0.
             v = cobj.get_data(kstpkper=k, text=text)[0]
             if isinstance(v, np.recarray):
-                vt = np.zeros(size3d, dtype=np.float)
+                vt = np.zeros(size3d, dtype=float)
                 for jdx, node in enumerate(v['node']):
                     vt[node - 1] += v['q'][jdx]
                 v = vt.reshape(shape3d)
@@ -651,7 +653,7 @@ def cbc_compare(sim):
             key = '{}_OUT'.format(text)
             d[key][idx] = qout
 
-    diff = np.zeros((nbud, len(bud_lst)), dtype=np.float)
+    diff = np.zeros((nbud, len(bud_lst)), dtype=float)
     for idx, key in enumerate(bud_lst):
         diff[:, idx] = d0[key] - d[key]
     diffmax = np.abs(diff).max()
@@ -699,10 +701,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -714,7 +716,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exfunc=eval_comp,
                                        exe_dict=r_exe,

@@ -1,6 +1,6 @@
 Module MpiExchangeColModule
   use MpiExchangeGenModule, only: serialrun
-  use MpiWrapper, only: ColMemoryType
+  use MpiWrapperMemory, only: ColMemoryType
   
   implicit none
 
@@ -29,8 +29,9 @@ contains
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: LINELENGTH, LENMODELNAME
+    use ConstantsModule, only: LINELENGTH, LENMEMPATH, LENMODELNAME
     use SimModule, only: store_error, store_error_unit, ustop
+    use MemoryHelperModule, only: split_mem_path_ff
     ! -- dummy
     character(len=*), intent(in) :: modelname
     logical, intent(out) :: ldis, ldisu, ldisv
@@ -39,7 +40,7 @@ contains
     character(len=LENMODELNAME) :: m, mh
     character(len=4) :: dis_type
     logical :: lfound
-    integer :: i, ios
+    integer :: i
 ! ------------------------------------------------------------------------------
     ldis  = .false.
     ldisu = .false.
@@ -55,8 +56,8 @@ contains
     !
     lfound = .false.
     do i = 1, n_recv
-      read(cmt_recv(i)%origin,*,iostat=ios) m, dis_type
-      if (m == mh .and. ios == 0) then
+      call split_mem_path_ff(cmt_recv(i)%path, m, dis_type)
+      if ((m == mh) .and. (len_trim(dis_type) > 0)) then
         select case(dis_type)
           case ('DIS')
             ldis = .true.
@@ -94,6 +95,7 @@ contains
     ! -- modules
     use ConstantsModule, only: LINELENGTH, LENMODELNAME
     use SimModule, only: store_error, store_error_unit, ustop
+    use MemoryHelperModule, only: split_mem_path_ff
     ! -- dummy
     character(len=*), intent(in) :: modelname
     character(len=*), intent(out) :: disstr
@@ -116,8 +118,8 @@ contains
     !
     lfound = .false.
     do i = 1, n_recv
-      read(cmt_recv(i)%origin,*,iostat=ios) m, dis_type
-      if (m == mh .and. ios == 0) then
+      call split_mem_path_ff(cmt_recv(i)%path, m, dis_type)
+      if ((m == mh) .and. (len_trim(dis_type) > 0)) then
         select case(dis_type)
           case ('DIS')
             lfound = .true.

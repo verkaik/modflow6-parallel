@@ -40,7 +40,7 @@ module GwfIcModule
     ! -- Create the object
     allocate(ic)
     !
-    ! -- create name and origin
+    ! -- create name and memory path
     call ic%set_names(1, name_model, 'IC', 'IC')
     !
     ! -- Allocate scalars
@@ -85,7 +85,7 @@ module GwfIcModule
     !
     ! -- Print a message identifying the initial conditions package.
     if (.not.flag_halo) then !PAR
-      write(this%iout,1) this%inunit
+    write(this%iout,1) this%inunit
     endif !PAR
   1 format(1x,/1x,'IC -- INITIAL CONDITIONS PACKAGE, VERSION 8, 3/28/2015', &
       ' INPUT READ FROM UNIT ',i0)
@@ -95,12 +95,12 @@ module GwfIcModule
     !
     ! -- Read options
     if (.not.flag_halo) then !PAR
-      call this%read_options()
+    call this%read_options()
     endif !PAR
     !
     ! -- Read data
     if (.not.flag_halo) then !PAR
-      call this%read_data()
+    call this%read_data()
     endif !PAR
     !
     ! -- Assign x equal to strt
@@ -153,7 +153,7 @@ module GwfIcModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate
-    call mem_allocate(this%strt, nodes, 'STRT', this%origin)
+    call mem_allocate(this%strt, nodes, 'STRT', this%memoryPath)
     !
     ! -- Return
     return
@@ -218,7 +218,8 @@ module GwfIcModule
     ! -- dummy
     class(GwfIcType) :: this
     ! -- local
-    character(len=LINELENGTH) :: line, errmsg, keyword
+    character(len=LINELENGTH) :: errmsg, keyword
+    character(len=:), allocatable :: line
     integer(I4B) :: istart, istop, lloc, ierr
     logical :: isfound, endOfBlock
     character(len=24) :: aname(1)

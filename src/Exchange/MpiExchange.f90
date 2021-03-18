@@ -3,8 +3,8 @@
   use TimerModule, only: code_timer
   use KindModule, only: DP, I4B
   use SimModule, only: ustop, store_error
-  use ConstantsModule, only: LENPACKAGENAME, LENMODELNAME, LENORIGIN,          &
-                             LENVARNAME, LINELENGTH
+  use ConstantsModule, only: LENPACKAGENAME, LENMODELNAME, LENMEMPATH,         &
+                             LENVARNAME, LINELENGTH, DZERO
   use ArrayHandlersModule, only: ExpandArray, ifind
   use ListModule, only: ListType
   use MemoryTypeModule, only: MemoryType
@@ -12,13 +12,15 @@
   use MpiWrapper, only: mpiwrpinit, mpiwrpfinalize, mpiwrpnrproc, mpiwrpmyrank,&
                         mpiwrpbarrier, mpiwrpcommworld, mpiwrpcomm_size,       &
                         mpiwrpcomm_rank, mpiwrpallgather, mpiwrpallgatherv,    &
-                        mpiwrpcolstruct, mpiwrptypefree, ColMemoryType,        &
-                        mpiwrpstats, mpiwrpisend, mpiwrpirecv,                 &
-                        mpiwrpmmtstruct, mpiwrpmtstruct, mpiwrpwaitall,        &
+                        mpiwrptypefree,                                        &
+                        mpiwrpstats,                                           &
+                        mpiwrpwaitall,                                         &
                         mpiwrpprobe, mpiwrpgetcount, mpiwrpallreduce,          &
                         mpiwrpcommgroup, mpiwrpgroupincl, mpiwrpcommcreate,    &
                         mpiwrpreduce, mpiwrpallreduceloc
-  use MpiWrapper, only: MetaMemoryType
+  use MpiWrapperMemory, only: mpiwrpcolstruct, mpiwrpisend, mpiwrpirecv,       &
+                              mpiwrpmmtstruct, mpiwrpmtstruct,                 &
+                              ColMemoryType, MetaMemoryType
 
   implicit none
 
@@ -33,11 +35,10 @@
   ! -- Public functions
   public :: mpi_initialize_world
   public :: mpi_world_da
-  !public :: mpi_add_halo_model
   public :: mpi_to_colmem
 
   integer, parameter :: MAXNVG  = 10  ! maximum number of variable groups
-  integer, parameter :: MAXNVAR = 100
+  integer, parameter :: MAXNVAR = 1000
   integer, parameter :: MAXNEX  = 5
 
   integer, parameter :: isrcsol = 1
@@ -73,7 +74,7 @@
   type VarType
     logical                   :: lsnd = .true.
     logical                   :: lrcv = .true.
-    character(len=LENORIGIN)  :: origin
+    character(len=LENMEMPATH) :: path
     character(len=LENVARNAME) :: name
     character(len=LENVARNAME) :: nameext
     integer(I4B)              :: srctype
@@ -113,6 +114,7 @@
   type :: MpiExchangeType
     logical                                                :: linit = .false.
     character(len=LENPACKAGENAME)                          :: name          ! name (origin)
+    character(len=LENMEMPATH)                              :: memoryPath    ! path for memory allocation
     character(len=LENPACKAGENAME)                          :: solname       ! solution name (origin)
     integer(I4B)                                           :: gnmodel = 0   ! number of global models
     character(len=LENMODELNAME), dimension(:), allocatable :: gmodelnames   ! global model names
@@ -126,27 +128,27 @@
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelnames   ! halo model names
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm1names   ! halo model m1 names
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm2names   ! halo model m2 names
-    integer(I4B), pointer                                :: comm   => null() ! MPI communicator
-    integer(I4B), pointer                                :: nrproc => null() ! number of MPI process for this communicator
-    integer(I4B), pointer                                :: myrank => null() ! MPI rank in for this communicator
-    integer(I4B), pointer                                :: myproc => null() ! MPI proc in for this communicator
-    integer(I4B), dimension(:), pointer                  :: procmap => null() ! Mapping
-    integer(I4B), pointer                                :: nrxp => null() ! Number of exchange partners
-    type(MpiGwfCommInt), dimension(:), pointer           :: lxch => null() ! Point to-point communication structure
-    integer(I4B)                                         :: nvg  ! number of variable groups
-    character(len=LINELENGTH), dimension(MAXNVG)         :: vg   ! variable groups
-    logical,  dimension(MAXNVG)                          :: lxchmeta = .true. ! exchange meta data
-    character(len=50), pointer                           :: nrprocstr => null() ! Number of processes string
-    integer(I4B), pointer                                :: npdigits  => null() ! Number of digits for nrproc
-    character(len=50), pointer                           :: partstr   => null() ! Partition string
-    logical                                              :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
-    real(DP)                                             :: ttgasum = 0.d0
-    real(DP)                                             :: ttgmsum = 0.d0
-    real(DP)                                             :: ttgamax = 0.d0
-    real(DP)                                             :: ttgamin = 0.d0
-    real(DP)                                             :: ttbarr = 0.d0
-    real(DP)                                             :: ttpack = 0.d0
-    real(DP)                                             :: ttupck = 0.d0
+    integer(I4B), pointer                                  :: comm   => null() ! MPI communicator
+    integer(I4B), pointer                                  :: nrproc => null() ! number of MPI process for this communicator
+    integer(I4B), pointer                                  :: myrank => null() ! MPI rank in for this communicator
+    integer(I4B), pointer                                  :: myproc => null() ! MPI proc in for this communicator
+    integer(I4B), dimension(:), pointer                    :: procmap => null() ! Mapping
+    integer(I4B), pointer                                  :: nrxp => null() ! Number of exchange partners
+    type(MpiGwfCommInt), dimension(:), pointer             :: lxch => null() ! Point to-point communication structure
+    integer(I4B)                                           :: nvg  ! number of variable groups
+    character(len=LINELENGTH), dimension(MAXNVG)           :: vg   ! variable groups
+    logical,  dimension(MAXNVG)                            :: lxchmeta = .true. ! exchange meta data
+    character(len=50), pointer                             :: nrprocstr => null() ! Number of processes string
+    integer(I4B), pointer                                  :: npdigits  => null() ! Number of digits for nrproc
+    character(len=50), pointer                             :: partstr   => null() ! Partition string
+    logical                                                :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
+    real(DP)                                               :: ttgasum = DZERO
+    real(DP)                                               :: ttgmsum = DZERO
+    real(DP)                                               :: ttgamax = DZERO
+    real(DP)                                               :: ttgamin = DZERO
+    real(DP)                                               :: ttbarr = DZERO
+    real(DP)                                               :: ttpack = DZERO
+    real(DP)                                               :: ttupck = DZERO
   contains
     procedure :: mpi_barrier
     procedure :: mpi_create_output_str
@@ -211,10 +213,10 @@
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate !, mem_get_info
+    use MemoryHelperModule, only: create_mem_path
     use MpiExchangeGenModule,   only: mpi_initialize
     ! -- dummy
     ! -- local
-    character(len=LENORIGIN) :: origin
 ! ------------------------------------------------------------------------------
     !
     ! -- Initialize MPI
@@ -225,14 +227,14 @@
     !
     ! -- Set name
     MpiWorld%name = 'MPI_WORLD'
+    MpiWorld%memoryPath = create_mem_path(MpiWorld%name)
     !
     ! -- Allocate scalars
-    origin = MpiWorld%name
-    call mem_allocate(MpiWorld%comm,   'COMM',   origin)
-    call mem_allocate(MpiWorld%nrproc, 'NRPROC', origin)
-    call mem_allocate(MpiWorld%myrank, 'MYRANK', origin)
-    call mem_allocate(MpiWorld%myproc, 'MYPROC', origin)
-    call mem_allocate(MpiWorld%nrxp,   'NRXP',   origin)
+    call mem_allocate(MpiWorld%comm,   'COMM',   MpiWorld%memoryPath)
+    call mem_allocate(MpiWorld%nrproc, 'NRPROC', MpiWorld%memoryPath)
+    call mem_allocate(MpiWorld%myrank, 'MYRANK', MpiWorld%memoryPath)
+    call mem_allocate(MpiWorld%myproc, 'MYPROC', MpiWorld%memoryPath)
+    call mem_allocate(MpiWorld%nrxp,   'NRXP',   MpiWorld%memoryPath)
     !
     MpiWorld%comm   = mpiwrpcommworld()
     MpiWorld%nrproc = mpiwrpcomm_size(MpiWorld%comm)
@@ -329,13 +331,11 @@
     ! -- dummy
     class(MpiExchangeType) :: this
     ! -- local
-    character(len=LENORIGIN) :: origin
     character(len=20) :: fmt
 ! ------------------------------------------------------------------------------
     ! -- Allocate
-    origin = this%name
     allocate(this%nrprocstr)
-    call mem_allocate(this%npdigits, 'NPDIGITS', origin)
+    call mem_allocate(this%npdigits, 'NPDIGITS', this%memoryPath)
     allocate(this%partstr)
     !
     write(this%nrprocstr,*) this%nrproc
@@ -384,7 +384,6 @@
     ! -- dummy
     class(MpiExchangeType) :: this
     ! -- local
-    character(len=LENORIGIN) :: origin
     integer(I4B) :: im, i, j, isub
     integer(I4B), dimension(:), allocatable :: ranks
     integer(I4B) :: world_group, new_group
@@ -395,12 +394,11 @@
     end if
     !
     ! -- Allocate scalars
-    origin = this%name
-    call mem_allocate(this%comm,   'COMM',   origin)
-    call mem_allocate(this%nrproc, 'NRPROC', origin)
-    call mem_allocate(this%myrank, 'MYRANK', origin)
-    call mem_allocate(this%myproc, 'MYPROC', origin)
-    call mem_allocate(this%nrxp,   'NRXP',   origin)
+    call mem_allocate(this%comm,   'COMM',   this%memoryPath)
+    call mem_allocate(this%nrproc, 'NRPROC', this%memoryPath)
+    call mem_allocate(this%myrank, 'MYRANK', this%memoryPath)
+    call mem_allocate(this%myproc, 'MYPROC', this%memoryPath)
+    call mem_allocate(this%nrxp,   'NRXP',   this%memoryPath)
     !
     ! -- loop over the models associated with this solution
     allocate(this%procmap(MpiWorld%nrproc))
@@ -718,7 +716,7 @@ subroutine mpi_clean_vg(this, vgname)
         end select
         !
         mt%name     = ''
-        mt%origin   = ''
+        mt%path     = ''
         mt%memitype = 0
         mt%isize    = 0
       end do
@@ -739,6 +737,7 @@ subroutine mpi_clean_vg(this, vgname)
     use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d !@@@@DEBUG
     use MemoryManagerModule, only: mem_get_ptr, mem_setptr, mem_setval,        &
                                    mem_setval_id
+    use MemoryHelperModule, only: create_mem_path, split_mem_path_ff
     use MpiWrapper, only: mpiwrpstats
     ! -- dummy
     class(MpiExchangeType) :: this
@@ -755,7 +754,7 @@ subroutine mpi_clean_vg(this, vgname)
     type(MetaMemoryType), pointer :: rcvmmt
     type(MpiGwfBuf), pointer :: vgbuf
 
-    character(len=LENORIGIN) :: mod_origin, sol_origin, src_origin, tgt_origin
+    character(len=LENMEMPATH) :: mod_mempath, sol_mempath, src_mempath, tgt_mempath
     integer(I4B) :: ixp, iex, nrcv, iv, is, i, j, istat
     character(len=LENMODELNAME) :: mname, id, m1_name, m2_name, halo_name
     !
@@ -830,31 +829,31 @@ subroutine mpi_clean_vg(this, vgname)
               select case(var%srctype)
                 case(isrcgwf)
                   if (trim(var%nameext) == 'DIS') then
-                    write(mod_origin,'(a,1x,a)') trim(m1_name), trim(ex%m1_dis)
+                    mod_mempath = create_mem_path(m1_name, ex%m1_dis)
                   else
-                    write(mod_origin,'(a,1x,a)') trim(m1_name), trim(var%nameext)
+                    mod_mempath = create_mem_path(m1_name, trim(var%nameext))
                   endif
-                  src_origin = mod_origin
+                  src_mempath = mod_mempath
                   moffset = 0
                 case(isrcsol)
-                  read(solname,*) sol_origin
-                  write(sol_origin,'(a,1x,a)') trim(sol_origin), trim(var%nameext)
-                  src_origin = sol_origin
+                  read(solname,*) sol_mempath
+                  sol_mempath = create_mem_path(trim(sol_mempath), trim(var%nameext))
+                  src_mempath = sol_mempath
                   call mem_setptr(tmp, 'MOFFSET', trim(m1_name))
                   moffset = tmp
                 case(isrchal)
-                  src_origin = trim(halo_name)
+                  src_mempath = trim(halo_name)
                   moffset = 0
                 case(isrchll)
-                  src_origin = trim(halo_name)//'_M1 '//trim(var%nameext)
+                  src_mempath = create_mem_path(trim(halo_name)//'_M1', trim(var%nameext))
                   moffset = 0
                 case(isrcmvr)
-                  src_origin = var%origin
+                  src_mempath = var%path
                   moffset = 0
               end select
               !
-              !write(*,*) '@@@@ Getting "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank
-              call mem_get_ptr(var%name, src_origin, mt)
+              !write(*,*) '@@@@ Getting "'//trim(var%name)//'" "'//trim(src_mempath)//'" for rank',this%myrank, '"'//trim(var%nameext)//'"'
+              call mem_get_ptr(var%name, src_mempath, mt)
               !
               select case(var%pcktype)
                 case(ipckmm1)
@@ -865,18 +864,18 @@ subroutine mpi_clean_vg(this, vgname)
                     call ustop()
                   end if
                   nexg = tmp
-                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                  call mpi_pack_mt(src_mempath, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckhm1)
                   call mem_setptr(nodem1, 'IMAPMTOHALO', trim(halo_name)//'_M1')
                   nexg = size(nodem1)
-                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                  call mpi_pack_mt(src_mempath, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckmvr)
                   nexg = 1
                   nodem1 => var%id
-                  call mpi_pack_mt(src_origin, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
+                  call mpi_pack_mt(src_mempath, mt, vgbuf%sndmt(is), nodem1, nexg, moffset)
                 case(ipckall)
-                  call mpi_pack_mt(tgt_origin, mt, vgbuf%sndmt(is))
-                  !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_origin)//'" for rank',this%myrank,mt%memitype
+                  call mpi_pack_mt(src_mempath, mt, vgbuf%sndmt(is))
+                  !write(*,*) '@@@@ Packed "'//trim(var%name)//'" "'//trim(src_mempath)//'" for rank',this%myrank,mt%memitype
               end select
               !
             end if
@@ -951,7 +950,7 @@ subroutine mpi_clean_vg(this, vgname)
                 rcvmmt => this%lxch(ixp)%vgbuf(ivg)%rcvmmt(i)
                 if (rcvmmt%memitype == 0) then
                 write(*,*) 'name:     ', trim(rcvmmt%name)
-                write(*,*) 'origin:   ', trim(rcvmmt%origin), len(rcvmmt%origin)
+                write(*,*) 'path:     ', trim(rcvmmt%path), len(rcvmmt%path)
                 write(*,*) 'memitype: ', rcvmmt%memitype
                 write(*,*) 'isize:    ', rcvmmt%isize
                 write(*,*) 'ncol:     ', rcvmmt%ncol
@@ -1002,7 +1001,7 @@ subroutine mpi_clean_vg(this, vgname)
     deallocate(sreq, rreq)
     !
     ! -- Debug
-    if (.false. .and. trim(vgname) == 'HALO_INIT_CON_A') then
+    if (.false. .and. trim(vgname) == 'MOVER') then
       
       write(*,*) '@@@@@@ VARGROUP = '//trim(vgname)
       do irank = 0, this%nrproc-1
@@ -1014,7 +1013,7 @@ subroutine mpi_clean_vg(this, vgname)
             do i = 1, vgbuf%nsnd
               !if (trim(vgbuf%sndmt(i)%name) /= 'X') cycle
               write(*,*) 'name:      ', trim(vgbuf%sndmt(i)%name)
-              write(*,*) 'origin:    ', trim(vgbuf%sndmt(i)%origin)
+              write(*,*) 'path:      ', trim(vgbuf%sndmt(i)%path)
               write(*,*) 'isize:     ', vgbuf%sndmt(i)%isize
               memitype = vgbuf%sndmt(i)%memitype
               !write(*,*) 'memitype:  ', memitype
@@ -1033,7 +1032,7 @@ subroutine mpi_clean_vg(this, vgname)
             do i = 1,vgbuf%nrcv
               !if (trim(vgbuf%rcvmt(i)%name) /= 'X') cycle
               write(*,*) 'name:      ', trim(vgbuf%rcvmt(i)%name)
-              write(*,*) 'origin:    ', trim(vgbuf%rcvmt(i)%origin)
+              write(*,*) 'path:     ', trim(vgbuf%rcvmt(i)%path)
               write(*,*) 'isize:     ', vgbuf%rcvmt(i)%isize
               !write(*,*) 'memitype:  ', vgbuf%rcvmt(i)%memitype
               memitype = vgbuf%rcvmt(i)%memitype
@@ -1053,7 +1052,7 @@ subroutine mpi_clean_vg(this, vgname)
         end if
         call mpiwrpbarrier(this%comm)
       end do
-      !call ustop('@@@@@debug')
+      call ustop('@@@@@debug')
     end if
     !
     ! -- Set the received data for the halo (m2) models
@@ -1080,38 +1079,31 @@ subroutine mpi_clean_vg(this, vgname)
                 call ustop()
               end if
               !
-              ! target origin
+              ! target path
               select case (var%tgttype)
-                case(itgtgwf,itgtsol)
-                  read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname, id
-                  if (istat /= 0) then
-                    read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname
-                    id = ''
-                  end if
+              case(itgtgwf, itgtsol)
+                  call split_mem_path_ff(vgbuf%rcvmt(is)%path, mname, id)
                   if (index(id,'HALO') > 0) then
                     id = ''
                   end if
                   if (trim(id) == 'DIS') then
                     id = ex%m2_dis
                   end if
-                  tgt_origin = trim(m2_name)//' '//trim(id)
+                  tgt_mempath = create_mem_path(trim(m2_name), trim(id))
                 case(itgthal)
-                  read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname, id
-                  if (istat /= 0) then
-                    read(vgbuf%rcvmt(is)%origin,*,iostat=istat) mname
-                    id = ''
-                  end if
+                  call split_mem_path_ff(vgbuf%rcvmt(is)%path, mname, id)
                   if (trim(id) == 'DIS') then
                     id = 'DISU'
                   end if
-                  tgt_origin = trim(halo_name)//' '//trim(id)
+                  tgt_mempath = create_mem_path(trim(halo_name), trim(id))
                 case(itgthll)
-                  tgt_origin = trim(halo_name)//'_M2 '//trim(var%nameext)
+                  tgt_mempath = create_mem_path(trim(halo_name)//'_M2', trim(var%nameext))
                 case(itgtmvr)
-                  tgt_origin = var%origin
+                  tgt_mempath = var%path
               end select
               !
-              vgbuf%rcvmt(is)%origin = tgt_origin
+              !write(*,*) '@@@ tgt_mempath=',tgt_mempath
+              vgbuf%rcvmt(is)%path = tgt_mempath
               !
               select case(var%unptype)
                 case(iunpmem)
@@ -1147,7 +1139,7 @@ subroutine mpi_clean_vg(this, vgname)
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use ConstantsModule, only: LENORIGIN, DZERO
+    use ConstantsModule, only: DZERO
     use MemoryManagerModule, only: mem_setptr
     use MemoryTypeModule, only: iadbl1d
     ! -- dummy
@@ -1158,7 +1150,7 @@ subroutine mpi_clean_vg(this, vgname)
     integer(I4B), intent(in), optional :: m2_id !CGC
     ! -- local
     type(MpiGwfBuf), pointer :: vgbuf
-    character(len=LENORIGIN) :: sol_origin
+    character(len=LENMEMPATH) :: sol_mempath
     integer(I4B) :: ivg, ixp, ix, iv, iexg, n
     integer(I4B), pointer :: nexg
     integer(I4B), dimension(:), pointer :: nodem1
@@ -1187,8 +1179,8 @@ subroutine mpi_clean_vg(this, vgname)
       call ustop()
     end if
     !
-    read(solname,*) sol_origin
-    call mem_setptr(active, 'IACTIVE', trim(sol_origin))
+    read(solname,*) sol_mempath
+    call mem_setptr(active, 'IACTIVE', trim(sol_mempath))
     !
     do ixp = 1, this%nrxp
       vgbuf => this%lxch(ixp)%vgbuf(ivg)
@@ -1794,7 +1786,7 @@ subroutine mpi_clean_vg(this, vgname)
     return
   end subroutine mpi_global_exchange_all_cgc
 
-  subroutine mpi_pack_mt(origin, mti, mto, node, nexg, moffset)
+  subroutine mpi_pack_mt(memoryPath, mti, mto, node, nexg, moffset)
 ! ******************************************************************************
 ! Pack memory type for point-to-point communication.
 ! ******************************************************************************
@@ -1804,7 +1796,7 @@ subroutine mpi_clean_vg(this, vgname)
     ! -- modules
     use MemoryTypeModule, only: iintsclr, idblsclr, iaint1d, iadbl1d
     ! -- dummy
-    character(len=*), intent(in) :: origin
+    character(len=*), intent(in) :: memoryPath
     type(MemoryType), intent(in) :: mti
     type(MemoryType), intent(out) :: mto
     integer(I4B), intent(in), optional :: nexg
@@ -1817,7 +1809,7 @@ subroutine mpi_clean_vg(this, vgname)
     write(errmsg,'(a)') 'Program error in mpi_pack_mt.'
     !
     mto%name     = mti%name
-    mto%origin   = trim(origin)
+    mto%path     = trim(memoryPath)
     mto%memitype = mti%memitype
     mto%isize    = 0
     !
@@ -1854,7 +1846,7 @@ subroutine mpi_clean_vg(this, vgname)
             mto%aint1d(i) = mti%aint1d(i)
           end do
         end if
-        !write(*,*) '# int n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%aint1d)
+        !write(*,*) '# int n, isize',trim(mti%name)//' '//trim(mti%path), n,size(mti%aint1d)
       case(iadbl1d)
         if (present(node)) then
           mto%isize = nexg
@@ -1873,7 +1865,7 @@ subroutine mpi_clean_vg(this, vgname)
             mto%adbl1d(i) = mti%adbl1d(i)
           end do
         end if
-        !write(*,*) '# dbl n, isize',trim(mti%name)//' '//trim(mti%origin), n,size(mti%adbl1d)
+        !write(*,*) '# dbl n, isize',trim(mti%name)//' '//trim(mti%path), n,size(mti%adbl1d)
       case default
         call store_error(errmsg)
         call ustop()
@@ -1899,7 +1891,7 @@ subroutine mpi_clean_vg(this, vgname)
 ! ------------------------------------------------------------------------------
     !
     mmt%name     = mt%name
-    mmt%origin   = mt%origin
+    mmt%path     = mt%path
     mmt%memitype = mt%memitype
     mmt%isize    = mt%isize
     select case(mt%memitype)
@@ -2125,33 +2117,6 @@ subroutine mpi_clean_vg(this, vgname)
     return
   end subroutine mpi_addsub
 
-!  subroutine mpi_add_halo_model(im, modelname)
-!! ******************************************************************************
-!! This subroutine sets the list of halo (m2) models
-!! ******************************************************************************
-!!
-!!    SPECIFICATIONS:
-!! ------------------------------------------------------------------------------
-!    use MpiExchangeGenModule, only: nhalo, modelname_halo,                      &
-!                                    mpi_create_modelname_halo
-!    ! -- dummy
-!    integer, intent(in) :: im
-!    character(len=*), intent(inout) :: modelname
-!    ! -- local
-!    integer(I4B) :: m
-!! ------------------------------------------------------------------------------
-!    call mpi_create_modelname_halo(im, modelname)
-!    m = ifind(modelname_halo, modelname)
-!    if (m < 0) then
-!      nhalo = nhalo + 1
-!      call ExpandArray(modelname_halo)
-!      modelname_halo(nhalo) = modelname
-!    end if
-!    !
-!    ! -- return
-!    return
-!  end subroutine mpi_add_halo_model
-
   subroutine mpi_to_colmem(mt, is, cmt, iopt)
 ! ******************************************************************************
 ! Convert to collective MemoryType
@@ -2176,7 +2141,7 @@ subroutine mpi_clean_vg(this, vgname)
     end if
 
     cmt(is)%name     = mt%name
-    cmt(is)%origin   = mt%origin
+    cmt(is)%path     = mt%path
     cmt(is)%memitype = mt%memitype
     if (associated(mt%logicalsclr)) then
       cmt(is)%logicalsclr = mt%logicalsclr
@@ -2250,9 +2215,9 @@ subroutine mpi_clean_vg(this, vgname)
     character(len=LINELENGTH) :: line
     real(DP) :: b
 ! ------------------------------------------------------------------------------
-    if (serialrun) then
-      return
-    end if
+    !if (serialrun) then
+    !  return
+    !end if
     !
     b = bytes
     call this%mpi_global_exchange_master_sum(b)

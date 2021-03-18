@@ -41,10 +41,10 @@ contains
 !
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
-    implicit none
     ! -- dummy
     type(GwfObsType), pointer, intent(out)   :: obs
     integer(I4B), pointer, intent(in) :: inobs
+! ------------------------------------------------------------------------------
     !
     allocate(obs)
     call obs%allocate_scalars()
@@ -56,11 +56,18 @@ contains
   end subroutine gwf_obs_cr
 
   subroutine gwf_obs_ar(this, ic, x, flowja)
+! ******************************************************************************
+! gwf_obs_ar -- allocate and read
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     class(GwfObsType),                    intent(inout) :: this
     type(GwfIcType),  pointer,               intent(in) :: ic
     real(DP), dimension(:), pointer, contiguous, intent(in) :: x
     real(DP), dimension(:), pointer, contiguous, intent(in) :: flowja
+! ------------------------------------------------------------------------------
     !
     ! Call ar method of parent class
     call this%obs_ar()
@@ -72,14 +79,12 @@ contains
   end subroutine gwf_obs_ar
 
   subroutine gwf_obs_df(this, iout, pkgname, filtyp, dis)
-    ! **************************************************************************
-    ! gwf_obs_df
-    ! -- Store observation types supported by GwfModelType
-    ! **************************************************************************
-    !
-    !    SPECIFICATIONS:
-    ! --------------------------------------------------------------------------
-    implicit none
+! ******************************************************************************
+! gwt_obs_df -- define
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     class(GwfObsType), intent(inout) :: this
     integer(I4B), intent(in) :: iout
@@ -88,7 +93,7 @@ contains
     class(DisBaseType), pointer  :: dis
     ! -- local
     integer(I4B) :: indx
-    ! --------------------------------------------------------------------------
+! ------------------------------------------------------------------------------
     !
     ! Call overridden method of parent class
     call this%ObsType%obs_df(iout, pkgname, filtyp, dis)
@@ -112,14 +117,12 @@ contains
   end subroutine gwf_obs_df
 
   subroutine gwf_obs_bd(this)
-    ! **************************************************************************
-    ! gwf_obs_bd
-    !   -- Save simulated values for GwfModelType observations.
-    ! **************************************************************************
-    !
-    !    SPECIFICATIONS:
-    ! --------------------------------------------------------------------------
-    implicit none
+! ******************************************************************************
+! gwf_obs_bd -- save obs
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     class(GwfObsType),       intent(inout) :: this
     ! -- local
@@ -127,13 +130,13 @@ contains
     real(DP) :: v
     character(len=100) :: msg
     class(ObserveType), pointer :: obsrv => null()
-    !---------------------------------------------------------------------------
+! ------------------------------------------------------------------------------
     !
     call this%obs_bd_clear()
     !
     ! -- iterate through all GWF observations
     if (this%npakobs > 0) then
-      do i=1,this%npakobs
+      do i = 1, this%npakobs
         obsrv => this%pakobs(i)%obsrv
         nodenumber = obsrv%NodeNumber
         jaindex = obsrv%JaIndex
@@ -148,26 +151,43 @@ contains
         case default
           msg = 'Error: Unrecognized observation type: ' // trim(obsrv%ObsTypeId)
           call store_error(msg)
-          call store_error_unit(this%inUnitObs)
-          call ustop()
         end select
-      enddo
-    endif
+      end do
+      !
+      ! -- write summary of error messages
+      if (count_errors() > 0) then
+        call store_error_unit(this%inUnitObs)
+        call ustop()
+      end if
+    end if
     !
     return
   end subroutine gwf_obs_bd
 
   subroutine gwf_obs_rp(this)
-    implicit none
+! ******************************************************************************
+! gwf_obs_rp
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     class(GwfObsType), intent(inout) :: this
+! ------------------------------------------------------------------------------
     !
     ! Do GWF observations need any checking? If so, add checks here
     return
   end subroutine gwf_obs_rp
 
   subroutine gwf_obs_da(this)
+! ******************************************************************************
+! gwf_obs_da
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
-    class(GwfObsType),                    intent(inout) :: this
+    class(GwfObsType), intent(inout) :: this
+! ------------------------------------------------------------------------------
     !
     nullify(this%ic)
     nullify(this%x)
@@ -178,9 +198,15 @@ contains
   end subroutine gwf_obs_da
 
   subroutine set_pointers(this, ic, x, flowja)
+! ******************************************************************************
+! set_pointers
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
-    class(GwfObsType),                    intent(inout) :: this
-    type(GwfIcType),  pointer,               intent(in) :: ic
+    class(GwfObsType), intent(inout) :: this
+    type(GwfIcType), pointer, intent(in) :: ic
     real(DP), dimension(:), pointer, contiguous, intent(in) :: x
     real(DP), dimension(:), pointer, contiguous, intent(in) :: flowja
     !
@@ -194,7 +220,12 @@ contains
   ! -- Procedures related to GWF observations (NOT type-bound)
 
   subroutine gwf_process_head_drawdown_obs_id(obsrv, dis, inunitobs, iout)
-    implicit none
+! ******************************************************************************
+! gwf_process_head_drawdown_obs_id
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     type(ObserveType),  intent(inout) :: obsrv
     class(DisBaseType), intent(in)    :: dis
@@ -204,7 +235,7 @@ contains
     integer(I4B) :: nn1
     integer(I4B) :: icol, istart, istop
     character(len=LINELENGTH) :: ermsg, strng
-    ! formats
+! ------------------------------------------------------------------------------
     !
     ! -- Initialize variables
     strng = obsrv%IDstring
@@ -228,7 +259,12 @@ contains
   end subroutine gwf_process_head_drawdown_obs_id
 
   subroutine gwf_process_intercell_obs_id(obsrv, dis, inunitobs, iout)
-    implicit none
+! ******************************************************************************
+! gwf_process_intercell_obs_id
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
     ! -- dummy
     type(ObserveType),  intent(inout) :: obsrv
     class(DisBaseType), intent(in)    :: dis
@@ -240,6 +276,7 @@ contains
     character(len=LINELENGTH) :: ermsg, strng
     ! formats
  70 format('Error: No connection exists between cells identified in text: ',a)
+! ------------------------------------------------------------------------------
     !
     ! -- Initialize variables
     strng = obsrv%IDstring

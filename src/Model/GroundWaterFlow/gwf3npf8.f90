@@ -56,6 +56,7 @@ module GwfNpfModule
     real(DP), dimension(:), pointer, contiguous     :: k11          => null()    ! hydraulic conductivity; if anisotropic, then this is Kx prior to rotation
     real(DP), dimension(:), pointer, contiguous     :: k22          => null()    ! hydraulic conductivity; if specified then this is Ky prior to rotation
     real(DP), dimension(:), pointer, contiguous     :: k33          => null()    ! hydraulic conductivity; if specified then this is Kz prior to rotation
+    integer(I4B), pointer                           :: iavgkeff     => null()    ! effective conductivity averaging (0: harmonic, 1: arithmetic)
     integer(I4B), pointer                           :: ik22         => null()    ! flag that k22 is specified
     integer(I4B), pointer                           :: ik33         => null()    ! flag that k33 is specified
     integer(I4B), pointer                           :: ik22overk    => null()    ! flag that k22 is specified as anisotropy ratio
@@ -74,12 +75,12 @@ module GwfNpfModule
     real(DP), pointer                               :: satmin       => null()    ! minimum saturated thickness
     integer(I4B), dimension(:), pointer, contiguous :: ibotnode     => null()    ! bottom node used if igwfnewtonur /= 0
     !
-    real(DP), dimension(:, :), pointer, contiguous  :: spdis        => null()    ! specific discharge : qx, qy, qz (nodes, 3) 
+    real(DP), dimension(:, :), pointer, contiguous  :: spdis        => null()    ! specific discharge : qx, qy, qz (nodes, 3)
     integer(I4B), pointer                           :: nedges       => null()    ! number of cell edges
     integer(I4B), pointer                           :: lastedge     => null()    ! last edge number
     integer(I4B), dimension(:), pointer, contiguous :: nodedge      => null()    ! array of node numbers that have edges
     integer(I4B), dimension(:), pointer, contiguous :: ihcedge      => null()    ! edge type (horizontal or vertical)
-    real(DP), dimension(:, :), pointer, contiguous  :: propsedge    => null()    ! edge properties (Q, area, nx, ny, distance) 
+    real(DP), dimension(:, :), pointer, contiguous  :: propsedge    => null()    ! edge properties (Q, area, nx, ny, distance)
     !
   contains
     procedure                               :: npf_df
@@ -124,7 +125,7 @@ module GwfNpfModule
   subroutine npf_cr(npfobj, name_model, inunit, iout)
 ! ******************************************************************************
 ! npf_cr -- Create a new NPF object. Pass a inunit value of 0 if npf data will
-!           initialized from memory  
+!           initialized from memory
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -133,14 +134,14 @@ module GwfNpfModule
     ! -- dummy
     type(GwfNpftype), pointer :: npfobj
     character(len=*), intent(in) :: name_model
-    integer(I4B), intent(in) :: inunit  
+    integer(I4B), intent(in) :: inunit
     integer(I4B), intent(in) :: iout
 ! ------------------------------------------------------------------------------
     !
     ! -- Create the object
     allocate(npfobj)
     !
-    ! -- create name and origin
+    ! -- create name and memory path
     call npfobj%set_names(1, name_model, 'NPF', 'NPF')
     !
     ! -- Allocate scalars
@@ -247,13 +248,12 @@ module GwfNpfModule
     ! -- local
 ! ------------------------------------------------------------------------------
     !
-    if(this%ixt3d /= 0) call this%xt3d%xt3d_mc(moffset, iasln,   &
-                                              jasln, this%inewton)
+    if (this%ixt3d /= 0) call this%xt3d%xt3d_mc(moffset, iasln, jasln)
     !
     ! -- Return
     return
   end subroutine npf_mc
-  
+
   subroutine npf_init_mem(this, dis, ixt3d, icelltype, k11, k22, k33, wetdry,    &
                           angle1, angle2, angle3)
 ! ******************************************************************************
@@ -381,10 +381,10 @@ module GwfNpfModule
     ! -- xt3d
     if (this%ixt3d /= 0) then
       call this%xt3d%xt3d_ar(ibound, this%k11, this%ik33, this%k33,              &
-                             this%sat, this%ik22, this%k22, this%inewton,        &
-                             this%icelltype, this%iangle1,                       &
-                             this%iangle2, this%iangle3, this%angle1,            &
-                             this%angle2, this%angle3)
+                             this%sat, this%ik22, this%k22,                      &
+                             this%iangle1, this%iangle2, this%iangle3,           &
+                             this%angle1, this%angle2, this%angle3,              &
+                             this%inewton, this%icelltype)
     end if
     !
     ! -- Return
@@ -478,7 +478,7 @@ module GwfNpfModule
     do n = 1, this%dis%nodes
       do ii = this%dis%con%ia(n) + 1, this%dis%con%ia(n + 1) - 1
         if (this%dis%con%mask(ii) == 0) cycle
-        
+
         m = this%dis%con%ja(ii)
         !
         ! -- Calculate conductance only for upper triangle but insert into
@@ -549,7 +549,7 @@ module GwfNpfModule
       hym = this%hy_eff(m, n, ihc, ipos=ii)
       !
       ! -- Vertical connection
-      if(ihc == 0) then
+      if (ihc == 0) then
         !
         ! -- Calculate vertical conductance
         cond =  vcond(this%ibound(n), this%ibound(m),                        &
@@ -563,9 +563,9 @@ module GwfNpfModule
                       this%dis%con%hwva(this%dis%con%jas(ii)))
         !
         ! -- Vertical flow for perched conditions
-        if(this%iperched /= 0) then
-          if(this%icelltype(m) /= 0) then
-            if(hnew(m) < this%dis%top(m)) then
+        if (this%iperched /= 0) then
+          if (this%icelltype(m) /= 0) then
+            if (hnew(m) < this%dis%top(m)) then
               !
               ! -- Terms for row n
               terms(1, 1) = terms(1, 1) - cond                    ! a[n, n]
@@ -647,7 +647,7 @@ module GwfNpfModule
     !
     do n = 1, nodes
       do ii = this%dis%con%ia(n) + 1, this%dis%con%ia(n + 1) - 1
-        if (this%dis%con%mask(ii) == 0) cycle 
+        if (this%dis%con%mask(ii) == 0) cycle
         m = this%dis%con%ja(ii)
         !
         ! -- Calculate conductance only for upper triangle but insert into
@@ -777,7 +777,7 @@ module GwfNpfModule
           ! -- fill in row of n
           !amat(idxglo(idiag)) = amat(idxglo(idiag)) + term
           terms(1, 1) = terms(1, 1) + term
-          
+
           ! fill newton term in off diagonal if active cell
           !if (this%ibound(n) > 0) then
           !  amat(idxglo(ii)) = amat(idxglo(ii)) !* dwadi !need to add dwadi
@@ -1141,6 +1141,7 @@ module GwfNpfModule
     call mem_deallocate(this%hnoflo)
     call mem_deallocate(this%hdry)
     call mem_deallocate(this%icellavg)
+    call mem_deallocate(this%iavgkeff)
     call mem_deallocate(this%ik22)
     call mem_deallocate(this%ik33)
     call mem_deallocate(this%iperched)
@@ -1168,10 +1169,11 @@ module GwfNpfModule
     call mem_deallocate(this%ik33overk)
     !
     ! -- Deallocate arrays
+    deallocate(this%aname)
     call mem_deallocate(this%icelltype)
     call mem_deallocate(this%k11)
-    call mem_deallocate(this%k22, 'K22', this%origin)
-    call mem_deallocate(this%k33, 'K33', this%origin)
+    call mem_deallocate(this%k22, 'K22', trim(this%memoryPath))
+    call mem_deallocate(this%k33, 'K33', trim(this%memoryPath))
     call mem_deallocate(this%sat)
     call mem_deallocate(this%condsat)
     call mem_deallocate(this%wetdry)
@@ -1199,6 +1201,7 @@ module GwfNpfModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate, mem_setptr
+    use MemoryHelperModule, only: create_mem_path
     ! -- dummy
     class(GwfNpftype) :: this
 ! ------------------------------------------------------------------------------
@@ -1207,39 +1210,40 @@ module GwfNpfModule
     call this%NumericalPackageType%allocate_scalars()
     !
     ! -- Allocate scalars
-    call mem_allocate(this%iname, 'INAME', this%origin)
-    call mem_allocate(this%ixt3d, 'IXT3D', this%origin)
-    call mem_allocate(this%satomega, 'SATOMEGA', this%origin)
-    call mem_allocate(this%hnoflo, 'HNOFLO', this%origin)
-    call mem_allocate(this%hdry, 'HDRY', this%origin)
-    call mem_allocate(this%icellavg, 'ICELLAVG', this%origin)
-    call mem_allocate(this%ik22, 'IK22', this%origin)
-    call mem_allocate(this%ik33, 'IK33', this%origin)
-    call mem_allocate(this%ik22overk, 'IK22OVERK', this%origin)
-    call mem_allocate(this%ik33overk, 'IK33OVERK', this%origin)
-    call mem_allocate(this%iperched, 'IPERCHED', this%origin)
-    call mem_allocate(this%ivarcv, 'IVARCV', this%origin)
-    call mem_allocate(this%idewatcv, 'IDEWATCV', this%origin)
-    call mem_allocate(this%ithickstrt, 'ITHICKSTRT', this%origin)
-    call mem_allocate(this%iusgnrhc, 'IUSGNRHC', this%origin)
-    call mem_allocate(this%inwtupw, 'INWTUPW', this%origin)
-    call mem_allocate(this%icalcspdis, 'ICALCSPDIS', this%origin)
-    call mem_allocate(this%isavspdis, 'ISAVSPDIS', this%origin)
-    call mem_allocate(this%isavsat, 'ISAVSAT', this%origin)
-    call mem_allocate(this%irewet, 'IREWET', this%origin)
-    call mem_allocate(this%wetfct, 'WETFCT', this%origin)
-    call mem_allocate(this%iwetit, 'IWETIT', this%origin)
-    call mem_allocate(this%ihdwet, 'IHDWET', this%origin)
-    call mem_allocate(this%satmin, 'SATMIN', this%origin)
-    call mem_allocate(this%iangle1, 'IANGLE1', this%origin)
-    call mem_allocate(this%iangle2, 'IANGLE2', this%origin)
-    call mem_allocate(this%iangle3, 'IANGLE3', this%origin)
-    call mem_allocate(this%iwetdry, 'IWETDRY', this%origin)
-    call mem_allocate(this%nedges, 'NEDGES', this%origin)
-    call mem_allocate(this%lastedge, 'LASTEDGE', this%origin)
+    call mem_allocate(this%iname, 'INAME', this%memoryPath)
+    call mem_allocate(this%ixt3d, 'IXT3D', this%memoryPath)
+    call mem_allocate(this%satomega, 'SATOMEGA', this%memoryPath)
+    call mem_allocate(this%hnoflo, 'HNOFLO', this%memoryPath)
+    call mem_allocate(this%hdry, 'HDRY', this%memoryPath)
+    call mem_allocate(this%icellavg, 'ICELLAVG', this%memoryPath)
+    call mem_allocate(this%iavgkeff, 'IAVGKEFF', this%memoryPath)
+    call mem_allocate(this%ik22, 'IK22', this%memoryPath)
+    call mem_allocate(this%ik33, 'IK33', this%memoryPath)
+    call mem_allocate(this%ik22overk, 'IK22OVERK', this%memoryPath)
+    call mem_allocate(this%ik33overk, 'IK33OVERK', this%memoryPath)
+    call mem_allocate(this%iperched, 'IPERCHED', this%memoryPath)
+    call mem_allocate(this%ivarcv, 'IVARCV', this%memoryPath)
+    call mem_allocate(this%idewatcv, 'IDEWATCV', this%memoryPath)
+    call mem_allocate(this%ithickstrt, 'ITHICKSTRT', this%memoryPath)
+    call mem_allocate(this%iusgnrhc, 'IUSGNRHC', this%memoryPath)
+    call mem_allocate(this%inwtupw, 'INWTUPW', this%memoryPath)
+    call mem_allocate(this%icalcspdis, 'ICALCSPDIS', this%memoryPath)
+    call mem_allocate(this%isavspdis, 'ISAVSPDIS', this%memoryPath)
+    call mem_allocate(this%isavsat, 'ISAVSAT', this%memoryPath)
+    call mem_allocate(this%irewet, 'IREWET', this%memoryPath)
+    call mem_allocate(this%wetfct, 'WETFCT', this%memoryPath)
+    call mem_allocate(this%iwetit, 'IWETIT', this%memoryPath)
+    call mem_allocate(this%ihdwet, 'IHDWET', this%memoryPath)
+    call mem_allocate(this%satmin, 'SATMIN', this%memoryPath)
+    call mem_allocate(this%iangle1, 'IANGLE1', this%memoryPath)
+    call mem_allocate(this%iangle2, 'IANGLE2', this%memoryPath)
+    call mem_allocate(this%iangle3, 'IANGLE3', this%memoryPath)
+    call mem_allocate(this%iwetdry, 'IWETDRY', this%memoryPath)
+    call mem_allocate(this%nedges, 'NEDGES', this%memoryPath)
+    call mem_allocate(this%lastedge, 'LASTEDGE', this%memoryPath)
     !
     ! -- set pointer to inewtonur
-    call mem_setptr(this%igwfnewtonur, 'INEWTONUR', trim(this%name_model))
+    call mem_setptr(this%igwfnewtonur, 'INEWTONUR', create_mem_path(this%name_model))
     !
     ! -- Initialize value
     this%iname = 8
@@ -1248,6 +1252,7 @@ module GwfNpfModule
     this%hnoflo = DHNOFLO !1.d30
     this%hdry = DHDRY !-1.d30
     this%icellavg = 0
+    this%iavgkeff = 0
     this%ik22 = 0
     this%ik33 = 0
     this%ik22overk = 0
@@ -1297,34 +1302,37 @@ module GwfNpfModule
     integer(I4B) :: n
 ! ------------------------------------------------------------------------------
     !
-    call mem_allocate(this%icelltype, ncells, 'ICELLTYPE', trim(this%origin))
-    call mem_allocate(this%k11, ncells, 'K11', trim(this%origin))
-    call mem_allocate(this%sat, ncells, 'SAT', trim(this%origin))
-    call mem_allocate(this%condsat, njas, 'CONDSAT', trim(this%origin))
+    call mem_allocate(this%icelltype, ncells, 'ICELLTYPE', this%memoryPath)
+    call mem_allocate(this%k11, ncells, 'K11', this%memoryPath)
+    call mem_allocate(this%sat, ncells, 'SAT', this%memoryPath)
+    call mem_allocate(this%condsat, njas, 'CONDSAT', this%memoryPath)
     !
     ! -- Optional arrays dimensioned to full size initially
-    call mem_allocate(this%k22, ncells, 'K22', trim(this%origin))
-    call mem_allocate(this%k33, ncells, 'K33', trim(this%origin))
-    call mem_allocate(this%wetdry, ncells, 'WETDRY', trim(this%origin))
-    call mem_allocate(this%angle1, ncells, 'ANGLE1', trim(this%origin))
-    call mem_allocate(this%angle2, ncells, 'ANGLE2', trim(this%origin))
-    call mem_allocate(this%angle3, ncells, 'ANGLE3', trim(this%origin))
+    call mem_allocate(this%k22, ncells, 'K22', this%memoryPath)
+    call mem_allocate(this%k33, ncells, 'K33', this%memoryPath)
+    call mem_allocate(this%wetdry, ncells, 'WETDRY', this%memoryPath)
+    call mem_allocate(this%angle1, ncells, 'ANGLE1', this%memoryPath)
+    call mem_allocate(this%angle2, ncells, 'ANGLE2', this%memoryPath)
+    call mem_allocate(this%angle3, ncells, 'ANGLE3', this%memoryPath)
     !
     ! -- Optional arrays
-    call mem_allocate(this%ibotnode, 0, 'IBOTNODE', trim(this%origin))
+    call mem_allocate(this%ibotnode, 0, 'IBOTNODE', this%memoryPath)
     !
     ! -- Specific discharge
     if (this%icalcspdis == 1) then
-      call mem_allocate(this%spdis, 3, ncells, 'SPDIS', trim(this%origin))
-      call mem_allocate(this%nodedge, this%nedges, 'NODEDGE', trim(this%origin))
-      call mem_allocate(this%ihcedge, this%nedges, 'IHCEDGE', trim(this%origin))
+      call mem_allocate(this%spdis, 3, ncells, 'SPDIS',this%memoryPath)
+      call mem_allocate(this%nodedge, this%nedges, 'NODEDGE', this%memoryPath)
+      call mem_allocate(this%ihcedge, this%nedges, 'IHCEDGE', this%memoryPath)
       call mem_allocate(this%propsedge, 5, this%nedges, 'PROPSEDGE',           &
-        trim(this%origin))
+        this%memoryPath)
+      do n = 1, ncells
+        this%spdis(:, n) = DZERO
+      end do
     else
-      call mem_allocate(this%spdis, 3, 0, 'SPDIS', trim(this%origin))
-      call mem_allocate(this%nodedge, 0, 'NODEDGE', trim(this%origin))
-      call mem_allocate(this%ihcedge, 0, 'IHCEDGE', trim(this%origin))
-      call mem_allocate(this%propsedge, 0, 0, 'PROPSEDGE', trim(this%origin))
+      call mem_allocate(this%spdis, 3, 0, 'SPDIS', this%memoryPath)
+      call mem_allocate(this%nodedge, 0, 'NODEDGE', this%memoryPath)
+      call mem_allocate(this%ihcedge, 0, 'IHCEDGE', this%memoryPath)
+      call mem_allocate(this%propsedge, 0, 0, 'PROPSEDGE', this%memoryPath)
     endif
     !
     ! -- initialize iangle1, iangle2, iangle3, and wetdry
@@ -1338,7 +1346,7 @@ module GwfNpfModule
     ! -- allocate variable names
     allocate(this%aname(this%iname))
     this%aname = ['               ICELLTYPE', '                       K',       &
-                  '                     K33', '                     K22',       &    
+                  '                     K33', '                     K22',       &
                   '                  WETDRY', '                  ANGLE1',       &
                   '                  ANGLE2', '                  ANGLE3']
     !
@@ -1815,8 +1823,8 @@ module GwfNpfModule
         call store_error(errmsg)
       endif
       write(this%iout, '(1x, a)') 'K33 not provided.  Assuming K33 = K.'
-      call mem_reassignptr(this%k33, 'K33', trim(this%origin),                 &
-                                     'K11', trim(this%origin))
+      call mem_reassignptr(this%k33, 'K33', trim(this%memoryPath),                 &
+                                     'K11', trim(this%memoryPath))
     endif
     !
     ! -- set ik22 flag
@@ -1828,15 +1836,15 @@ module GwfNpfModule
         call store_error(errmsg)
       endif
       write(this%iout, '(1x, a)') 'K22 not provided.  Assuming K22 = K.'
-      call mem_reassignptr(this%k22, 'K22', trim(this%origin),                 &
-                                     'K11', trim(this%origin))
+      call mem_reassignptr(this%k22, 'K22', trim(this%memoryPath),                 &
+                                     'K11', trim(this%memoryPath))
     endif
     !
     ! -- Set WETDRY
     if (lname(5)) then
       this%iwetdry = 1
     else
-      call mem_reallocate(this%wetdry, 1, 'WETDRY', trim(this%origin))        
+      call mem_reallocate(this%wetdry, 1, 'WETDRY', trim(this%memoryPath))
     end if
     !
     ! -- set angle flags
@@ -1844,21 +1852,21 @@ module GwfNpfModule
       this%iangle1 = 1
     else
       if (this%ixt3d == 0) then
-        call mem_reallocate(this%angle1, 1, 'ANGLE1', trim(this%origin))        
+        call mem_reallocate(this%angle1, 1, 'ANGLE1', trim(this%memoryPath))
       end if
     endif
     if (lname(7)) then
       this%iangle2 = 1
     else
       if (this%ixt3d == 0) then
-        call mem_reallocate(this%angle2, 1, 'ANGLE2', trim(this%origin))        
+        call mem_reallocate(this%angle2, 1, 'ANGLE2', trim(this%memoryPath))
       end if
     endif
     if (lname(8)) then
       this%iangle3 = 1
     else
       if (this%ixt3d == 0) then
-        call mem_reallocate(this%angle3, 1, 'ANGLE3', trim(this%origin))        
+        call mem_reallocate(this%angle3, 1, 'ANGLE3', trim(this%memoryPath))
       end if
     endif
     !
@@ -2053,8 +2061,7 @@ module GwfNpfModule
     endif
     !
     ! -- allocate temporary storage to handle thickstart option
-    call mem_allocate(ithickstartflag, this%dis%nodes, 'ITHICKSTARTFLAG',      &
-                      trim(this%origin))
+    allocate(ithickstartflag(this%dis%nodes))
     do n = 1, this%dis%nodes
       ithickstartflag(n) = 0
     end do
@@ -2232,7 +2239,7 @@ module GwfNpfModule
     ! -- Determine the lower most node
     if (this%igwfnewtonur /= 0) then
       call mem_reallocate(this%ibotnode, this%dis%nodes, 'IBOTNODE',            &
-                          trim(this%origin))
+                          trim(this%memoryPath))
       do n = 1, this%dis%nodes
         !
         minbot = this%dis%bot(n)
@@ -2271,7 +2278,7 @@ module GwfNpfModule
     this%igwfnewtonur => null()
     !
     ! - clean up local storage
-    call mem_deallocate(ithickstartflag)
+    deallocate(ithickstartflag)
     !
     ! -- Return
     return
@@ -2606,7 +2613,8 @@ module GwfNpfModule
         ang2 = this%angle2(n)
         ang3 = DZERO
         if(this%iangle3 > 0) ang3 = this%angle3(n)
-        hy = hyeff_calc(hy11, hy22, hy33, ang1, ang2, ang3, vg1, vg2, vg3)
+        hy = hyeff_calc(hy11, hy22, hy33, ang1, ang2, ang3, vg1, vg2, vg3,     &
+                        this%iavgkeff)
       endif
       !
     else
@@ -2631,7 +2639,8 @@ module GwfNpfModule
             if(this%iangle3 > 0) ang3 = this%angle3(n)
           endif
         endif
-        hy = hyeff_calc(hy11, hy22, hy33, ang1, ang2, ang3, vg1, vg2, vg3)
+        hy = hyeff_calc(hy11, hy22, hy33, ang1, ang2, ang3, vg1, vg2, vg3,     &
+                        this%iavgkeff)
       endif
       !
     endif
@@ -2648,10 +2657,10 @@ module GwfNpfModule
 ! hcond -- Horizontal conductance between two cells
 !   inwtup: if 1, then upstream-weight condsat, otherwise recalculate
 !
-! hcond function uses a weighted transmissivity in the harmonic mean 
-! conductance calculations. This differs from the MODFLOW-NWT and MODFLOW-USG 
-! conductance calculations for the Newton-Raphson formulation which use a 
-! weighted hydraulic conductivity.  
+! hcond function uses a weighted transmissivity in the harmonic mean
+! conductance calculations. This differs from the MODFLOW-NWT and MODFLOW-USG
+! conductance calculations for the Newton-Raphson formulation which use a
+! weighted hydraulic conductivity.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -2786,7 +2795,7 @@ module GwfNpfModule
           thksatn = max(min(tpn, sill_top) - sill_bot, DZERO)
           thksatm = max(min(tpm, sill_top) - sill_bot, DZERO)
         endif
-        
+
         athk = DONE
         if (iusg == 1) then
           if (ihc == 2) then
@@ -3011,22 +3020,24 @@ module GwfNpfModule
     return
   end function logmean
 
-  function hyeff_calc(k11, k22, k33, ang1, ang2, ang3, vg1, vg2, vg3)          &
-    result(hyeff)
+  function hyeff_calc(k11, k22, k33, ang1, ang2, ang3, vg1, vg2, vg3,          &
+    iavgmeth) result(hyeff)
 ! ******************************************************************************
 ! hyeff_calc -- Calculate the effective horizontal hydraulic conductivity from
 !   an ellipse using a specified direction (unit vector vg1, vg2, vg3).
 !   k11 is the hydraulic conductivity of the major ellipse axis
 !   k22 is the hydraulic conductivity of first minor axis
 !   k33 is the hydraulic conductivity of the second minor axis
-!   vg1, vg2, and vg3 are the components of a unit vector in the
-!     direction of the connection between cell n and m
-!   a1 is the counter-clockwise rotation (radians) of the ellipse in
+!   ang1 is the counter-clockwise rotation (radians) of the ellipse in
 !     the (x, y) plane
-!   a2 is the rotation of the conductivity ellipsoid upward or
+!   ang2 is the rotation of the conductivity ellipsoid upward or
 !     downward from the (x, y) plane
-!   a3 is the rotation of the conductivity ellipsoid about the major
+!   ang3 is the rotation of the conductivity ellipsoid about the major
 !     axis
+!   vg1, vg2, and vg3 are the components of a unit vector in model coordinates 
+!     in the direction of the connection between cell n and m
+!  iavgmeth is the averaging method.  If zero, then use harmonic averaging.
+!     if one, then use arithmetic averaging.
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -3045,10 +3056,12 @@ module GwfNpfModule
     real(DP), intent(in) :: vg1
     real(DP), intent(in) :: vg2
     real(DP), intent(in) :: vg3
+    integer(I4B), intent(in) :: iavgmeth
     ! -- local
     real(DP) :: s1, s2, s3, c1, c2, c3
     real(DP), dimension(3,3) :: r
     real(DP) :: ve1, ve2, ve3
+    real(DP) :: denom, dnum, d1, d2, d3
 ! ------------------------------------------------------------------------------
     !
     ! -- Sin and cos of angles
@@ -3070,18 +3083,44 @@ module GwfNpfModule
     r(3,2) = -c2*s3
     r(3,3) = c2*c3
     !
-    ! -- Unit vector in direction of n-m connection
+    ! -- Unit vector in direction of n-m connection in a local coordinate
+    !    system aligned with the ellipse axes
     ve1 = r(1, 1) * vg1 + r(2, 1) * vg2 + r(3, 1) * vg3
     ve2 = r(1, 2) * vg1 + r(2, 2) * vg2 + r(3, 2) * vg3
     ve3 = r(1, 3) * vg1 + r(2, 3) * vg2 + r(3, 3) * vg3
     !
-    ! -- Effective hydraulic conductivity
-    !hyeff = ve1 ** 2 / k11 + ve2 ** 2 / k22 + ve3 ** 2 / k33
+    ! -- Effective hydraulic conductivity calculated using harmonic (1) 
+    !    or arithmetic (2) weighting
     hyeff = DZERO
-    if (k11 /= DZERO) hyeff = hyeff + ve1 ** 2 / k11
-    if (k22 /= DZERO) hyeff = hyeff + ve2 ** 2 / k22
-    if (k33 /= DZERO) hyeff = hyeff + ve3 ** 2 / k33
-    if (hyeff /= DZERO) hyeff = DONE / hyeff
+    if (iavgmeth == 0) then
+    !
+      ! -- Arithmetic weighting.  If principal direction corresponds exactly with
+      !    unit vector then set to principal direction.  Otherwise weight it.
+      dnum = DONE
+      d1 = ve1 ** 2
+      d2 = ve2 ** 2
+      d3 = ve3 ** 2
+      if (ve1 /= DZERO) then
+        dnum = dnum * k11
+        d2 = d2 * k11
+        d3 = d3 * k11
+      end if
+      if (ve2 /= DZERO) then
+        dnum = dnum * k22
+        d1 = d1 * k22
+        d3 = d3 * k22
+      end if
+      if (ve3 /= DZERO) then
+        dnum = dnum * k33
+        d1 = d1 * k33
+        d2 = d2 * k33
+      end if
+      denom = d1 + d2 + d3
+      if (denom > DZERO) hyeff = dnum / denom
+    else if (iavgmeth == 1) then
+      ! -- arithmetic
+      hyeff = ve1 ** 2 * k11 + ve2 ** 2 * k22 + ve3 ** 2 * k33
+    end if
     !
     ! -- Return
     return
@@ -3089,7 +3128,7 @@ module GwfNpfModule
 
   subroutine calc_spdis(this, flowja)
 ! ******************************************************************************
-! calc_spdis -- Calculate the 3 conmponents of specific discharge 
+! calc_spdis -- Calculate the 3 conmponents of specific discharge
 !     at the cell center.
 ! ******************************************************************************
 !
@@ -3188,7 +3227,7 @@ module GwfNpfModule
     ! -- Go through each cell and calculate specific discharge
     do n = 1, this%dis%nodes
       !
-      ! -- first calculate geometric properties for x and y directions and 
+      ! -- first calculate geometric properties for x and y directions and
       !    the specific discharge at a face (vi)
       ic = 0
       iz = 0
@@ -3314,7 +3353,7 @@ module GwfNpfModule
       !
       ! -- Finish computing omega weights.  Add a tiny bit
       !    to dsum so that the normalized omega weight later
-      !    evaluates to (essentially) 1 in the case of a single 
+      !    evaluates to (essentially) 1 in the case of a single
       !    relevant connection, avoiding 0/0.
       dsumx = dsumx + DEM10 * dsumx
       dsumy = dsumy + DEM10 * dsumy
@@ -3382,7 +3421,7 @@ module GwfNpfModule
     ! -- return
     return
   end subroutine calc_spdis
-  
+
   subroutine sav_spdis(this, ibinun)
 ! ******************************************************************************
 ! sav_spdis -- save specific discharge in binary format to ibinun
@@ -3405,8 +3444,8 @@ module GwfNpfModule
     text = '      DATA-SPDIS'
     naux = 3
     auxtxt(:) = ['              qx', '              qy', '              qz']
-    call this%dis%record_srcdst_list_header(text, this%name_model, this%name,  &
-      this%name_model, this%name, naux, auxtxt, ibinun, this%dis%nodes,        &
+    call this%dis%record_srcdst_list_header(text, this%name_model, this%packName,  &
+      this%name_model, this%packName, naux, auxtxt, ibinun, this%dis%nodes,        &
       this%iout)
     !
     ! -- Write a zero for Q, and then write qx, qy, qz as aux variables
@@ -3442,8 +3481,8 @@ module GwfNpfModule
     text = '        DATA-SAT'
     naux = 1
     auxtxt(:) = ['             sat']
-    call this%dis%record_srcdst_list_header(text, this%name_model, this%name,  &
-      this%name_model, this%name, naux, auxtxt, ibinun, this%dis%nodes,        &
+    call this%dis%record_srcdst_list_header(text, this%name_model, this%packName,  &
+      this%name_model, this%packName, naux, auxtxt, ibinun, this%dis%nodes,        &
       this%iout)
     !
     ! -- Write a zero for Q, and then write saturation as an aux variables
@@ -3633,5 +3672,5 @@ module GwfNpfModule
     ! -- Return
     return
   end function thksatnm
-  
+
 end module GwfNpfModule

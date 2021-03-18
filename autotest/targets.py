@@ -1,5 +1,5 @@
 import os
-import platform
+import sys
 import flopy
 
 
@@ -13,8 +13,8 @@ def target_pth(target, pth):
 
 target_ext = ''
 target_so = '.so'
-sysinfo = platform.system()
-if sysinfo.lower() == 'windows':
+sysinfo = sys.platform.lower()
+if sysinfo.lower() == 'win32':
     target_ext = '.exe'
     target_so = '.dll'
 
@@ -35,13 +35,15 @@ target = target_pth('mfusgdbl{}'.format(target_ext), ebindir)
 target_dict['mfusg'] = target
 target = target_pth('mflgrdbl{}'.format(target_ext), ebindir)
 target_dict['mflgr'] = target
+target = target_pth('mf2005{}'.format(target_ext), ebindir)
+target_dict['mf2005s'] = target
+target = target_pth('mt3dms{}'.format(target_ext), ebindir)
+target_dict['mt3dms'] = target
 
-# create MODFLOW 6 target name
+# create MODFLOW 6 target name and add to dictionary
 program = 'mf6{}'.format(target_ext)
 target = os.path.join(bindir, program)
-
-# add MODFLOW 6 to dictionary of valid executable targets
-target_dict[os.path.basename(target)] = target
+target_dict['mf6'] = target
 
 # create MODFLOW 6 so/dll target name
 tprog = 'libmf6{}'.format(target_so)

@@ -1,7 +1,7 @@
 module BaseDisModule
   
   use KindModule,              only: DP, I4B
-  use ConstantsModule,         only: LENMODELNAME, LENORIGIN, LINELENGTH, DZERO
+  use ConstantsModule,         only: LENMODELNAME, LENAUXNAME, LINELENGTH, DZERO, LENMEMPATH
   use SmoothingModule,         only: sQuadraticSaturation
   use ConnectionsModule,       only: ConnectionsType
   use InputOutputModule,       only: URWORD, ubdsv1
@@ -9,6 +9,7 @@ module BaseDisModule
                                      store_error_unit, ustop
   use BlockParserModule,       only: BlockParserType
   use MemoryManagerModule,     only: mem_allocate
+  use MemoryHelperModule,      only: create_mem_path
   use TdisModule,              only: kstp, kper, pertim, totim, delt
   use TimeSeriesManagerModule, only: TimeSeriesManagerType
 
@@ -18,31 +19,31 @@ module BaseDisModule
   public :: DisBaseType
 
   type :: DisBaseType
-    character(len=LENORIGIN), pointer               :: origin     => null()      !origin name for mem allocation
-    character(len=LENMODELNAME), pointer            :: name_model => null()      !name of the model
-    integer(I4B), pointer                           :: inunit     => null()      !unit number for input file
-    integer(I4B), pointer                           :: iout       => null()      !unit number for output file
-    integer(I4B), pointer                           :: nodes      => null()      !number of nodes in solution
-    integer(I4B), pointer                           :: nodesuser  => null()      !number of user nodes (same as nodes for disu grid)
-    integer(I4B), pointer                           :: nja        => null()      !number of connections plus number of nodes
-    integer(I4B), pointer                           :: njas       => null()      !(nja-nodes)/2
-    integer(I4B), pointer                           :: lenuni     => null()      !length unit
-    integer(I4B), pointer                           :: ndim       => null()      !number of spatial model dimensions (1 for disu grid)
-    integer(I4B), pointer                           :: icondir    => null()      !flag indicating if grid has enough info to calculate connection vectors
-    logical, pointer                                :: writegrb   => null()      !write binary grid file
-    real(DP), pointer                               :: yorigin    => null()      ! y-position of the lower-left grid corner (default is 0.)
-    real(DP), pointer                               :: xorigin    => null()      ! x-position of the lower-left grid corner (default is 0.)
-    real(DP), pointer                               :: angrot     => null()      ! counter-clockwise rotation angle of the lower-left corner (default is 0.0)
-    integer(I4B), dimension(:), pointer, contiguous :: mshape     => null()      !shape of the model; (nodes) for DisBaseType
-    real(DP), dimension(:), pointer, contiguous     :: top        => null()      !(size:nodes) cell top elevation
-    real(DP), dimension(:), pointer, contiguous     :: bot        => null()      !(size:nodes) cell bottom elevation
-    real(DP), dimension(:), pointer, contiguous     :: area       => null()      !(size:nodes) cell area, in plan view
-    type(ConnectionsType), pointer                  :: con        => null()      !connections object
-    type(BlockParserType)                           :: parser                    !object to read blocks
-    real(DP), dimension(:), pointer, contiguous     :: dbuff      => null()      !helper double array of size nodesuser
-    integer(I4B), dimension(:), pointer, contiguous :: ibuff      => null()      !helper int array of size nodesuser
-    integer(I4B), dimension(:), pointer, contiguous :: nodereduced => null()     ! (size:nodesuser)contains reduced nodenumber (size 0 if not reduced); -1 means vertical pass through, 0 is idomain = 0
-    integer(I4B), dimension(:), pointer, contiguous :: nodeuser => null()        ! (size:nodes) given a reduced nodenumber, provide the user nodenumber (size 0 if not reduced)
+    character(len=LENMEMPATH)                       :: memoryPath                !< path for memory allocation
+    character(len=LENMODELNAME), pointer            :: name_model => null()      !< name of the model
+    integer(I4B), pointer                           :: inunit     => null()      !< unit number for input file
+    integer(I4B), pointer                           :: iout       => null()      !< unit number for output file
+    integer(I4B), pointer                           :: nodes      => null()      !< number of nodes in solution
+    integer(I4B), pointer                           :: nodesuser  => null()      !< number of user nodes (same as nodes for disu grid)
+    integer(I4B), pointer                           :: nja        => null()      !< number of connections plus number of nodes
+    integer(I4B), pointer                           :: njas       => null()      !< (nja-nodes)/2
+    integer(I4B), pointer                           :: lenuni     => null()      !< length unit
+    integer(I4B), pointer                           :: ndim       => null()      !< number of spatial model dimensions (1 for disu grid)
+    integer(I4B), pointer                           :: icondir    => null()      !< flag indicating if grid has enough info to calculate connection vectors
+    logical, pointer                                :: writegrb   => null()      !< write binary grid file
+    real(DP), pointer                               :: yorigin    => null()      !< y-position of the lower-left grid corner (default is 0.)
+    real(DP), pointer                               :: xorigin    => null()      !< x-position of the lower-left grid corner (default is 0.)
+    real(DP), pointer                               :: angrot     => null()      !< counter-clockwise rotation angle of the lower-left corner (default is 0.0)
+    integer(I4B), dimension(:), pointer, contiguous :: mshape     => null()      !< shape of the model; (nodes) for DisBaseType
+    real(DP), dimension(:), pointer, contiguous     :: top        => null()      !< (size:nodes) cell top elevation
+    real(DP), dimension(:), pointer, contiguous     :: bot        => null()      !< (size:nodes) cell bottom elevation
+    real(DP), dimension(:), pointer, contiguous     :: area       => null()      !< (size:nodes) cell area, in plan view
+    type(ConnectionsType), pointer                  :: con        => null()      !< connections object
+    type(BlockParserType)                           :: parser                    !< object to read blocks
+    real(DP), dimension(:), pointer, contiguous     :: dbuff      => null()      !< helper double array of size nodesuser
+    integer(I4B), dimension(:), pointer, contiguous :: ibuff      => null()      !< helper int array of size nodesuser
+    integer(I4B), dimension(:), pointer, contiguous :: nodereduced => null()     !< (size:nodesuser)contains reduced nodenumber (size 0 if not reduced); -1 means vertical pass through, 0 is idomain = 0
+    integer(I4B), dimension(:), pointer, contiguous :: nodeuser => null()        !< (size:nodes) given a reduced nodenumber, provide the user nodenumber (size 0 if not reduced)
   contains
     procedure :: dis_df
     procedure :: dis_ac
@@ -96,9 +97,6 @@ module BaseDisModule
     procedure, public  :: record_srcdst_list_header
     procedure, private :: record_srcdst_list_entry
     generic, public    :: record_mf6_list_entry => record_srcdst_list_entry
-  ! *** NOTE: REMOVE print_list_entry WHEN ALL USES OF THIS METHOD ARE 
-  !           REMOVED FROM TRANSPORT
-    procedure, public  :: print_list_entry
     procedure, public  :: nlarray_to_nodelist
     procedure, public  :: highest_active
     procedure, public  :: get_area
@@ -262,7 +260,6 @@ module BaseDisModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Strings
-    deallocate(this%origin)
     deallocate(this%name_model)
     !
     ! -- Scalars
@@ -553,31 +550,29 @@ module BaseDisModule
     character(len=*), intent(in) :: name_model
     character(len=*), intent(in) :: dis_type !PAR
     ! -- local
-    character(len=LENORIGIN) :: origin
 ! ------------------------------------------------------------------------------
     !
-    ! -- Assign origin name
-    write(origin,'(a,1x,a)') trim(adjustl(name_model)), trim(dis_type) !PAR
+    ! -- Create memory path
+    this%memoryPath = create_mem_path(name_model, trim(dis_type)) !PAR
     !
     ! -- Allocate
-    allocate(this%origin)
     allocate(this%name_model)
-    call mem_allocate(this%inunit, 'INUNIT', origin)
-    call mem_allocate(this%iout, 'IOUT', origin)
-    call mem_allocate(this%nodes, 'NODES', origin)
-    call mem_allocate(this%nodesuser, 'NODESUSER', origin)
-    call mem_allocate(this%ndim, 'NDIM', origin)
-    call mem_allocate(this%icondir, 'ICONDIR', origin)
-    call mem_allocate(this%writegrb, 'WRITEGRB', origin)
-    call mem_allocate(this%xorigin, 'XORIGIN', origin)
-    call mem_allocate(this%yorigin, 'YORIGIN', origin)
-    call mem_allocate(this%angrot, 'ANGROT', origin)
-    call mem_allocate(this%nja, 'NJA', origin)
-    call mem_allocate(this%njas, 'NJAS', origin)
-    call mem_allocate(this%lenuni, 'LENUNI', origin)
+    !
+    call mem_allocate(this%inunit, 'INUNIT', this%memoryPath)
+    call mem_allocate(this%iout, 'IOUT', this%memoryPath)
+    call mem_allocate(this%nodes, 'NODES', this%memoryPath)
+    call mem_allocate(this%nodesuser, 'NODESUSER', this%memoryPath)
+    call mem_allocate(this%ndim, 'NDIM', this%memoryPath)
+    call mem_allocate(this%icondir, 'ICONDIR', this%memoryPath)
+    call mem_allocate(this%writegrb, 'WRITEGRB', this%memoryPath)
+    call mem_allocate(this%xorigin, 'XORIGIN', this%memoryPath)
+    call mem_allocate(this%yorigin, 'YORIGIN', this%memoryPath)
+    call mem_allocate(this%angrot, 'ANGROT', this%memoryPath)
+    call mem_allocate(this%nja, 'NJA', this%memoryPath)
+    call mem_allocate(this%njas, 'NJAS', this%memoryPath)
+    call mem_allocate(this%lenuni, 'LENUNI', this%memoryPath)
     !
     ! -- Initialize
-    this%origin = origin
     this%name_model = name_model
     this%inunit = 0
     this%iout = 0
@@ -612,10 +607,10 @@ module BaseDisModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Allocate
-    call mem_allocate(this%mshape, this%ndim, 'MSHAPE', this%origin)
-    call mem_allocate(this%top, this%nodes, 'TOP', this%origin)
-    call mem_allocate(this%bot, this%nodes, 'BOT', this%origin)
-    call mem_allocate(this%area, this%nodes, 'AREA', this%origin)
+    call mem_allocate(this%mshape, this%ndim, 'MSHAPE', this%memoryPath)
+    call mem_allocate(this%top, this%nodes, 'TOP', this%memoryPath)
+    call mem_allocate(this%bot, this%nodes, 'BOT', this%memoryPath)
+    call mem_allocate(this%area, this%nodes, 'AREA', this%memoryPath)
     !
     ! -- Initialize
     this%mshape(1) = this%nodes
@@ -628,7 +623,7 @@ module BaseDisModule
     endif
     !
     ! -- Allocate the arrays
-    call mem_allocate(this%dbuff, isize, 'DBUFF', this%name_model)
+    call mem_allocate(this%dbuff, isize, 'DBUFF', this%name_model) ! TODO_MJR: is this correct??
     call mem_allocate(this%ibuff, isize, 'IBUFF', this%name_model)
     !
     ! -- Return
@@ -807,8 +802,7 @@ module BaseDisModule
     nodeu = this%nodeu_from_cellid(cellid, inunit, iout, flag_string_local,    &
                                    allowzerolocal)
     !
-    ! -- Convert user-based nodenumber to reduced node number
-    
+    ! -- Convert user-based nodenumber to reduced node number   
     if (nodeu > 0 .and. .not. mpi_is_halo(this%name_model)) then !PAR
       noder = this%get_nodenumber(nodeu, 0)
     else
@@ -1046,9 +1040,11 @@ module BaseDisModule
     integer(I4B), dimension(:), pointer, contiguous, intent(inout) :: nodelist
     real(DP), dimension(:,:), pointer, contiguous, intent(inout) :: rlist
     real(DP), dimension(:,:), pointer, contiguous, intent(inout) :: auxvar
-    character(len=16), dimension(:), intent(inout) :: auxname
+    character(len=LENAUXNAME), dimension(:), intent(inout) :: auxname
     character(len=LENBOUNDNAME), dimension(:), pointer, contiguous,                        &
                                           intent(inout) :: boundname
+    !character(len=:), dimension(:), pointer, contiguous, intent(inout) :: auxname
+    !character(len=:), dimension(:), pointer, contiguous, intent(inout) :: boundname
     character(len=*), intent(in) :: label
     character(len=*),  intent(in) :: pkgName
     type(TimeSeriesManagerType)   :: tsManager
@@ -1407,47 +1403,6 @@ module BaseDisModule
     ! -- return
     return
   end subroutine record_srcdst_list_entry
-
-  ! *** NOTE: REMOVE print_list_entry WHEN ALL USES OF THIS METHOD ARE 
-  !           REMOVED FROM TRANSPORT
-  subroutine print_list_entry(this, l, noder, q, iout, boundname)
-! ******************************************************************************
-! print_list_entry -- Print list budget entry
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use InputOutputModule, only: ubdsvb, get_ijk
-    use ConstantsModule, only: LENBOUNDNAME, LINELENGTH
-    ! -- dummy
-    class(DisBaseType), intent(in) :: this
-    integer(I4B), intent(in) :: l
-    integer(I4B), intent(in) :: noder
-    real(DP), intent(in) :: q
-    integer(I4B), intent(in) :: iout
-    character(len=*), intent(in), optional :: boundname
-    ! -- local
-    integer(I4B) :: nodeu
-    character(len=*), parameter :: fmt1 =                                      &
-      "(1X,'BOUNDARY ',I8,'  CELL ',A20,'   RATE ', 1PG15.6,2x,A)"
-    character(len=LENBOUNDNAME) :: bname
-    character(len=LINELENGTH) :: nodestr
-! ------------------------------------------------------------------------------
-    !
-    bname = ''
-    if (present(boundname)) bname = boundname
-    nodeu = this%get_nodeuser(noder)
-    call this%nodeu_to_string(nodeu, nodestr)
-    if (bname == '') then
-      write(iout, fmt1) l, trim(nodestr), q
-    else
-      write(iout, fmt1) l, trim(nodestr), q, trim(bname)
-    endif
-    !
-    ! -- return
-    return
-  end subroutine print_list_entry
 
   subroutine nlarray_to_nodelist(this, nodelist, maxbnd, nbound, aname,        &
                                  inunit, iout)

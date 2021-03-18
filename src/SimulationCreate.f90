@@ -5,7 +5,8 @@ module SimulationCreateModule
   use SimVariablesModule,     only: simfile, simlstfile, iout
   use GenericUtilitiesModule, only: sim_message, write_centered
   use SimModule,              only: ustop, store_error, count_errors,            &
-                                    store_error_unit, maxerrors
+                                    store_error_unit, MaxErrors
+  use VersionModule,          only: write_listfile_header
   use InputOutputModule,      only: getunit, urword, openfile
   use ArrayHandlersModule,    only: expandarray, ifind
   use BaseModelModule,        only: BaseModelType
@@ -23,7 +24,7 @@ module SimulationCreateModule
   public :: simulation_cr
   public :: simulation_da
   public :: modelname !PAR
-  
+
   integer(I4B) :: inunit = 0
   character(len=LENMODELNAME), allocatable, dimension(:) :: modelname
   character(len=LENMODELNAME), allocatable, dimension(:), save :: modelname_all !PAR
@@ -53,16 +54,17 @@ module SimulationCreateModule
     iout = getunit()
     call openfile(iout, 0, simlstfile, 'LIST', filstat_opt='REPLACE',            &
                   master_write=.true.) !PAR
+    !
     ! -- write simlstfile to stdout
     if (parallelrun) then !PAR
       write(line,'(2(1x,A))') 'Writing simulation list file for MPI rank 0:',    & !PAR
                               trim(adjustl(simlstfile)) !PAR
     else !PAR
-      write(line,'(2(1x,A))') 'Writing simulation list file:',                   &
-                              trim(adjustl(simlstfile))
+    write(line,'(2(1x,A))') 'Writing simulation list file:',                     &
+                            trim(adjustl(simlstfile))
     endif !PAR
     call sim_message(line, force_write=writestd) !PAR
-    call write_simulation_header()
+    call write_listfile_header(iout)
     !
     ! -- Read the simulation name file and create objects
     simfile = adjustl(simfile) !PAR
@@ -98,57 +100,6 @@ module SimulationCreateModule
     return
   end subroutine simulation_da
 
-  subroutine write_simulation_header()
-! ******************************************************************************
-! Write header information for the simulation
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    use ConstantsModule,        only: LENBIGLINE
-    use VersionModule,          only: VERSION, MFVNAM, MFTITLE, FMTDISCLAIMER,  & 
-                                      IDEVELOPMODE
-    use CompilerVersion
-    use GenericUtilitiesModule, only: write_centered
-    ! -- dummy
-    ! -- local
-    character(len=LENBIGLINE) :: syscmd
-    character(len=80) :: compiler
-! ------------------------------------------------------------------------------
-    !
-    ! -- Write header lines to simulation list file.
-    call write_centered('MODFLOW'//MFVNAM, 80, iunit=iout, force_write=.true.) !PAR
-    call write_centered(MFTITLE, 80, iunit=iout, force_write=.true.) !PAR
-    call write_centered('VERSION '//VERSION, 80, iunit=iout, force_write=.true.) !PAR
-    !
-    ! -- Write if develop mode
-    if (IDEVELOPMODE == 1) then
-      call write_centered('***DEVELOP MODE***', 80, iunit=iout, &
-                                               force_write=.true.) !PAR
-    end if
-    !
-    ! -- Write compiler version
-    call get_compiler(compiler)
-    call write_centered(' ', 80, iunit=iout, force_write=.true.) !PAR
-    call write_centered(trim(adjustl(compiler)), 80, iunit=iout, force_write=.true.) !PAR
-    !
-    ! -- Write disclaimer
-    write(iout, FMTDISCLAIMER)
-    !
-    ! -- Write the system command used to initiate simulation
-    call GET_COMMAND(syscmd)
-    write(iout, '(/,a,/,a)') 'System command used to initiate simulation:',    &
-                             trim(syscmd)
-    !
-    ! -- Write precision of real variables
-    write(iout, '(/,a)') 'MODFLOW was compiled using uniform precision.'
-    call write_kindinfo(iout)
-    write(iout, *)
-    !
-    ! -- Return
-    return
-  end subroutine write_simulation_header
-
   subroutine read_simulation_namefile(simfile)
 ! ******************************************************************************
 ! Read the simulation name file and initialize the models, exchanges,
@@ -175,6 +126,8 @@ module SimulationCreateModule
     ! -- Open simulation name file
     inunit = getunit()
     call openfile(inunit, iout, simfile, 'NAM')
+    !
+    ! -- write simfile name to stdout
     !call MpiWorld%mpi_barrier() !PAR
     if (writestd) then !PAR
       write(line,'(2(1x,a))') 'Using Simulation name file:', trim(simfile) !PAR
@@ -248,6 +201,7 @@ module SimulationCreateModule
     use SimVariablesModule, only: isimcontinue, isimcheck, isimdd, nddsub !PAR
     ! -- local
     integer(I4B) :: ierr
+    integer(I4B) :: imax
     logical :: isfound, endOfBlock
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: keyword
@@ -281,9 +235,10 @@ module SimulationCreateModule
               call ustop()
             endif
           case ('MAXERRORS')
-            maxerrors = parser%GetInteger()
+            imax = parser%GetInteger()
+            call MaxErrors(imax)
             write(iout, '(4x, a, i0)')                                         &
-                  'MAXIMUM NUMBER OF ERRORS THAT WILL BE STORED IS ', maxerrors
+                  'MAXIMUM NUMBER OF ERRORS THAT WILL BE STORED IS ', imax
           case ('DOMAIN_DECOMPOSITION') !PAR
             isimdd = 1 !PAR
             nddsub = parser%GetInteger() !PAR
@@ -376,6 +331,7 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use GwfModule,              only: gwf_cr
+    use GwtModule,              only: gwt_cr
     use ConstantsModule,        only: LENMODELNAME
     use SimVariablesModule, only: isimdd, nddsub !PAR
     use MpiExchangeModule, only: MpiWorld !PAR
@@ -388,7 +344,7 @@ module SimulationCreateModule
     character(len=LINELENGTH) :: errmsg
     character(len=LINELENGTH) :: keyword
     character(len=LINELENGTH) :: fname, mname
-    integer :: isub !PAR
+   integer :: isub !PAR
     logical :: add !PAR
 ! ------------------------------------------------------------------------------
     !
@@ -406,11 +362,16 @@ module SimulationCreateModule
         select case (keyword)
           case ('GWF6')
             call parser%GetString(fname)
-            call read_modelname(mname) !PAR
+           call read_modelname(mname) !PAR
             if (isimdd == 1) then !PAR
               isub = parser%GetInteger() !PAR
               if (isub < 0 .or. isub > nddsub) then
                 write(*,'(a,1x,i)') '****ERROR. INVALID SUBDOMAIN:', isub
+
+
+
+
+
                 call store_error(errmsg)
                 call parser%StoreErrorUnit()
                 call ustop()
@@ -430,6 +391,10 @@ module SimulationCreateModule
               call add_model_dd(imdd, 1, mname) !PAR
               call gwf_cr(fname, im, modelname(im))
             endif !PAR
+          case ('GWT6')
+            call parser%GetString(fname)
+            call add_model(im, 'GWT6', mname)
+            call gwt_cr(fname, im, modelname(im))
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SIMULATION MODEL: ',                     &
@@ -460,6 +425,7 @@ module SimulationCreateModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use GwfGwfExchangeModule,    only: gwfexchange_create
+    use GwfGwtExchangeModule,    only: gwfgwt_cr
     ! -- dummy
     ! -- local
     integer(I4B) :: ierr
@@ -494,7 +460,7 @@ module SimulationCreateModule
             ! -- get filename
             call parser%GetString(fname)
             !
-            ! -- get first modelname
+            ! -- get first modelname and then model id
             call parser%GetStringCaps(name1)
             call parser%GetStringCaps(name2)
             !
@@ -533,6 +499,36 @@ module SimulationCreateModule
             write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWF6 exchange ', id,      &
               ' will be created to connect model ', m1, ' with model ', m2
             call gwfexchange_create(fname, id, m1, m2, name1, name2, m2_bympi) !PAR
+          case ('GWF6-GWT6')
+            id = id + 1
+            !
+            ! -- get filename
+            call parser%GetString(fname)
+            !
+            ! -- get first modelname and then model id
+            call parser%GetStringCaps(name1)
+            m1 = ifind(modelname, name1)
+            if(m1 < 0) then
+              write(errmsg, fmtmerr) trim(name1)
+              call store_error(errmsg)
+              call parser%StoreErrorUnit()
+              call ustop()
+            endif
+            !
+            ! -- get second modelname and then model id
+            call parser%GetStringCaps(name2)
+            m2 = ifind(modelname, name2)
+            if(m2 < 0) then
+              write(errmsg, fmtmerr) trim(name2)
+              call store_error(errmsg)
+              call parser%StoreErrorUnit()
+              call ustop()
+            endif
+            !
+            ! -- Create the exchange object.
+            write(iout, '(4x,a,i0,a,i0,a,i0)') 'GWF6-GWT6 exchange ', id,      &
+              ' will be created to connect model ', m1, ' with model ', m2
+            call gwfgwt_cr(fname, id, m1, m2)
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SIMULATION EXCHANGES: ',                 &
@@ -667,7 +663,7 @@ module SimulationCreateModule
               ! -- Set istart and istop to encompass model name. Exit this
               !    loop if there are no more models.
               if (.not.filein) then !PAR
-                call parser%GetStringCaps(mname)
+              call parser%GetStringCaps(mname)
               else !PAR
                  call filein_parser%GetNextLine(filein_endOfBlock) !PAR
                  call filein_parser%GetStringCaps(mname) !PAR
@@ -702,7 +698,7 @@ module SimulationCreateModule
                 mid = ifind(modelname_all, mname) !CGC
                 call sp%slnaddmodelid(mid, izc, model_topol_m1, model_topol_m2) !CGC
               end if !CGC
-              !
+          !
               ! -- Find the model id, and then get model
               if (isimdd ==1) then !PAR
                 mid = ifind(modelname_all, mname) !PAR
@@ -710,10 +706,10 @@ module SimulationCreateModule
                 if(mid <= 0) then
                   write(errmsg, '(a,a)') 'Error.  Invalid modelname: ', &
                     trim(mname)
-                  call store_error(errmsg)
-                  call parser%StoreErrorUnit()
-                  call ustop()
-                endif
+            call store_error(errmsg)
+            call parser%StoreErrorUnit()
+            call ustop()
+      endif
               endif !PAR
               add = .false. !PAR
               mid = ifind(modelname, mname) !PAR
@@ -728,14 +724,14 @@ module SimulationCreateModule
                 mp%idsoln = isoln
               endif !PAR
             enddo
-          !
+      !
           case default
             write(errmsg, '(4x,a,a)') &
                   '****ERROR. UNKNOWN SOLUTIONGROUP ENTRY: ', &
                   trim(keyword)
-            call store_error(errmsg)
-            call parser%StoreErrorUnit()
-            call ustop()
+        call store_error(errmsg)
+        call parser%StoreErrorUnit()
+        call ustop()
         end select
       end do
       !
@@ -767,7 +763,7 @@ module SimulationCreateModule
         call parser%StoreErrorUnit()
         call ustop()
       endif
-      !
+    !
       ! -- todo: more error checking?
       !
       write(iout,'(1x,a)')'END OF SIMULATION SOLUTIONGROUP'
@@ -855,7 +851,7 @@ module SimulationCreateModule
     ! -- return
     return
   end subroutine read_modelname
-  
+
   subroutine add_model_dd(im, isub, mname) !PAR
 ! ******************************************************************************
 ! Add the model to the list of modelnames, check that the model name is valid.

@@ -74,7 +74,7 @@ def get_model(idx, dir):
     gwf = flopy.mf6.ModflowGwf(sim, modelname=namea, save_flows=True)
 
     # create iterative model solution and register the gwf model with it
-    ims = flopy.mf6.ModflowIms(sim, outer_hclose=1e-9, inner_hclose=1.e-9)
+    ims = flopy.mf6.ModflowIms(sim, outer_dvclose=1e-9, inner_dvclose=1.e-9)
 
     # dis
     dis = flopy.mf6.ModflowGwfdis(gwf, nlay=nlay, nrow=nrow, ncol=ncol,
@@ -154,9 +154,9 @@ def qxqyqz(fname, nlay, nrow, ncol):
     nodes = nlay * nrow * ncol
     cbb = flopy.utils.CellBudgetFile(fname, precision='double')
     spdis = cbb.get_data(text='DATA-SPDIS')[0]
-    qx = np.ones((nodes), dtype=np.float) * 1.e30
-    qy = np.ones((nodes), dtype=np.float) * 1.e30
-    qz = np.ones((nodes), dtype=np.float) * 1.e30
+    qx = np.ones((nodes), dtype=float) * 1.e30
+    qy = np.ones((nodes), dtype=float) * 1.e30
+    qz = np.ones((nodes), dtype=float) * 1.e30
     n0 = spdis['node'] - 1
     qx[n0] = spdis['qx']
     qy[n0] = spdis['qy']

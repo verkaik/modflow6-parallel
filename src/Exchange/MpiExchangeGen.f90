@@ -88,32 +88,6 @@ module MpiExchangeGenModule
     return
   end subroutine mpi_append_fname
 
-  subroutine mpi_create_modelname_halo(im, modelname)
-! ******************************************************************************
-! Create halo model name.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    character(len=*), intent(inout) :: modelname
-    integer(I4B), intent(in) :: im
-    ! -- local
-    character(len=LINELENGTH) :: s
-! ------------------------------------------------------------------------------
-    !
-    if (serialrun) then
-      return 
-    end if
-    !
-    write(s,*) im
-    modelname = trim(modelname)//' HALO'//trim(adjustl(s))
-    !
-    ! -- return
-    return
-  end subroutine mpi_create_modelname_halo
-
   function mpi_is_halo(modelname) result(flag_halo)
 ! ******************************************************************************
 ! Check if a model name is of type halo

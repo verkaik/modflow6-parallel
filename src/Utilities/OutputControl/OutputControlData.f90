@@ -296,6 +296,7 @@ module OutputControlData
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
+    use ConstantsModule, only: MNORMAL 
     use OpenSpecModule, only: access, form
     use InputOutputModule, only: urword, getunit, openfile
     use SimModule, only: store_error, store_error_unit, count_errors, ustop
@@ -312,7 +313,7 @@ module OutputControlData
     character(len=LINELENGTH) :: fname !PAR
     ! -- format
     character(len=*),parameter :: fmtocsave = &
-      "(4X,A,' INFORMATION WILL BE WRITTEN TO:',                               &
+      "(4X,A,' INFORMATION WILL BE WRITTEN TO:',                                 &
        &/,6X,'UNIT NUMBER: ', I0,/,6X, 'FILE NAME: ', A)"
 ! ------------------------------------------------------------------------------
     !
@@ -323,14 +324,14 @@ module OutputControlData
     case('FILEOUT')
       call urword(line, lloc, istart, istop, 0, ival, rval, 0, 0)
       this%idataun = getunit()
-      write(iout, fmtocsave) trim(adjustl(this%cname)), this%idataun,          &
+      write(iout, fmtocsave) trim(adjustl(this%cname)), this%idataun,            &
                              line(istart:istop)
       fname = line(istart:istop) !PAR
-      call openfile(this%idataun, iout, fname, 'DATA(BINARY)',                 & !PAR
-                    form, access, 'REPLACE')
+      call openfile(this%idataun, iout, fname, 'DATA(BINARY)',                   & !PAR
+                    form, access, 'REPLACE', MNORMAL)
     case('PRINT_FORMAT')
       call urword(line, lloc, istart, istop, 1, ival, rval, 0, 0)
-      call print_format(line(istart:), this%cdatafmp, this%editdesc,           &
+      call print_format(line(istart:), this%cdatafmp, this%editdesc,             &
                         this%nvaluesp, this%nwidthp, inunit)
     case default
        call store_error('Looking for FILEOUT or PRINT_FORMAT.  Found:')

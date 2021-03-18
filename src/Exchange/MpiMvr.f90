@@ -79,7 +79,7 @@ module MpiMvrModule
     return
   end subroutine mpi_set_maxmvr
   
-  subroutine mpi_set_mover(this, pname1, pname2)
+  subroutine mpi_set_mover(this, pckNameSrc, pckNameTgt)
 ! ******************************************************************************
 ! This subroutine set the maximum of movers.
 ! ******************************************************************************
@@ -89,7 +89,7 @@ module MpiMvrModule
     ! -- modules
     ! -- dummy
     class(MpiMvrType) :: this
-    character(len=*), intent(in) :: pname1, pname2
+    character(len=*), intent(in) :: pckNameSrc, pckNameTgt
     ! -- local
     integer(I4B) :: i
 ! ------------------------------------------------------------------------------
@@ -100,8 +100,8 @@ module MpiMvrModule
     !
     this%ngmvr = this%ngmvr + 1
     i = this%ngmvr
-    this%gmvr(i)%pname1 = trim(pname1)
-    this%gmvr(i)%pname2 = trim(pname2)
+    this%gmvr(i)%pckNameSrc = trim(pckNameSrc)
+    this%gmvr(i)%pckNameTgt = trim(pckNameTgt)
     !
     ! -- return
     return

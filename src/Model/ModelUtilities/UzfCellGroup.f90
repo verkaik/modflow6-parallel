@@ -88,6 +88,7 @@ module UzfCellGroupModule
       procedure :: rejfinf
       procedure :: gwseep
       procedure :: setbelowpet
+      procedure :: setgwpet
       procedure :: dealloc
     end type UzfCellGroupType
 !  
@@ -95,7 +96,7 @@ module UzfCellGroupModule
 !
 ! ------------------------------------------------------------------------------
    
-  subroutine init(this, ncells, nwav, origin)
+  subroutine init(this, ncells, nwav, memory_path)
 ! ******************************************************************************
 ! init -- allocate and set uzf object variables
 ! ******************************************************************************
@@ -108,59 +109,59 @@ module UzfCellGroupModule
    class(UzfCellGroupType) :: this
    integer(I4B), intent(in) :: nwav
    integer(I4B), intent(in) :: ncells
-   character(len=*), intent(in), optional :: origin
+   character(len=*), intent(in), optional :: memory_path
    ! -- local
    integer(I4B) :: icell
 ! ------------------------------------------------------------------------------
     !
-    ! -- Use mem_allocate if origin is passed in, otherwise it's a temp object
-    if (present(origin)) then
+    ! -- Use mem_allocate if memory path is passed in, otherwise it's a temp object
+    if (present(memory_path)) then
       this%imem_manager = 1
-      call mem_allocate(this%uzdpst, nwav, ncells, 'UZDPST', origin)
-      call mem_allocate(this%uzthst, nwav, ncells, 'UZTHST', origin)
-      call mem_allocate(this%uzflst, nwav, ncells, 'UZFLST', origin)
-      call mem_allocate(this%uzspst, nwav, ncells, 'UZSPST', origin)
-      call mem_allocate(this%nwavst, ncells, 'NWAVST', origin)
-      call mem_allocate(this%uzolsflx, ncells, 'UZOLSFLX', origin)
-      call mem_allocate(this%thtr, ncells, 'THTR', origin)
-      call mem_allocate(this%thts, ncells, 'THTS', origin)
-      call mem_allocate(this%thti, ncells, 'THTI', origin)
-      call mem_allocate(this%eps, ncells, 'EPS', origin)
-      call mem_allocate(this%ha, ncells, 'HA', origin)
-      call mem_allocate(this%hroot, ncells, 'HROOT', origin)
-      call mem_allocate(this%rootact, ncells, 'ROOTACT', origin)
-      call mem_allocate(this%extwc, ncells, 'EXTWC', origin)
-      call mem_allocate(this%etact, ncells, 'ETACT', origin)
-      call mem_allocate(this%nwav, ncells, 'NWAV', origin)
-      call mem_allocate(this%ntrail, ncells, 'NTRAIL', origin)
-      call mem_allocate(this%uzstor, ncells, 'UZSTOR', origin)
-      call mem_allocate(this%delstor, ncells, 'DELSTOR', origin)
-      call mem_allocate(this%totflux, ncells, 'TOTFLUX', origin)
-      call mem_allocate(this%vflow, ncells, 'VFLOW', origin)
-      call mem_allocate(this%sinf, ncells, 'SINF', origin)
-      call mem_allocate(this%finf, ncells, 'FINF', origin)
-      call mem_allocate(this%finf_rej, ncells, 'FINF_REJ', origin)
-      call mem_allocate(this%gwet, ncells, 'GWET', origin)
-      call mem_allocate(this%uzfarea, ncells, 'UZFAREA', origin)
-      call mem_allocate(this%cellarea, ncells, 'CELLAREA', origin)
-      call mem_allocate(this%celtop, ncells, 'CELTOP', origin)
-      call mem_allocate(this%celbot, ncells, 'CELBOT', origin)
-      call mem_allocate(this%landtop, ncells, 'LANDTOP', origin)
-      call mem_allocate(this%cvlm1, ncells, 'CVLM1', origin)
-      call mem_allocate(this%watab, ncells, 'WATAB', origin)
-      call mem_allocate(this%watabold, ncells, 'WATABOLD', origin)
-      call mem_allocate(this%surfdep, ncells, 'SURFDEP', origin)
-      call mem_allocate(this%vks, ncells, 'VKS', origin)
-      call mem_allocate(this%surflux, ncells, 'SURFLUX', origin)
-      call mem_allocate(this%surfluxbelow, ncells, 'SURFLUXBELOW', origin)
-      call mem_allocate(this%surfseep, ncells, 'SURFSEEP', origin)
-      call mem_allocate(this%gwpet, ncells, 'GWPET', origin)
-      call mem_allocate(this%pet, ncells, 'PET', origin)
-      call mem_allocate(this%petmax, ncells, 'PETMAX', origin)
-      call mem_allocate(this%extdp, ncells, 'EXTDP', origin)
-      call mem_allocate(this%extdpuz, ncells, 'EXTDPUZ', origin)
-      call mem_allocate(this%landflag, ncells, 'LANDFLAG', origin) 
-      call mem_allocate(this%ivertcon, ncells, 'IVERTCON', origin)
+      call mem_allocate(this%uzdpst, nwav, ncells, 'UZDPST', memory_path)
+      call mem_allocate(this%uzthst, nwav, ncells, 'UZTHST', memory_path)
+      call mem_allocate(this%uzflst, nwav, ncells, 'UZFLST', memory_path)
+      call mem_allocate(this%uzspst, nwav, ncells, 'UZSPST', memory_path)
+      call mem_allocate(this%nwavst, ncells, 'NWAVST', memory_path)
+      call mem_allocate(this%uzolsflx, ncells, 'UZOLSFLX', memory_path)
+      call mem_allocate(this%thtr, ncells, 'THTR', memory_path)
+      call mem_allocate(this%thts, ncells, 'THTS', memory_path)
+      call mem_allocate(this%thti, ncells, 'THTI', memory_path)
+      call mem_allocate(this%eps, ncells, 'EPS', memory_path)
+      call mem_allocate(this%ha, ncells, 'HA', memory_path)
+      call mem_allocate(this%hroot, ncells, 'HROOT', memory_path)
+      call mem_allocate(this%rootact, ncells, 'ROOTACT', memory_path)
+      call mem_allocate(this%extwc, ncells, 'EXTWC', memory_path)
+      call mem_allocate(this%etact, ncells, 'ETACT', memory_path)
+      call mem_allocate(this%nwav, ncells, 'NWAV', memory_path)
+      call mem_allocate(this%ntrail, ncells, 'NTRAIL', memory_path)
+      call mem_allocate(this%uzstor, ncells, 'UZSTOR', memory_path)
+      call mem_allocate(this%delstor, ncells, 'DELSTOR', memory_path)
+      call mem_allocate(this%totflux, ncells, 'TOTFLUX', memory_path)
+      call mem_allocate(this%vflow, ncells, 'VFLOW', memory_path)
+      call mem_allocate(this%sinf, ncells, 'SINF', memory_path)
+      call mem_allocate(this%finf, ncells, 'FINF', memory_path)
+      call mem_allocate(this%finf_rej, ncells, 'FINF_REJ', memory_path)
+      call mem_allocate(this%gwet, ncells, 'GWET', memory_path)
+      call mem_allocate(this%uzfarea, ncells, 'UZFAREA', memory_path)
+      call mem_allocate(this%cellarea, ncells, 'CELLAREA', memory_path)
+      call mem_allocate(this%celtop, ncells, 'CELTOP', memory_path)
+      call mem_allocate(this%celbot, ncells, 'CELBOT', memory_path)
+      call mem_allocate(this%landtop, ncells, 'LANDTOP', memory_path)
+      call mem_allocate(this%cvlm1, ncells, 'CVLM1', memory_path)
+      call mem_allocate(this%watab, ncells, 'WATAB', memory_path)
+      call mem_allocate(this%watabold, ncells, 'WATABOLD', memory_path)
+      call mem_allocate(this%surfdep, ncells, 'SURFDEP', memory_path)
+      call mem_allocate(this%vks, ncells, 'VKS', memory_path)
+      call mem_allocate(this%surflux, ncells, 'SURFLUX', memory_path)
+      call mem_allocate(this%surfluxbelow, ncells, 'SURFLUXBELOW', memory_path)
+      call mem_allocate(this%surfseep, ncells, 'SURFSEEP', memory_path)
+      call mem_allocate(this%gwpet, ncells, 'GWPET', memory_path)
+      call mem_allocate(this%pet, ncells, 'PET', memory_path)
+      call mem_allocate(this%petmax, ncells, 'PETMAX', memory_path)
+      call mem_allocate(this%extdp, ncells, 'EXTDP', memory_path)
+      call mem_allocate(this%extdpuz, ncells, 'EXTDPUZ', memory_path)
+      call mem_allocate(this%landflag, ncells, 'LANDFLAG', memory_path) 
+      call mem_allocate(this%ivertcon, ncells, 'IVERTCON', memory_path)
     else
       this%imem_manager = 0
       allocate(this%uzdpst(nwav, ncells))
@@ -546,9 +547,36 @@ module UzfCellGroupModule
     !
     ! -- return
     return
-  end subroutine setdataet   
+   end subroutine setdataet 
    
-  subroutine setbelowpet(this, icell, jbelow, aet)
+   subroutine setgwpet(this, icell)
+! ******************************************************************************
+! setgwpet -- subtract aet from pet to calculate residual et for gw
+!                
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use TdisModule, only: delt
+    ! -- dummy
+    class(UzfCellGroupType) :: this
+    integer(I4B), intent(in) :: icell
+    ! -- dummy
+    real(DP) :: pet
+! ------------------------------------------------------------------------------ 
+    pet = DZERO
+    !
+    ! -- reduce pet for gw by uzet
+    pet = this%pet(icell) - this%etact(icell) / delt
+    if ( pet < DZERO ) pet = DZERO
+    this%gwpet(icell) = pet
+    !
+    ! -- return
+    return
+  end subroutine setgwpet  
+   
+  subroutine setbelowpet(this, icell, jbelow)
 ! ******************************************************************************
 ! setbelowpet -- subtract aet from pet to calculate residual et 
 !                for deeper cells
@@ -557,17 +585,21 @@ module UzfCellGroupModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
+    use TdisModule, only: delt
     ! -- dummy
     class(UzfCellGroupType) :: this
     integer(I4B), intent(in) :: icell
     integer(I4B), intent(in) :: jbelow
-    real(DP), intent(in) :: aet
     ! -- dummy
     real(DP) :: pet
 ! ------------------------------------------------------------------------------ 
     pet = DZERO
+    !
+    ! -- transfer unmet pet to lower cell
+    !
     if (this%extdpuz(jbelow) > DEM3) then
-       pet = this%petmax(icell) - aet
+       pet = this%pet(icell) - this%etact(icell) / delt -   &
+             this%gwet(icell)/this%uzfarea(icell)
        if (pet < DZERO) pet = DZERO
     end if
     this%pet(jbelow) = pet
@@ -648,9 +680,8 @@ module UzfCellGroupModule
   end subroutine advance
 
   subroutine formulate(this, thiswork, jbelow, icell, totfluxtot, ietflag,    &
-                       issflag, iseepflag, trhs, thcof, hgwf,                 &
-                       hgwfml1, cvv, deriv, qfrommvr, qformvr, ierr, sumaet,  &
-                       ivertflag)
+                       issflag, iseepflag, trhs, thcof, hgwf, hgwfml1,        &
+                       cvv, deriv, qfrommvr, qformvr, ierr, ivertflag)
 ! ******************************************************************************
 ! formulate -- formulate the unsaturated flow object, calculate terms for 
 !              gwf equation            
@@ -677,7 +708,6 @@ module UzfCellGroupModule
     real(DP), intent(inout) :: trhs
     real(DP), intent(inout) :: thcof
     real(DP), intent(inout) :: qformvr
-    real(DP), intent(inout) :: sumaet
     real(DP), intent(inout) :: totfluxtot
     real(DP), intent(inout) :: deriv
     ! -- local
@@ -700,9 +730,6 @@ module UzfCellGroupModule
     this%watab(icell) = hgwf
     this%etact(icell) = DZERO
     this%surfluxbelow(icell) = DZERO
-    !
-    ! -- set pet for gw when there is no UZ. 
-    this%gwpet(icell) = this%pet(icell)
     if(ivertflag > 0) then
       this%finf(jbelow) = DZERO
     end if
@@ -749,10 +776,6 @@ module UzfCellGroupModule
         if (ierr > 0) return
         call this%uz_rise(icell, totfluxtot)
         this%totflux(icell) = totfluxtot
-        if (ietflag > 0 .and. this%ivertcon(icell) > 0) then
-            this%pet(jbelow) = this%pet(jbelow) - this%etact(icell)
-            if (this%pet(jbelow) < DEM15) this%pet(jbelow) = DEM15
-        end if
         if (this%ivertcon(icell) > 0) then
           call this%addrech(icell, jbelow, hgwf, trhsfinf, thcoffinf, derivfinf, delt, 0)
         end if
@@ -776,20 +799,13 @@ module UzfCellGroupModule
     ! -- reset waves to previous state for next iteration  
     call this%wave_shift(thiswork, icell, 1, 0, 1, thiswork%nwavst(1), 1)  
     !
-    ! -- distribute PET to deeper cells
-    sumaet = sumaet + this%etact(icell)
-    if(this%ivertcon(icell) > 0) then
-      if (ietflag > 0) then
-        call this%setbelowpet(icell, jbelow, sumaet)
-      end if
-    end if
   end subroutine formulate 
 
   subroutine budget(this, jbelow, icell, totfluxtot, rfinf, rin, rout,         &
                     rsto, ret, retgw, rgwseep, rvflux, ietflag, iseepflag,     &
                     issflag, hgwf, hgwfml1, cvv, numobs, obs_num,              &
                     obs_depth, obs_theta, qfrommvr, qformvr, qgwformvr,        &
-                    sumaet, ierr)
+                    ierr)
 ! ******************************************************************************
 ! budget -- save unsat. conditions at end of time step, calculate budget 
 !           terms            
@@ -818,7 +834,6 @@ module UzfCellGroupModule
     real(DP), intent(inout) :: rfinf
     real(DP), intent(inout) :: rin
     real(DP), intent(inout) :: qformvr
-    real(DP), intent(inout) :: sumaet
     real(DP), intent(inout) :: qgwformvr
     real(DP), intent(inout) :: rout
     real(DP), intent(inout) :: rsto
@@ -849,10 +864,6 @@ module UzfCellGroupModule
     finfact = DZERO
     this%etact(icell) = DZERO
     this%surfluxbelow(icell) = DZERO
-    sumaet = DZERO
-    !
-    ! -- set pet for gw when there is no UZ. 
-    this%gwpet(icell) = this%pet(icell)
     if (this%ivertcon(icell) > 0) then
       this%finf(jbelow) = dzero
       if (this%watab(icell) < this%celbot(icell)) &
@@ -940,14 +951,6 @@ module UzfCellGroupModule
         obs_theta(j) = this%thts(icell)
       end if
     end do
-    !
-    ! -- distribute residual PET to deeper cells
-    sumaet = sumaet + this%etact(icell)
-    if (this%ivertcon(icell) > 0) then
-      if (ietflag > 0) then
-        call this%setbelowpet(icell, jbelow, sumaet)
-      end if
-    end if
     !
     ! -- return
     return
@@ -1132,7 +1135,7 @@ module UzfCellGroupModule
     return
   end subroutine gwseep
 
-  subroutine simgwet(this, igwetflag, icell, hgwf, trhs, thcof, et, det)
+  subroutine simgwet(this, igwetflag, icell, hgwf, trhs, thcof, det)
 ! ******************************************************************************
 ! simgwet -- calc. gwf et using residual uzf pet
 ! ******************************************************************************
@@ -1148,15 +1151,19 @@ module UzfCellGroupModule
     real(DP), intent(inout) :: trhs
     real(DP), intent(inout) :: thcof
     real(DP), intent(inout) :: det
-    real(DP), intent(inout) :: et
     ! -- local
-    real(DP) :: s, x, c
+    real(DP) :: s, x, c, b, et
 ! ------------------------------------------------------------------------------      
     !
     this%gwet(icell) = DZERO
+    trhs = DZERO
+    thcof = DZERO
+    det = DZERO
     s = this%landtop(icell)
     x = this%extdp(icell)
     c = this%gwpet(icell)
+    b = this%celbot(icell)
+    if ( b > hgwf ) return
     if (x < DEM6) return
     if (igwetflag == 1) then
       et = etfunc_lin(s, x, c, det, trhs, thcof, hgwf, &
@@ -1164,9 +1171,11 @@ module UzfCellGroupModule
     else if (igwetflag == 2) then
       et = etfunc_nlin(s, x, c, det, trhs, thcof, hgwf)
     end if
-    this%gwet(icell) = et * this%uzfarea(icell)
-    trhs = -trhs * this%uzfarea(icell)
+!    this%gwet(icell) = et * this%uzfarea(icell)
+    trhs =  trhs * this%uzfarea(icell)
     thcof = thcof * this%uzfarea(icell)
+    this%gwet(icell) =   trhs - (thcof * hgwf)
+    !    write(99,*)'in group', icell, this%gwet(icell)
     !
     ! -- return
     return
@@ -1200,9 +1209,6 @@ module UzfCellGroupModule
 ! ------------------------------------------------------------------------------
     !
     ! -- Between ET surface and extinction depth
-    trhs = DZERO
-    thcof = DZERO
-    det = DZERO
     if (hgwf > (s-x) .and. hgwf < s) THEN
       etgw = (c * (hgwf - (s - x)) / x)
       if (etgw > c) then
@@ -1230,7 +1236,9 @@ module UzfCellGroupModule
     if (depth < dzero) depth = dzero
     range = DEM4 * x
     call sCubic(depth, range, det, scale)
-    etgw = scale * etgw
+    trhs = scale * trhs
+    thcof = scale * thcof
+    etgw = trhs - (thcof * hgwf)
     det = -det * etgw   
     etfunc_lin = etgw
     !
@@ -1261,9 +1269,6 @@ module UzfCellGroupModule
     real(DP) :: range
     real(DP) :: depth, scale
 ! ------------------------------------------------------------------------------
-    det = DZERO 
-    trhs = DZERO
-    thcof = DZERO
     depth = hgwf - (s - x)
     if (depth < DZERO) depth = DZERO
     etgw = c
@@ -1413,10 +1418,6 @@ module UzfCellGroupModule
      if (ierr > 0) return
       totfluxtot = totfluxtot + this%totflux(icell)
     end do
-    !
-    ! -- set residual pet after uz et    
-    this%gwpet(icell) = this%pet(icell) - this%etact(icell) / delt
-    if (this%gwpet(icell) < DZERO) this%gwpet(icell) = DZERO
     !
     ! -- return
     return
@@ -2374,6 +2375,11 @@ module UzfCellGroupModule
       end if
     end do
 500 continue
+    !
+    ! -- deallocate temporary worker
+    call uzfktemp%dealloc()
+    !
+    ! -- return
     return
   end subroutine uzet
 

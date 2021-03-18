@@ -108,7 +108,8 @@ module BudgetObjectModule
     return
   end subroutine budgetobject_cr
 
-  subroutine budgetobject_df(this, ncv, nbudterm, iflowja, nsto)
+  subroutine budgetobject_df(this, ncv, nbudterm, iflowja, nsto, &
+                             bddim_opt, labeltitle_opt, bdzone_opt)
 ! ******************************************************************************
 ! budgetobject_df -- Define the new budget object
 ! ******************************************************************************
@@ -122,6 +123,14 @@ module BudgetObjectModule
     integer(I4B), intent(in) :: nbudterm
     integer(I4B), intent(in) :: iflowja
     integer(I4B), intent(in) :: nsto
+    character(len=*), optional :: bddim_opt
+    character(len=*), optional :: labeltitle_opt
+    character(len=*), optional :: bdzone_opt
+    ! -- local
+    character(len=20) :: bdtype
+    character(len=5) :: bddim
+    character(len=16) :: labeltitle
+    character(len=20) :: bdzone
 ! ------------------------------------------------------------------------------
     !
     ! -- set values
@@ -133,9 +142,32 @@ module BudgetObjectModule
     ! -- allocate space for budterm
     allocate(this%budterm(nbudterm))
     !
+    ! -- Set the budget type to name
+    bdtype = this%name
+    !
+    ! -- Set the budget dimension
+    if(present(bddim_opt)) then
+      bddim = bddim_opt
+    else
+      bddim = 'L**3'
+    endif
+    !
+    ! -- Set the budget zone
+    if(present(bdzone_opt)) then
+      bdzone = bdzone_opt
+    else
+      bdzone = 'ENTIRE MODEL'
+    endif
+    !
+    ! -- Set the label title
+    if(present(labeltitle_opt)) then
+      labeltitle = labeltitle_opt
+    else
+      labeltitle = 'PACKAGE NAME'
+    endif
+    !
     ! -- setup the budget table object
-    ! -- TODO: GET DIMENSIONS (e.g. L**3) IN HERE
-    call this%budtable%budget_df(nbudterm, this%name)
+    call this%budtable%budget_df(nbudterm, bdtype, bddim, labeltitle, bdzone)
     !
     ! -- Return
     return
@@ -302,10 +334,10 @@ module BudgetObjectModule
     return
   end subroutine accumulate_terms
 
-  subroutine write_flowtable(this, dis)
+  subroutine write_flowtable(this, dis, kstp, kper, cellidstr)
 ! ******************************************************************************
 ! write_flowtable -- Write the flow table for each advanced package control
-!                    volume  
+!                    volume
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -314,6 +346,9 @@ module BudgetObjectModule
     ! -- dummy
     class(BudgetObjectType) :: this
     class(DisBaseType), intent(in) :: dis
+    integer(I4B), intent(in) :: kstp
+    integer(I4B), intent(in) :: kper
+    character(len=20), dimension(:), optional :: cellidstr
     ! -- dummy
     character(len=LENBUDTXT) :: flowtype
     character(len=20) :: cellid
@@ -333,13 +368,15 @@ module BudgetObjectModule
     real(DP) :: qerr
     real(DP) :: qavg
     real(DP) :: qpd
-    
 ! ------------------------------------------------------------------------------
     !
     ! -- reset starting position
     do j = 1, this%nflowterms
       this%istart(j) = 1
     end do
+    !
+    ! -- set table kstp and kper
+    call this%flowtab%set_kstpkper(kstp, kper)
     !
     ! -- write the table
     do icv = 1, this%ncv
@@ -351,14 +388,26 @@ module BudgetObjectModule
       !
       ! -- add cellid if required
       if (this%add_cellids) then
-        j = this%icellid 
-        idx = this%iflowterms(j)
-        i = this%istart(j)
-        id2 = this%budterm(idx)%get_id2(i)
-        if (id2 > 0) then
-          call dis%noder_to_string(id2, cellid)
+        if (present(cellidstr)) then
+          !
+          ! -- If there are not maxbound entries for this%budterm(idx),
+          !    which can happen for sfr, for example, if 'none' connections
+          !    are specified, then cellidstr should be passed in if the flow
+          !    table needs a cellid label.
+          cellid = cellidstr(icv)
         else
-          cellid = 'NONE'
+          !
+          ! -- Determine the cellid for this entry.  The cellid, such as 
+          !    (1, 10, 10), is assumed to be in the id2 column of this budterm.
+          j = this%icellid 
+          idx = this%iflowterms(j)
+          i = this%istart(j)
+          id2 = this%budterm(idx)%get_id2(i)
+          if (id2 > 0) then
+            call dis%noder_to_string(id2, cellid)
+          else
+            cellid = 'NONE'
+          end if
         end if
         call this%flowtab%add_term(cellid)
       end if
@@ -538,7 +587,7 @@ module BudgetObjectModule
       call this%budterm(i)%deallocate_arrays()
     end do
     !
-    ! --
+    ! -- destroy the flow table
     if (associated(this%flowtab)) then
       deallocate(this%add_cellids)
       deallocate(this%icellid)
@@ -548,6 +597,13 @@ module BudgetObjectModule
       call this%flowtab%table_da()
       deallocate(this%flowtab)
       nullify(this%flowtab)
+    end if
+    !
+    ! -- destroy the budget object table
+    if (associated(this%budtable)) then
+      call this%budtable%budget_da()
+      deallocate(this%budtable)
+      nullify(this%budtable)
     end if
     !
     ! -- Return

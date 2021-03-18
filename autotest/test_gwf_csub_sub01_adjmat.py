@@ -17,7 +17,7 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 paktest = 'csub'
@@ -35,10 +35,10 @@ compression_indices = [None]
 ndcell = [19] * len(ex)
 
 # run all examples on Travis
-# travis = [True for idx in range(len(exdirs))]
+# continuous_integration = [True for idx in range(len(exdirs))]
 # the delay bed problems only run on the development version of MODFLOW-2005
 # set travis to True when version 1.13.0 is released
-travis = [True for idx in range(len(exdirs))]
+continuous_integration = [True for idx in range(len(exdirs))]
 
 # set replace_exe to None to use default executable
 replace_exe = None
@@ -130,11 +130,11 @@ def build_model(idx, dir, adjustmat=False):
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose,
+                               inner_dvclose=hclose,
                                rcloserecord=[rclose, 'strict'],
                                linear_acceleration='bicgstab',
                                scaling_method='NONE',
@@ -270,7 +270,7 @@ def eval_sub(sim):
 
     # calculate theta and porosity from total interbed compaction
     comp = tc['TCOMP']
-    dtype = [('THICK', np.float), ('THETA', np.float)]
+    dtype = [('THICK', float), ('THETA', float)]
     ovalsi = np.zeros((comp.shape[0]), dtype=dtype)
     ovalsi['THICK'] = tc['THICK']
     ovalsi['THETA'] = tc['THETA']
@@ -382,7 +382,7 @@ def cbc_compare(sim):
             qout = 0.
             v = cobj.get_data(kstpkper=k, text=text)[0]
             if isinstance(v, np.recarray):
-                vt = np.zeros(size3d, dtype=np.float)
+                vt = np.zeros(size3d, dtype=float)
                 for jdx, node in enumerate(v['node']):
                     vt[node - 1] += v['q'][jdx]
                 v = vt.reshape(shape3d)
@@ -402,7 +402,7 @@ def cbc_compare(sim):
             key = '{}_OUT'.format(text)
             d[key][idx] = qout
 
-    diff = np.zeros((nbud, len(bud_lst)), dtype=np.float)
+    diff = np.zeros((nbud, len(bud_lst)), dtype=float)
     for idx, key in enumerate(bud_lst):
         diff[:, idx] = d0[key] - d[key]
     diffmax = np.abs(diff).max()
@@ -450,10 +450,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -465,7 +465,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exfunc=eval_sub,
                                        exe_dict=r_exe, idxsim=idx)

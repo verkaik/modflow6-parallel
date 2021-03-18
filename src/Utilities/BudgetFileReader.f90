@@ -142,6 +142,7 @@ module BudgetFileReaderModule
     ! -- local
     integer(I4B) :: i, n, iostat, iout
     character(len=LINELENGTH) :: errmsg
+    integer(I8B) :: posstart !BINPOS
 ! ------------------------------------------------------------------------------
     !
     if (present(iout_opt)) then
@@ -229,7 +230,8 @@ module BudgetFileReaderModule
     if (.not. this%endoffile) then
       read(this%inunit, iostat=iostat) this%kstpnext, this%kpernext
       if (iostat == 0) then
-        call fseek_stream(this%inunit, -2 * I4B, 1, iostat)
+        posstart = -2 * I4B !BINPOS
+        call fseek_stream(this%inunit, posstart, 1, iostat) !BINPOS
       else if (iostat < 0) then
         this%endoffile = .true.
       end if

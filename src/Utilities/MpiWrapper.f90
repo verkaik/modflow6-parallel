@@ -1,46 +1,26 @@
 module MpiWrapper
-  
-  use ConstantsModule, only: LENORIGIN, LENVARNAME
-  use KindModule, only: DP, I4B    
-  
+
+  use ConstantsModule, only: LENMEMPATH, LENVARNAME
+  use KindModule, only: DP, I4B
+
   implicit none
- 
+
 #ifdef MPI_PARALLEL
   include 'mpif.h'
 #endif
-  
+
   private
-  
+
   integer, parameter :: mpiwrplblk_size = 64
 #ifdef MPI_PARALLEL
   character(len=MPI_MAX_PROCESSOR_NAME) :: mpiwrpmyname
   integer, dimension(MPI_STATUS_SIZE,mpiwrplblk_size) :: mpiwrpstats
-#endif  
+#endif
   integer :: mpiwrpcomm_world, mpiwrpcomm_null
   integer :: mpiwrpnrproc, mpiwrpmyrank
   integer, dimension(1000) :: rreq, sreq
   integer :: lenbuf
-  
-  type :: MetaMemoryType
-    character(len=LENVARNAME) :: name
-    character(len=LENORIGIN)  :: origin
-    integer(I4B)              :: memitype
-    integer(I4B)              :: isize
-    integer(I4B)              :: ncol = 0
-    integer(I4B)              :: nrow = 0
-    integer(I4B)              :: nlay = 0
-  end type MetaMemoryType  
-  
-  type ColMemoryType
-    character(len=LENVARNAME)  :: name        !name of the array
-    character(len=LENORIGIN)   :: origin      !name of origin
-    integer(I4B)               :: memitype    !integer type
-    logical                    :: logicalsclr !logical
-    integer(I4B)               :: intsclr     !integer
-    real(DP)                   :: dblsclr     !double
-    integer(I4B), dimension(3) :: aint1d      !1d integer array
-  end type ColMemoryType
-  
+
   ! -- public functions
   public :: mpiwrpcomm_size
   public :: mpiwrpcomm_rank
@@ -48,8 +28,6 @@ module MpiWrapper
   public :: mpiwrpbarrier
   public :: mpiwrpfinalize
   public :: mpiwrpcommworld
-  public :: mpiwrpisend
-  public :: mpiwrpirecv
   public :: mpiwrpallgather
   public :: mpiwrpallgatherv
   public :: mpiwrpreduce
@@ -58,9 +36,6 @@ module MpiWrapper
   public :: mpiwrpcommgroup
   public :: mpiwrpgroupincl
   public :: mpiwrpcommcreate
-  public :: mpiwrpcolstruct
-  public :: mpiwrpmmtstruct
-  public :: mpiwrpmtstruct
   public :: mpiwrpgrouprank
   public :: mpiwrpstats
   public :: mpiwrpwaitall
@@ -70,43 +45,31 @@ module MpiWrapper
   ! -- public variables
   public :: mpiwrpnrproc
   public :: mpiwrpmyrank
-  ! -- public types
-  public :: ColMemoryType
-  public :: MetaMemoryType
-  
-  save
-  
-  interface mpiwrpisend
-    module procedure mpiwrpisendmmt, mpiwrpisendmt
-  end interface
 
-  interface mpiwrpirecv
-    module procedure mpiwrpirecvmmt, mpiwrpirecvmt
-  end interface
-  
+  save
+
   interface mpiwrpreduce
     module procedure mpiwrpreduced
   end interface
-  
+
   interface mpiwrpallreduceloc
     module procedure mpiwrpallreducedloc
   end interface
-  
+
   interface mpiwrpallreduce
     module procedure mpiwrpallreducei, mpiwrpallreducer, mpiwrpallreduced
   end interface
-  
+
   interface mpiwrpallgather
     module procedure mpiwrpallgatheri
-  end interface 
-  
-  interface mpiwrpallgatherv
-    module procedure mpiwrpallgathervi, mpiwrpallgathervd,                      &
-                     mpiwrpallgathervcol 
   end interface
-  
+
+  interface mpiwrpallgatherv
+    module procedure mpiwrpallgathervi, mpiwrpallgathervd
+  end interface
+
   contains
-  
+
   integer function mpiwrpcomm_size(comm)
 ! ******************************************************************************
 ! Wrapper subroutine around MPI_COMM_SIZE te determine number of
@@ -130,7 +93,7 @@ module MpiWrapper
     ! -- return
     return
   end function mpiwrpcomm_size
-  
+
   integer function mpiwrpcomm_rank(comm)
 ! ******************************************************************************
 ! Wrapper function around MPI_COMM_RANK to determine own
@@ -172,14 +135,14 @@ module MpiWrapper
     ! -- local
     integer :: ierr, i, required, provided
 ! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL    
+#ifdef MPI_PARALLEL
     required = MPI_THREAD_FUNNELED
     call MPI_Init_thread(required, provided, ierr)
     if (required /= provided) then
       if (mpiwrpmyrank == 0) then
         write(*,*) 'Warning, could not guarantee thread safety.'
       end if
-    end if   
+    end if
 #endif
     ! -- return
     return
@@ -203,7 +166,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpfinalize
-  
+
   subroutine mpiwrpbarrier(comm)
 ! ******************************************************************************
 ! Wrapper subroutine around MPI_BARRIER barrier.
@@ -223,7 +186,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpbarrier
-  
+
   integer function mpiwrpcommworld()
 ! ******************************************************************************
 ! Wrapper subroutine around MPI_BARRIER barrier.
@@ -236,7 +199,7 @@ module MpiWrapper
     ! -- local
     integer :: ierr
 ! ------------------------------------------------------------------------------
-  
+
 #ifdef MPI_PARALLEL
     mpiwrpcommworld = MPI_COMM_WORLD
 #else
@@ -246,128 +209,6 @@ module MpiWrapper
     return
   end function mpiwrpcommworld
 
-  subroutine mpiwrpisendmmt(buf, count, datatype, dest, tag, comm, req)
-! ******************************************************************************
-! Begins a non-blocking send of a meta memory type structure to the
-! process with rankID dest.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    integer, intent(in)                                :: count    ! number of integers to be sent
-    type(MetaMemoryType), dimension(count), intent(in) :: buf      ! buffer to be sent
-    integer, intent(in)                                :: datatype ! data type
-    integer, intent(in)                                :: dest     ! rank id of destination process
-    integer, intent(in)                                :: tag      ! message tag
-    integer, intent(in)                                :: comm     ! communicator
-    integer, intent(out)                               :: req      ! request handle
-    ! -- local
-    integer :: ierr      
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    call MPI_Isend(buf, count, datatype, dest, tag, comm, req, ierr)
-#else
-    req = -1
-    call mpiwrperror(comm, 'mpiwrpisendmmt', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpisendmmt
-
-  subroutine mpiwrpisendmt(buf, count, datatype, dest, tag, comm, req)
-! ******************************************************************************
-! Begins a non-blocking send of a memory type structure to the
-! process with rankID dest.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use MemoryTypeModule, only: MemoryType
-    ! -- dummy
-    integer, intent(in)                            :: count    ! number of objects to be sent
-    type(MemoryType), dimension(count), intent(in) :: buf      ! buffer to be sent
-    integer, intent(in)                            :: datatype ! data type
-    integer, intent(in)                            :: dest     ! rank id of destination process
-    integer, intent(in)                            :: tag      ! message tag
-    integer, intent(in)                            :: comm     ! communicator
-    integer, intent(out)                           :: req      ! request handle
-    ! -- local
-    integer :: ierr      
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    call MPI_Isend(buf, count, datatype, dest, tag, comm, req, ierr)
-#else
-    req = -1
-    call mpiwrperror(comm, 'mpiwrpisendmt', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpisendmt
-
-  subroutine mpiwrpirecvmmt(buf, count, datatype, dest, tag, comm, req)
-! ******************************************************************************
-! Begins a non-blocking receive of a meta memory type structure from the
-! process with rankID dest.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    integer, intent(in)                                   :: count    ! number of objects to be received
-    type(MetaMemoryType), dimension(count), intent(inout) :: buf      ! buffer to be received
-    integer, intent(in)                                   :: datatype ! buffer data type
-    integer, intent(in)                                   :: dest     ! rank id of destination process
-    integer, intent(in)                                   :: tag      ! message tag
-    integer, intent(in)                                   :: comm     ! communicator
-    integer, intent(out)                                  :: req      ! request handle
-    ! -- local
-    integer :: ierr      
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    call MPI_Irecv(buf, count, datatype, dest, tag, comm, req, ierr)
-#else
-    req = -1
-    call mpiwrperror(comm, 'mpiwrpirecvmmt', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpirecvmmt
-  
-  subroutine mpiwrpirecvmt(buf, count, datatype, dest, tag, comm, req)
-! ******************************************************************************
-! Begins a non-blocking receive of a  memory type structure from the
-! process with rankID dest.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use MemoryTypeModule, only: MemoryType
-    ! -- dummy
-    integer, intent(in)                               :: count    ! number of objects to be received
-    type(MemoryType), dimension(count), intent(inout) :: buf      ! buffer to be received
-    integer, intent(in)                               :: datatype ! buffer data type
-    integer, intent(in)                               :: dest     ! rank id of destination process
-    integer, intent(in)                               :: tag      ! message tag
-    integer, intent(in)                               :: comm     ! communicator
-    integer, intent(out)                              :: req      ! request handle
-    ! -- local
-    integer :: ierr      
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    call MPI_Irecv(buf, count, datatype, dest, tag, comm, req, ierr)
-#else
-    req = -1
-    call mpiwrperror(comm, 'mpiwrpirecvmt', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpirecvmt
-  
   subroutine mpiwrpwaitall(count, reqs, status)
 ! ******************************************************************************
 ! Waits for a given set of communication requests to complete.
@@ -396,7 +237,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpwaitall
-  
+
   subroutine mpiwrpprobe(source, tag, comm, status)
 ! ******************************************************************************
 ! Waits for a given set of communication requests to complete.
@@ -446,7 +287,7 @@ module MpiWrapper
 
  subroutine mpiwrpreduced(sendbuf, count, op, root, comm)
 ! ******************************************************************************
-! Combines values (doubles) from all processes and distributes the result back 
+! Combines values (doubles) from all processes and distributes the result back
 ! to root processes.
 ! ******************************************************************************
 !
@@ -491,10 +332,10 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpreduced
-  
+
   subroutine mpiwrpallreducei(sendbuf, count, op, comm)
 ! ******************************************************************************
-! Combines values (integers) from all processes and distributes the result back 
+! Combines values (integers) from all processes and distributes the result back
 ! to all processes.
 ! ******************************************************************************
 !
@@ -538,10 +379,10 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallreducei
-  
+
   subroutine mpiwrpallreducer(sendbuf, count, op, comm)
 ! ******************************************************************************
-! Combines values (reals) from all processes and distributes the result back 
+! Combines values (reals) from all processes and distributes the result back
 ! to all processes.
 ! ******************************************************************************
 !
@@ -585,10 +426,10 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallreducer
-  
+
   subroutine mpiwrpallreduced(sendbuf, count, op, comm)
 ! ******************************************************************************
-! Combines values (doubles) from all processes and distributes the result back 
+! Combines values (doubles) from all processes and distributes the result back
 ! to all processes.
 ! ******************************************************************************
 !
@@ -632,10 +473,10 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallreduced
-  
+
   subroutine mpiwrpallreducedloc(sendbuf, count, op, comm)
 ! ******************************************************************************
-! Combines values (doubles) from all processes and distributes the result back 
+! Combines values (doubles) from all processes and distributes the result back
 ! to all processes.
 ! ******************************************************************************
 !
@@ -677,7 +518,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallreducedloc
-  
+
   subroutine mpiwrperror(comm, subname, message)
 ! ******************************************************************************
 ! Prints an error message and aborts the current program.
@@ -750,36 +591,6 @@ module MpiWrapper
     return
   end subroutine mpiwrpallgatheri
 
-  subroutine mpiwrpallgathervcol(comm, gsbuf, gscnt, gstype, grbuf, grcnt,      &
-                                 grtype, offsets)
-! ******************************************************************************
-! Gathers integer values into specified memory
-! locations from a group of processes and broadcasts the
-! gathered data to all processes.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- dummy
-    integer :: comm, gscnt, gstype, grtype
-    integer, dimension(*) :: grcnt
-    type(ColMemoryType), dimension(*) :: gsbuf
-    type(ColMemoryType), dimension(*) :: grbuf
-    integer, dimension(*) :: offsets
-
-    ! -- local
-    integer :: ierr, i, k
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    call MPI_Allgatherv(gsbuf, gscnt, gstype, grbuf, grcnt, offsets, grtype,    &
-                        comm, ierr)
-    !
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpallgathervcol
-  
   subroutine mpiwrpallgathervi(comm, gsbuf, gscnt, grbuf, grcnt, offsets)
 ! ******************************************************************************
 ! Gathers integer values into specified memory
@@ -816,7 +627,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallgathervi
-  
+
   subroutine mpiwrpallgathervd(comm, gsbuf, gscnt, grbuf, grcnt, offsets)
 ! ******************************************************************************
 ! Gathers double values into specified memory
@@ -853,10 +664,10 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpallgathervd
-  
+
   subroutine mpiwrpcommgroup(comm, group)
 ! ******************************************************************************
-! Accesses the group associated with given communicator 
+! Accesses the group associated with given communicator
 ! ******************************************************************************
 !
 !    SPECIFICATIONS:
@@ -879,7 +690,7 @@ module MpiWrapper
 
   subroutine mpiwrpgroupincl(old_group, n, rnks, new_group)
 ! ******************************************************************************
-! Produces a group by reordering an existing group and taking only listed 
+! Produces a group by reordering an existing group and taking only listed
 ! members.
 ! ******************************************************************************
 !
@@ -902,7 +713,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpgroupincl
-  
+
   subroutine mpiwrpcommcreate(old_comm, group, new_comm)
 ! ******************************************************************************
 ! Creates a new communicator.
@@ -926,7 +737,7 @@ module MpiWrapper
     ! -- return
     return
   end subroutine mpiwrpcommcreate
-  
+
   subroutine mpiwrpgrouprank(group, rank)
 ! ******************************************************************************
 ! Returns the rank of this process in the given group.
@@ -950,325 +761,6 @@ module MpiWrapper
     return
   end subroutine mpiwrpgrouprank
 
-  subroutine mpiwrpcolstruct(newtype)
-! ******************************************************************************
-! Create a new MPI data type.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use ConstantsModule, only: LENORIGIN, LENVARNAME
-    use KindModule, only: DP, I4B    
-    ! -- dummy
-    integer, intent(out) :: newtype
-    ! -- local
-    type(ColMemoryType) :: cmtdum
-    
-    integer, dimension(7) :: types, blocklengths
-    integer(KIND=MPI_ADDRESS_KIND), dimension(7) :: displacements
-    integer(KIND=MPI_ADDRESS_KIND) :: base
-    
-    integer :: i, ierr 
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    ! -- set-up derived MPI data type 
-    types(1) = MPI_CHARACTER
-    types(2) = MPI_CHARACTER
-    types(3) = MPI_INTEGER
-    types(4) = MPI_INTEGER
-    types(5) = MPI_REAL
-    types(6) = MPI_DOUBLE_PRECISION
-    types(7) = MPI_INTEGER
-    blocklengths(1)  = LENVARNAME
-    blocklengths(2)  = LENORIGIN
-    blocklengths(3)  = 1
-    blocklengths(4)  = 1
-    blocklengths(5)  = 1
-    blocklengths(6)  = 1
-    blocklengths(7)  = 3
-    call MPI_GET_ADDRESS(cmtdum%name,       displacements(1), ierr)
-    call MPI_GET_ADDRESS(cmtdum%origin,     displacements(2), ierr)
-    call MPI_GET_ADDRESS(cmtdum%memitype,   displacements(3), ierr)
-    call MPI_GET_ADDRESS(cmtdum%logicalsclr,displacements(4), ierr)
-    call MPI_GET_ADDRESS(cmtdum%intsclr,    displacements(5), ierr)
-    call MPI_GET_ADDRESS(cmtdum%dblsclr,    displacements(6), ierr)
-    call MPI_GET_ADDRESS(cmtdum%aint1d,     displacements(7), ierr)
-    base = displacements(1)
-    do i = 1, 7
-      displacements(i) = displacements(i) - base
-    enddo
-    ! -- create and commit datatype
-    call MPI_TYPE_CREATE_STRUCT(7, blocklengths, displacements, types, newtype, ierr)
-    call MPI_TYPE_COMMIT(newtype, ierr)
-#else
-    call mpiwrperror(comm, 'mpiwrpcolstruct', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpcolstruct
-
-  subroutine mpiwrpmmtstruct(newtype)
-! ******************************************************************************
-! Create a new MPI data type.
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    use ConstantsModule, only: LENORIGIN, LENVARNAME
-    use KindModule, only: DP, I4B    
-    ! -- dummy
-    integer, intent(out) :: newtype
-    ! -- local
-    type(MetaMemoryType) :: mmtdum
-    
-    integer, dimension(7) :: types, blocklengths
-    integer(KIND=MPI_ADDRESS_KIND), dimension(7) :: displacements
-    integer(KIND=MPI_ADDRESS_KIND) :: base
-    
-    integer :: i, ierr 
-! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    ! -- set-up derived MPI data type 
-    types(1) = MPI_CHARACTER
-    types(2) = MPI_CHARACTER
-    types(3) = MPI_INTEGER
-    types(4) = MPI_INTEGER
-    types(5) = MPI_INTEGER
-    types(6) = MPI_INTEGER
-    types(7) = MPI_INTEGER
-    blocklengths(1)  = LENVARNAME
-    blocklengths(2)  = LENORIGIN
-    blocklengths(3)  = 1
-    blocklengths(4)  = 1
-    blocklengths(5)  = 1
-    blocklengths(6)  = 1
-    blocklengths(7)  = 1
-    call MPI_GET_ADDRESS(mmtdum%name,     displacements(1), ierr)
-    call MPI_GET_ADDRESS(mmtdum%origin,   displacements(2), ierr)
-    call MPI_GET_ADDRESS(mmtdum%memitype, displacements(3), ierr)
-    call MPI_GET_ADDRESS(mmtdum%isize,    displacements(4), ierr)
-    call MPI_GET_ADDRESS(mmtdum%ncol,     displacements(5), ierr)
-    call MPI_GET_ADDRESS(mmtdum%nrow,     displacements(6), ierr)
-    call MPI_GET_ADDRESS(mmtdum%nlay,     displacements(7), ierr)
-    base = displacements(1)
-    do i = 1, 7
-      displacements(i) = displacements(i) - base
-    enddo
-    ! -- create and commit datatype
-    call MPI_TYPE_CREATE_STRUCT(7, blocklengths, displacements, types, newtype, ierr)
-    call MPI_TYPE_COMMIT(newtype, ierr)
-#else
-    call mpiwrperror(comm, 'mpiwrpmmtstruct', 'invalid operation')
-#endif
-    ! -- return
-    return
-  end subroutine mpiwrpmmtstruct
-  
-  subroutine mpiwrpmtstruct(mt, mmt, nmt, newtype)
-  ! ******************************************************************************
-  ! ******************************************************************************
-  !
-  !    SPECIFICATIONS:
-  ! ------------------------------------------------------------------------------
-    ! -- modules
-    use MemoryTypeModule, only: MemoryType,                                       &
-                                ilogicalsclr, iintsclr, idblsclr,                 & 
-                                iaint1d, iaint2d, iaint3d,                        & 
-                                iadbl1d, iadbl2d, iadbl3d
-    ! -- dummy
-    integer, intent(in) :: nmt
-    type(MemoryType), dimension(nmt), intent(inout) :: mt
-    type(MetaMemoryType), dimension(nmt), intent(in) :: mmt
-    integer, intent(out) :: newtype
-    ! -- local
-    integer :: i, j, isize, ncol, nrow, nlay, ierr, ntypes
-    integer, dimension(:), allocatable :: types, blocklengths
-    integer(KIND=MPI_ADDRESS_KIND), dimension(:), allocatable :: displacements
-    integer(KIND=MPI_ADDRESS_KIND) :: base
-  ! ------------------------------------------------------------------------------
-#ifdef MPI_PARALLEL
-    ntypes = 13
-    allocate(types(nmt*ntypes))
-    allocate(blocklengths(nmt*ntypes))
-    allocate(displacements(nmt*ntypes))
-    !
-    j = 0
-    do i = 1, nmt
-      ! -- name
-      j = j + 1
-      types(j)        = MPI_CHARACTER
-      blocklengths(j) = LENVARNAME
-      call MPI_GET_ADDRESS(mt(i)%name, displacements(j), ierr)
-      ! -- origin
-      j = j + 1
-      types(j)        = MPI_CHARACTER
-      blocklengths(j) = LENORIGIN
-      call MPI_GET_ADDRESS(mt(i)%origin, displacements(j), ierr)
-      ! -- memitype
-      j = j + 1
-      types(j)        = MPI_INTEGER
-      blocklengths(j) = 1
-      call MPI_GET_ADDRESS(mt(i)%memitype, displacements(j), ierr)
-      ! -- isize
-      j = j + 1
-      types(j)        = MPI_INTEGER
-      blocklengths(j) = 1
-      call MPI_GET_ADDRESS(mt(i)%isize, displacements(j), ierr)
-      ! -- logicalsclr
-      j = j + 1
-      types(j) = MPI_LOGICAL
-      if (mmt(i)%memitype == ilogicalsclr) then
-        if (.not.associated(mt(i)%logicalsclr)) then
-          allocate(mt(i)%logicalsclr)
-        endif
-        blocklengths(j) = 1
-        call MPI_GET_ADDRESS(mt(i)%logicalsclr, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- intsclr
-      j = j + 1
-      types(j) = MPI_INTEGER
-      if (mmt(i)%memitype == iintsclr) then
-        if (.not.associated(mt(i)%intsclr)) then
-          allocate(mt(i)%intsclr)
-          mt(i)%intsclr = 0
-        endif
-        blocklengths(j) = 1
-        call MPI_GET_ADDRESS(mt(i)%intsclr, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- idblsclr
-      j = j + 1
-      types(j) = MPI_DOUBLE_PRECISION
-      if (mmt(i)%memitype == idblsclr) then
-        if (.not.associated(mt(i)%dblsclr)) then
-          allocate(mt(i)%dblsclr)
-        endif
-        blocklengths(j) = 1
-        call MPI_GET_ADDRESS(mt(i)%dblsclr, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- aint1d
-      j = j + 1
-      types(j) = MPI_INTEGER
-      if (mmt(i)%memitype == iaint1d) then
-        isize = mmt(i)%isize
-        if (.not.associated(mt(i)%aint1d)) then
-          allocate(mt(i)%aint1d(isize))
-        endif  
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%aint1d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- aint2d
-      j = j + 1
-      types(j) = MPI_INTEGER
-      if (mmt(i)%memitype == iaint2d) then
-        isize = mmt(i)%isize
-        ncol  = mmt(i)%ncol
-        nrow  = mmt(i)%nrow
-        if (.not.associated(mt(i)%aint2d)) then
-          allocate(mt(i)%aint2d(ncol,nrow))
-        endif
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%aint2d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- aint3d
-      j = j + 1
-      types(j) = MPI_INTEGER
-      if (mmt(i)%memitype == iaint3d) then
-        isize = mmt(i)%isize
-        ncol  = mmt(i)%ncol
-        nrow  = mmt(i)%nrow
-        nlay  = mmt(i)%nlay
-        if (.not.associated(mt(i)%aint3d)) then
-          allocate(mt(i)%aint3d(ncol,nrow,nlay))
-        endif
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%aint3d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- adbl1d
-      j = j + 1
-      types(j) = MPI_DOUBLE_PRECISION
-      if (mmt(i)%memitype == iadbl1d) then
-        isize = mmt(i)%isize
-        if (.not.associated(mt(i)%adbl1d)) then
-          allocate(mt(i)%adbl1d(isize))
-        endif
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%adbl1d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- adbl2d
-      j = j + 1
-      types(j) = MPI_DOUBLE_PRECISION
-      if (mmt(i)%memitype == iadbl2d) then
-        isize = mmt(i)%isize
-        ncol  = mmt(i)%ncol
-        nrow  = mmt(i)%nrow
-        if (.not.associated(mt(i)%adbl2d)) then
-          allocate(mt(i)%adbl2d(ncol,nrow))
-        endif
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%adbl2d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-      ! -- adbl3d
-      j = j + 1
-      types(j) = MPI_DOUBLE_PRECISION
-      if (mmt(i)%memitype == iadbl3d) then
-        isize = mmt(i)%isize
-        ncol  = mmt(i)%ncol
-        nrow  = mmt(i)%nrow
-        nlay  = mmt(i)%nlay
-        if (.not.associated(mt(i)%adbl3d)) then
-          allocate(mt(i)%adbl3d(ncol,nrow,nlay))
-        endif
-        blocklengths(j) = isize
-        call MPI_GET_ADDRESS(mt(i)%adbl3d, displacements(j), ierr)
-      else
-        blocklengths(j) = 0
-        displacements(j) = displacements(j-1)
-      endif
-    enddo
-    !
-    base = displacements(1)
-    do i = 1, nmt*ntypes
-      displacements(i) = displacements(i) - base
-    enddo
-    !
-    call MPI_TYPE_CREATE_STRUCT(nmt*ntypes, blocklengths, displacements, types, newtype, ierr)
-    call MPI_TYPE_COMMIT(newtype, ierr)
-    !
-    deallocate(types, blocklengths, displacements)
-#else
-    call mpiwrperror(comm, 'mpiwrpmtstruct', 'invalid operation')
-#endif    
-    !
-    ! -- return
-    return
-  end subroutine mpiwrpmtstruct
-  
   subroutine mpiwrptypefree(newtype)
 ! ******************************************************************************
 ! Create a new MPI data type.
@@ -1283,11 +775,11 @@ module MpiWrapper
     integer :: ierr
 ! ------------------------------------------------------------------------------
 #ifdef MPI_PARALLEL
-  
+
    call MPI_Type_free(newtype, ierr)
 #endif
     ! -- return
     return
   end subroutine mpiwrptypefree
-  
+
 end module MpiWrapper

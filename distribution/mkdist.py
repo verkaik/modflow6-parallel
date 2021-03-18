@@ -4,15 +4,20 @@ on Windows and requires that Latex be installed, and Python with the
 pymake package.
 
 To make a distribution:
-  1.  Create a release branch
-  2.  Update version.txt with the correct minor and micro numbers
-  3.  Run the pre-commit.py script, which will create the proper dist name
-  4.  Run this mkdist.py script
-  5.  Post the distribution zip file
-  6.  Commit the release changes, but no need to push
-  7.  Merge the release changes into the master branch
-  8.  Tag the master branch with the correct version
-  9.  Merge master into develop
+  1.   Install/update pymake, mf6examples, flopy, unix2dos/dos2unix,
+       fortran compiler, jupytext
+  2.   Run update_flopy.py in modflow6/autotest
+  3.   Put fresh executables (including mf6.exe) into mf6examples/bin
+  4.   Run python scripts in mf6examples/scripts (run process-scripts.py last)
+  5.   Create a release branch
+  6.   Update version.txt with the correct minor and micro numbers
+  7.   Run the make_release.py script, which will create the proper dist name
+  8.   Run this mkdist.py script
+  9.   Post the distribution zip file
+  10.  Commit the release changes, but no need to push
+  11.  Merge the release changes into the master branch
+  12.  Tag the master branch with the correct version
+  13.  Merge master into develop
 
 """
 
@@ -23,7 +28,7 @@ import shutil
 import subprocess
 import zipfile
 import pymake
-from pymake.download import download_and_unzip
+from pymake import download_and_unzip
 from contextlib import contextmanager
 
 
@@ -207,17 +212,23 @@ def make_zonebudget(srcpath, destpath, win_target_os, exepath):
                     makeclean=True, dryrun=True, include_subdirs=True,
                     makefile=True, extrafiles='extrafiles.txt')
         os.path.isfile('makefile')
+        os.path.isfile('makedefaults')
 
     # Copy makefile to utils/zonebudget/make folder
     shutil.copyfile(os.path.join(srcpath, 'pymake', 'makefile'),
                     os.path.join(srcpath, 'make', 'makefile'))
+    shutil.copyfile(os.path.join(srcpath, 'pymake', 'makedefaults'),
+                    os.path.join(srcpath, 'make', 'makedefaults'))
 
     # Copy makefile to distribution/xxx/utils/zonebudget/make folder
     shutil.copyfile(os.path.join(srcpath, 'pymake', 'makefile'),
                     os.path.join(fd['make'], 'makefile'))
+    shutil.copyfile(os.path.join(srcpath, 'pymake', 'makedefaults'),
+                    os.path.join(fd['make'], 'makedefaults'))
 
     # Remove the makefile from the pymake folder
     os.remove(os.path.join(srcpath, 'pymake', 'makefile'))
+    os.remove(os.path.join(srcpath, 'pymake', 'makedefaults'))
 
     # Copy the Visual Studio project file
     flist = [os.path.join(srcpath, 'msvs', 'zonebudget.vfproj')]
@@ -276,21 +287,27 @@ def make_mf5to6(srcpath, destpath, win_target_os, exepath):
                     makeclean=True, dryrun=True, include_subdirs=True,
                     makefile=True, extrafiles='extrafiles.txt')
         os.path.isfile('makefile')
+        os.path.isfile('makedefaults')
 
     # Copy makefile to utils/mf5to6/make folder
     print('Copying mf5to6 makefile')
-    makefile = os.path.join(srcpath, 'pymake', 'makefile')
-    d = os.path.join(srcpath, 'make', 'makefile')
-    print('  {} ===> {}'.format(makefile, d))
-    shutil.copyfile(makefile, d)
+    for fname in ['makefile', 'makedefaults']:
+        fpath = os.path.join(srcpath, 'pymake', fname)
+        d = os.path.join(srcpath, 'make', fname)
+        print('  {} ===> {}'.format(fpath, d))
+        shutil.copyfile(fpath, d)
 
     # Copy makefile to distribution/xxx/utils/mf5to6/make folder
-    d = os.path.join(fd['make'], 'makefile')
-    print('  {} ===> {}'.format(makefile, d))
-    shutil.copyfile(makefile, d)
+    for fname in ['makefile', 'makedefaults']:
+        fpath = os.path.join(srcpath, 'pymake', fname)
+        d = os.path.join(fd['make'], fname)
+        print('  {} ===> {}'.format(fpath, d))
+        shutil.copyfile(fpath, d)
 
-    # Remove the makefile from the pymake folder
-    os.remove(makefile)
+    # Remove makefile and makedefaults from the pymake folder
+    for fname in ['makefile', 'makedefaults']:
+        fpath = os.path.join(srcpath, 'pymake', fname)
+        os.remove(fpath)
 
     # Copy the Visual Studio project file
     flist = [os.path.join(srcpath, 'msvs', 'mf5to6.vfproj')]
@@ -334,7 +351,7 @@ def delete_files(files, pth, allow_failure=False):
     return True
 
 
-def run_command(argv, pth, timeout=10):
+def run_command(argv, pth, timeout=None):
     buff = ''
     ierr = 0
     with subprocess.Popen(argv,
@@ -379,6 +396,16 @@ def clean_latex_files():
 
     pth = os.path.join('..', 'doc', 'ConverterGuide')
     files = ['converter_mf5to6.{}'.format(e) for e in exts]
+    delete_files(files, pth, allow_failure=True)
+    assert not os.path.isfile(pth + '.pdf')
+
+    pth = os.path.join('..', '..', 'modflow6-docs.git', 'mf6suptechinfo')
+    files = ['mf6suptechinfo.{}'.format(e) for e in exts]
+    delete_files(files, pth, allow_failure=True)
+    assert not os.path.isfile(pth + '.pdf')
+
+    pth = os.path.join('..', '..', 'modflow6-examples.git', 'doc')
+    files = ['mf6examples.{}'.format(e) for e in exts]
     delete_files(files, pth, allow_failure=True)
     assert not os.path.isfile(pth + '.pdf')
 
@@ -429,26 +456,32 @@ def rebuild_tex_from_dfn():
     return
 
 
-def update_mf6io_tex_files(distfolder):
+def update_mf6io_tex_files(distfolder, mf6pth, expth=None):
 
     texpth = '../doc/mf6io'
     fname1 = os.path.join(texpth, 'mf6output.tex')
     fname2 = os.path.join(texpth, 'mf6noname.tex')
     fname3 = os.path.join(texpth, 'mf6switches.tex')
-    mf6pth = os.path.join(distfolder, 'bin', 'mf6.exe')
-    mf6pth = os.path.abspath(mf6pth)
-    expth = os.path.join(distfolder, 'examples', 'ex01-twri')
+    local = False
+    if expth is None:
+        local = True
+        expth = os.path.join(distfolder, 'examples', 'ex-gwf-twri01')
     expth = os.path.abspath(expth)
 
-    assert os.path.isfile(mf6pth)
-    assert os.path.isdir(expth)
+    assert os.path.isfile(mf6pth), '{} does not exist'.format(mf6pth)
+    assert os.path.isdir(expth), '{} does not exist'.format(expth)
 
     # run an example model
-    if os.path.isdir('./temp'):
-        shutil.rmtree('./temp')
-    shutil.copytree(expth, './temp')
+    if local:
+        if os.path.isdir('./temp'):
+            shutil.rmtree('./temp')
+        shutil.copytree(expth, './temp')
     cmd = [os.path.abspath(mf6pth)]
-    buff, ierr = run_command(cmd, './temp')
+    if local:
+        simpth = './temp'
+    else:
+        simpth = expth
+    buff, ierr = run_command(cmd, simpth)
     lines = buff.split('\r\n')
     with open(fname1, 'w') as f:
         f.write('{}\n'.format('{\\small'))
@@ -494,36 +527,51 @@ def update_mf6io_tex_files(distfolder):
 
 def build_latex_docs():
     print('Building latex files')
-    pth = os.path.join('..', 'doc')
-    doclist = [('mf6io', 'mf6io.tex'),
-               ('ReleaseNotes', 'ReleaseNotes.tex'),
-               ('zonebudget', 'zonebudget.tex'),
-               ('ConverterGuide', 'converter_mf5to6.tex')]
+    pth1 = os.path.join('..', 'doc')
+    pth2 = os.path.join('..', '..', 'modflow6-docs.git')
+    pth3 = os.path.join('..', '..', 'modflow6-examples.git')
+    doclist = [
+               (pth1, 'mf6io', 'mf6io.tex'),
+               (pth1, 'ReleaseNotes', 'ReleaseNotes.tex'),
+               (pth1, 'zonebudget', 'zonebudget.tex'),
+               (pth1, 'ConverterGuide', 'converter_mf5to6.tex'),
+               (pth2, 'mf6suptechinfo', 'mf6suptechinfo.tex'),
+               (pth3, 'doc', 'mf6examples.tex'),
+            ]
 
-    for d, t in doclist:
+    # copy version.tex from doc to modflow6-docs
+    shutil.copy(os.path.join(pth1, 'version.tex'), pth2)
 
-        dirname = os.path.join(pth, d)
+    for p, d, t in doclist:
+        print('Building latex document: {}'.format(t))
+        dirname = os.path.join(p, d)
         with cwd(dirname):
 
-            cmd = ['pdflatex', t]
+            pdflatexcmd = ['pdflatex', '-interaction=nonstopmode', '-halt-on-error', t]
+
+            print('  Pass 1/4...')
+            cmd = pdflatexcmd
             buff, ierr = run_command(cmd, './')
             msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
                                                               cmd[1])
             assert ierr == 0, buff + msg
 
             cmd = ['bibtex', os.path.splitext(t)[0] + '.aux']
+            print('  Pass 2/4...')
             buff, ierr = run_command(cmd, './')
             msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
                                                               cmd[1])
             assert ierr == 0, buff + msg
 
-            cmd = ['pdflatex', t]
+            print('  Pass 3/4...')
+            cmd = pdflatexcmd
             buff, ierr = run_command(cmd, './')
             msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
                                                               cmd[1])
             assert ierr == 0, buff + msg
 
-            cmd = ['pdflatex', t]
+            print('  Pass 4/4...')
+            cmd = pdflatexcmd
             buff, ierr = run_command(cmd, './')
             msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
                                                               cmd[1])
@@ -535,23 +583,11 @@ def build_latex_docs():
     return
 
 
-def update_latex_releaseinfo():
+def update_latex_releaseinfo(examples_folder):
 
     pth = os.path.join('..', 'doc', 'ReleaseNotes')
-    files = ['example_items.tex', 'example_table.tex', 'folder_struct.tex']
+    files = ['folder_struct.tex']
     delete_files(files, pth, allow_failure=True)
-
-    cmd = ['python', 'mk_example_items.py']
-    buff, ierr = run_command(cmd, pth)
-    msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
-                                                      cmd[1])
-    assert ierr == 0, buff + msg
-
-    cmd = ['python', 'mk_example_table.py']
-    buff, ierr = run_command(cmd, pth)
-    msg = '\nERROR {}: could not run {} on {}'.format(ierr, cmd[0],
-                                                      cmd[1])
-    assert ierr == 0, buff + msg
 
     cmd = ['python', 'mk_folder_struct.py']
     buff, ierr = run_command(cmd, pth)
@@ -565,17 +601,76 @@ def update_latex_releaseinfo():
     return
 
 
+def setup_examples(examples_repo, exdestpath, mf6path):
+
+    # trap
+    assert os.path.isdir(examples_repo)
+    assert os.path.isdir(exdestpath)
+
+    # next create all examples, but don't run them
+    scripts_folder = os.path.join(examples_repo, 'scripts')
+    scripts_folder = os.path.abspath(scripts_folder)
+    scripts = [fname for fname in os.listdir(scripts_folder) if fname.endswith('.py') and fname.startswith('ex-')]
+    for script in scripts:
+        dest = os.path.abspath(exdestpath)
+        argv = ['python', script, '--no_run', '--no_plot', '--destination', dest]  # no run no plot
+        print('running {} in {}'.format(argv, scripts_folder))
+        run_command(argv, scripts_folder)
+
+    # create list of folders with mfsim.nam
+    simulation_folders = []
+    for root, dirs, files in os.walk(exdestpath):
+        for d in dirs:
+            dwpath = os.path.join(root, d)
+            if 'mfsim.nam' in os.listdir(dwpath):
+                simulation_folders.append(dwpath)
+    simulation_folders = sorted(simulation_folders)
+
+    # go through each simulation folder and add a run.bat file
+    for dwpath in simulation_folders:
+        fname = os.path.join(dwpath, 'run.bat')
+        print('Adding {}'.format(fname))
+        with open(fname, 'w') as f:
+            f.write('@echo off' + '\n')
+            runbatloc = os.path.relpath(mf6path, start=dwpath)
+            f.write(runbatloc + '\n')
+            f.write('echo.' + '\n')
+            f.write('echo Run complete.  Press any key to continue' + '\n')
+            f.write('pause>nul' + '\n')
+
+    # add runall.bat, which runs all examples
+    fname = os.path.join(exdestpath, 'runall.bat')
+    with open(fname, 'w') as f:
+        for dwpath in simulation_folders:
+            d = os.path.relpath(dwpath, start=exdestpath)
+            s = 'cd {}'.format(d)
+            f.write(s + '\n')
+            runbatloc = os.path.relpath(mf6path, start=dwpath)
+            f.write(runbatloc + '\n')
+            d = os.path.relpath(exdestpath, start=dwpath)
+            s = 'cd {}'.format(d)
+            f.write(s + '\n')
+            s = ''
+            f.write(s + '\n')
+        f.write('pause' + '\n')
+
+    return
+
+
 if __name__ == '__main__':
 
     # setup paths and folder structure
-    win_target_os = True
+    win_target_os = False
+    if sys.platform.lower() == "win32":
+        win_target_os = True
+
     name = 'MODFLOW 6'
     exename = 'mf6'
     destpath = '.'
     versiontexname = os.path.join('..', 'doc', 'version.tex')
     version, versiondate =  get_distribution_info(versiontexname)
     distfolder = os.path.join(destpath, version)
-    subdirs = ['bin', 'doc', 'examples', 'src', 'msvs', 'make', 'utils']
+    subdirs = ['bin', 'doc', 'examples', 'src', 'srcbmi', 'msvs', 'make', 'utils']
     fd = setup(name, destpath, version, subdirs)
 
     # Copy the Visual Studio solution and project files
@@ -596,23 +691,29 @@ if __name__ == '__main__':
     copytree(os.path.join('..', 'src'), fd['src'],
              ignore=shutil.ignore_patterns('.DS_Store'))
 
-    # modify the constants fortran source file with version information
-    # this is now handled by pre-commit.py
-    #fname = os.path.join(distfolder, 'src', 'Utilities', 'version.f90')
-    #change_version_module(fname, '{} {}'.format(version, versiondate))
+    # copy srcbmi folder
+    copytree(os.path.join('..', 'srcbmi'), fd['srcbmi'],
+             ignore=shutil.ignore_patterns('.DS_Store'))
 
-    # Create makefile in the make folder and then copy into distribution
+    # Remove existing makefile and makedefaults
     print('Creating makefile')
     makedir = os.path.join('..', 'make')
-    makefile = os.path.join(makedir, 'makefile')
-    if os.path.isfile(makefile):
-        os.remove(makefile)
+    for fname in ['makefile', 'makedefaults']:
+        fpath = os.path.join(makedir, fname)
+        if os.path.isfile(fpath):
+            os.remove(fpath)
+
+    # Create makefile in the make folder
     with cwd(makedir):
         pymake.main(os.path.join('..', 'src'), 'mf6', 'gfortran', 'gcc',
                     makeclean=True, dryrun=True, include_subdirs=True,
                     makefile=True, extrafiles=None)
-    print('  {} ===> {}'.format(makefile, fd['make']))
-    shutil.copy(makefile, fd['make'])
+
+    # Copy makefile to the distribution
+    for fname in ['makefile', 'makedefaults']:
+        fpath = os.path.join(makedir, fname)
+        print('  {} ===> {}'.format(fpath, fd['make']))
+        shutil.copy(fpath, fd['make'])
 
     # build MODFLOW 6 executable
     srcdir = fd['src']
@@ -637,114 +738,16 @@ if __name__ == '__main__':
     make_mf5to6(os.path.join('..', 'utils', 'mf5to6'), fd['utils'],
                 win_target_os, fd['bin'])
 
-    # examples
-    expath = fd['examples']
-    exsrcpath = os.path.join('..', '..', 'modflow6-examples.git', 'mf6')
-    assert os.path.isdir(exsrcpath)
-    examplelist = [
-        ['test021_twri', 'twri'],
-        ['test005_advgw_tidal', 'tidal'],
-        ['test004_bcfss', 'bcf2ss'],
-        ['test035_fhb', 'fhb'],
-
-        ['test006_gwf3_gnc',  'mfusg1disu'],       # disu
-        ['test006_gwf3_disv', 'mfusg1disv'],       # disv
-        ['test006_2models_gnc',   'mfusg1lgr'],    # dis lgr
-        ['test006_gwf3_disv_xt3d', 'mfusg1xt3d'],  # disv xt3d
-
-        ['test041_flowdivert', 'bump'],
-        ['test041_flowdivert_nr', 'bumpnr'],
-
-        ['test050_circle_island', 'disvmesh'],
-
-        ['test030_hani_col', 'hanicol'],
-        ['test030_hani_row', 'hanirow'],
-        ['test030_hani_xt3d', 'hanixt3d'],
-        ['test054_xt3d_whirlsA', 'whirlsxt3d'],
-
-        ['test034_nwtp2', 'mfnwt2'],
-        ['test014_NWTP3High', 'mfnwt3h'],
-        ['test014_NWTP3Low', 'mfnwt3l'],
-        ['test013_Zaidel', 'zaidel'],
-        ['test016_Keating', 'keating'],
-
-        ['test028_sfr', 'sfr1'],
-        ['test045_lake2tr', 'lak2'],
-        ['test045_lake4ss', 'lak4'],
-        ['test020_NevilleTonkinTransient', 'neville'],
-        ['test023_FlowingWell', 'flowing-maw'],
-        ['test024_Reilly', 'Reilly-maw'],
-        ['test051_uzfp3_wellakmvr_v2', 'advpakmvr'],
-
-        ['test011_mflgr_ex3', 'mflgr3'],
-        ['test019_VilhelmsenGC', 'vilhelmsen-gc'],
-        ['test019_VilhelmsenGF', 'vilhelmsen-gf'],
-        ['test019_VilhelmsenLGR', 'vilhelmsen-lgr'],
-
-        ['test046_periodic_bc', 'periodicbc'],
-        ['test061_csub_jacob', 'csub-jacob'],
-        ['test062_csub_sub01', 'csub-sub01'],
-        ['test063_csub_holly', 'csub-holly'],
-        ['test064_csub_subwt01', 'csub-subwt01'],
-    ]
-
-    # Create a runall.bat file in examples
-    if win_target_os:
-        frunallbat = open(os.path.join(expath, 'runall.bat'), 'w')
-    else:
-        frunallbat = None
-
-    # For each example, copy the necessary files from the development directory
-    # into the distribution directory.
-    print('Copying examples')
-    for i, (exsrc, exdest) in enumerate(examplelist):
-        srcpath = os.path.join(exsrcpath, exsrc)
-
-        prefix = 'ex{:02d}-'.format(i + 1)
-        destfoldername = prefix + exdest
-        dstpath = os.path.join(expath, prefix + exdest)
-        print('  {:<35} ===> {:<20}'.format(exsrc, prefix + exdest))
-
-        # Copy all of the mf6 input from srcpath to dstpath
-        extrafiles = ['description.txt']
-        pymake.setup_mf6(srcpath, dstpath, extrafiles=extrafiles)
-
-        if win_target_os:
-            # Create a batch file for running the model
-            fname = os.path.join(dstpath, 'run.bat')
-            with open(fname, 'w') as f:
-                s = '@echo off'
-                f.write(s + '\n')
-                s = r'..\..\bin\mf6.exe'
-                f.write(s + '\n')
-                s = 'echo.'
-                f.write(s + '\n')
-                s = 'echo Run complete.  Press any key to continue.'
-                f.write(s + '\n')
-                s = 'pause>nul'
-                f.write(s + '\n')
-
-            # # Create a batch file for running the model without pausing
-            # fname = os.path.join(dstpath, 'run_nopause.bat')
-            # with open(fname, 'w') as f:
-            #     s = r'..\..\bin\{}.exe'.format(exename)
-            #     f.write(s + '\n')
-
-            if frunallbat is not None:
-                frunallbat.write('cd ' + destfoldername + '\n')
-                frunallbat.write(r'..\..\bin\mf6.exe' + '\n')
-                frunallbat.write('cd ..' + '\n\n')
-    print('\n')
-
-    if frunallbat is not None:
-        frunallbat.write('pause' + '\n')
-        frunallbat.close()
+    # setup the examples
+    exdstpath = fd['examples']
+    examples_repo = os.path.join('..', '..', 'modflow6-examples.git')
+    setup_examples(examples_repo, exdstpath, target)
 
     # Clean and then remake latex docs
     clean_latex_files()
     rebuild_tex_from_dfn()
-    update_mf6io_tex_files(distfolder)
-    update_latex_releaseinfo()
+    update_mf6io_tex_files(distfolder, target)
+    update_latex_releaseinfo(fd['examples'])
     build_latex_docs()
 
     # docs
@@ -754,6 +757,8 @@ if __name__ == '__main__':
                [os.path.join(docsrc, 'mf6io', 'mf6io.pdf'), 'mf6io.pdf'],
                [os.path.join(docsrc, 'ConverterGuide', 'converter_mf5to6.pdf'), 'mf5to6.pdf'],
                [os.path.join('..', 'doc', 'zonebudget', 'zonebudget.pdf'), 'zonebudget.pdf'],
+               [os.path.join('..', '..', 'modflow6-docs.git', 'mf6suptechinfo', 'mf6suptechinfo.pdf'), 'mf6suptechinfo.pdf'],
+               [os.path.join('..', '..', 'modflow6-examples.git', 'doc', 'mf6examples.pdf'), 'mf6examples.pdf'],
                ]
 
     print('Copying documentation')
@@ -767,7 +772,6 @@ if __name__ == '__main__':
     for url in ['https://pubs.usgs.gov/tm/06/a57/tm6a57.pdf',
                 'https://pubs.usgs.gov/tm/06/a55/tm6a55.pdf',
                 'https://pubs.usgs.gov/tm/06/a56/tm6a56.pdf',
-                'https://github.com/MODFLOW-USGS/modflow6-examples/releases/download/6.1.0/csubexamples.pdf',
                 ]:
         print('  downloading {}'.format(url))
         download_and_unzip(url, pth=fd['doc'], delete_zip=False, verify=False)

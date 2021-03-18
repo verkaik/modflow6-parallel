@@ -70,6 +70,7 @@ module GwfHaloModule
     use GwfMvrModule,               only: mvr_cr
     use GwfIcModule,                only: ic_cr
     use GwfObsModule,               only: gwf_obs_cr
+    use MemoryHelperModule, only: create_mem_path    
     ! -- dummy
     type(GwfHaloModelType), pointer   :: this
     integer(I4B), intent(in)      :: id
@@ -84,6 +85,10 @@ module GwfHaloModule
     !
     ! -- Allocate a new GWF Model (this)
     allocate(this)
+    
+    ! -- Set memory path before allocation in memory manager can be done
+    this%memoryPath = create_mem_path(modelname)
+    
     call this%allocate_scalars(modelname)
     !
     ! -- Assign values
@@ -105,7 +110,7 @@ module GwfHaloModule
     call xt3d_cr(this%xt3d, this%name, in_dum, iout_dum)
     call gnc_cr(this%gnc, this%name, in_dum, iout_dum)
     call ic_cr(this%ic, this%name, in_dum, iout_dum, this%dis)
-    call mvr_cr(this%mvr, this%name, in_dum, iout_dum)
+    call mvr_cr(this%mvr, this%name, in_dum, iout_dum, this%npf%dis)
     call gwf_obs_cr(this%obs, in_dum)
     !
     ! -- Set model 2 name
@@ -683,7 +688,7 @@ module GwfHaloModule
     if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%ik22 = 1
       call mem_reallocate(this%npf%k22, this%dis%nodes, 'K22',                 &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       if (m1flag /= 0) then
         call copydbltohalo(this%gwf1%npf%k22, this%npf%k22, this%imapm1tohalo, &
           0)
@@ -721,7 +726,7 @@ module GwfHaloModule
     if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%ik33 = 1
       call mem_reallocate(this%npf%k33, this%dis%nodes, 'K33',                 &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       if (m1flag /= 0) then
         call copydbltohalo(this%gwf1%npf%k33, this%npf%k33, this%imapm1tohalo, &
          0)
@@ -758,7 +763,7 @@ module GwfHaloModule
     if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%iangle1 = 1
       call mem_reallocate(this%npf%angle1, this%dis%nodes, 'ANGLE1',           &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       do n = 1, this%dis%nodes
         this%npf%angle1(n) = DZERO
       end do
@@ -789,7 +794,7 @@ module GwfHaloModule
     if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%iangle2 = 1
       call mem_reallocate(this%npf%angle2, this%dis%nodes, 'ANGLE2',           &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       do n = 1, this%dis%nodes
         this%npf%angle2(n) = DZERO
       end do
@@ -820,7 +825,7 @@ module GwfHaloModule
     if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%iangle3 = 1
       call mem_reallocate(this%npf%angle3, this%dis%nodes, 'ANGLE2',           &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       do n = 1, this%dis%nodes
         this%npf%angle3(n) = DZERO
       end do
@@ -860,7 +865,7 @@ module GwfHaloModule
    if ((m1flag /= 0).or.(m2flag /= 0)) then
       this%npf%irewet = 1
       call mem_reallocate(this%npf%wetdry, this%dis%nodes, 'WETDRY',           &
-        trim(this%npf%origin))
+        trim(this%npf%memoryPath))
       if (m1flag/= 0) then
         call copydbltohalo(this%gwf1%npf%wetdry, this%npf%wetdry,              &
           this%imapm1tohalo, 0)

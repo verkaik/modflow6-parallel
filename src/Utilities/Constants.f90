@@ -7,14 +7,18 @@ module ConstantsModule
   integer(I4B), parameter :: LENBIGLINE = 5000
   integer(I4B), parameter :: LENHUGELINE = 50000
   integer(I4B), parameter :: LENVARNAME = 16
-  integer(I4B), parameter :: LENMODELNAME = 100 !16 !PAR
-  integer(I4B), parameter :: LENSOLUTIONNAME = 16
+  integer(I4B), parameter :: LENCOMPONENTNAME = 16
+  integer(I4B), parameter :: LENSOLUTIONNAME = LENCOMPONENTNAME                         !< maximum length of the solution name
+  integer(I4B), parameter :: LENMODELNAME = 100 ! PAR LENCOMPONENTNAME                            !< maximum length of the model name
+  integer(I4B), parameter :: LENPACKAGENAME = LENCOMPONENTNAME                          !< maximum length of the package name
+  integer(I4B), parameter :: LENEXCHANGENAME = LENCOMPONENTNAME                         !< maximum length of the exchange name
+  integer(I4B), parameter :: LENMEMSEPARATOR = 1                                        !< maximum length of the memory path separator used, currently a '/'
+  integer(I4B), parameter :: LENMEMPATH = 2*LENCOMPONENTNAME + LENMEMSEPARATOR          !< maximum length of the memory path
+  integer(I4B), parameter :: LENMEMADDRESS = LENMEMPATH + LENMEMSEPARATOR + LENVARNAME  !< maximum length of the full memory address, including variable name
   integer(I4B), parameter :: LENAUXNAME = 16
   integer(I4B), parameter :: LENBOUNDNAME = 40
   integer(I4B), parameter :: LENBUDTXT = 16
-  integer(I4B), parameter :: LENPACKAGENAME = 16
-  integer(I4B), parameter :: LENPACKAGETYPE = 7
-  integer(I4B), parameter :: LENORIGIN = LENMODELNAME + LENPACKAGENAME + 1
+  integer(I4B), parameter :: LENPACKAGETYPE = 7  
   integer(I4B), parameter :: LENFTYPE = 5
   integer(I4B), parameter :: LENOBSNAME = 40
   integer(I4B), parameter :: LENOBSTYPE = 30
@@ -23,7 +27,7 @@ module ConstantsModule
   integer(I4B), parameter :: LENDATETIME = 30
   integer(I4B), parameter :: LINELENGTH = 300
   integer(I4B), parameter :: LENLISTLABEL = 500
-  integer(I4B), parameter :: MAXCHARLEN = 1000
+  integer(I4B), parameter :: MAXCHARLEN = max(1000, LENBIGLINE)
   integer(I4B), parameter :: MAXOBSTYPES = 100
   integer(I4B), parameter :: NAMEDBOUNDFLAG = -9
   integer(I4B), parameter :: LENPAKLOC = 34
@@ -39,9 +43,9 @@ module ConstantsModule
   !
   ! -- real constants
   real(DP), parameter :: DZERO = 0.0_DP
+  real(DP), parameter :: DQUARTER = 0.25_DP
   real(DP), parameter :: DONETHIRD = 1.0_DP / 3.0_DP
   real(DP), parameter :: DHALF = 0.5_DP
-  real(DP), parameter :: DQUARTER = 0.25_DP
   real(DP), parameter :: DP6 = 0.6_DP
   real(DP), parameter :: DTWOTHIRDS = 2.0_DP / 3.0_DP
   real(DP), parameter :: DP7 = 0.7_DP
@@ -60,7 +64,9 @@ module ConstantsModule
   real(DP), parameter :: DTEN = 1.0e1_DP
   real(DP), parameter :: DHUNDRED = 1.0e2_DP
 
+  real(DP), parameter :: DEP3 = 1.0e3_DP
   real(DP), parameter :: DEP6 = 1.0e6_DP
+  real(DP), parameter :: DEP9 = 1.0e9_DP
   real(DP), parameter :: DEP20 = 1.0e20_DP
 
   real(DP), parameter :: DHNOFLO = 1.e30_DP
@@ -122,6 +128,16 @@ module ConstantsModule
   ENUM, BIND(C)
     ! Sets VSUMMARY=0, VALL=1, VDEBUG=2
     ENUMERATOR :: VSUMMARY, VALL, VDEBUG
+  END ENUM
+
+  ENUM, BIND(C)
+    ! Sets OSUNDEF=0, OSLINUX=1, OSMAC=2, OSWIN=3
+    ENUMERATOR :: OSUNDEF, OSLINUX, OSMAC, OSWIN
+  END ENUM
+
+  ENUM, BIND(C)
+    ! Sets MVALIDATE=0, MNORMAL=1, MRUN=2 
+    ENUMERATOR :: MVALIDATE, MNORMAL, MRUN
   END ENUM
 
 end module ConstantsModule

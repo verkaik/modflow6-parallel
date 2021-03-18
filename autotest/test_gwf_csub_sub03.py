@@ -17,7 +17,7 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 ex = ['csub_sub03a', 'csub_sub03b']
@@ -32,8 +32,8 @@ ndelaycells = [None, 39]
 ddir = 'data'
 
 ## run all examples on Travis
-# travis = [False for idx in range(len(exdirs))]
-travis = [True, False]
+# continuous_integration = [False for idx in range(len(exdirs))]
+continuous_integration = [True, False]
 
 # set replace_exe to None to use default executable
 replace_exe = {'mf2005': 'mf2005devdbl'}
@@ -63,7 +63,7 @@ hdry = -1e30
 
 # calculate hk
 hk1fact = 1. / zthick[1]
-hk1 = np.ones((nrow, ncol), dtype=np.float) * 0.5 * hk1fact
+hk1 = np.ones((nrow, ncol), dtype=float) * 0.5 * hk1fact
 hk1[0, :] = 1000. * hk1fact
 hk1[-1, :] = 1000. * hk1fact
 hk1[:, 0] = 1000. * hk1fact
@@ -117,7 +117,7 @@ maxwel = len(wd[1])
 
 # recharge data
 q = 3000. / (delr * delc)
-v = np.zeros((nrow, ncol), dtype=np.float)
+v = np.zeros((nrow, ncol), dtype=float)
 for r, c in zip(wr, wc):
     v[r, c] = q
 rech = {0: v}
@@ -238,11 +238,11 @@ def get_model(idx, dir):
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration='CG',
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -429,7 +429,7 @@ def eval_comp(sim):
             key = '{}_OUT'.format(text)
             d[key][idx] = qout
 
-    diff = np.zeros((nbud, len(bud_lst)), dtype=np.float)
+    diff = np.zeros((nbud, len(bud_lst)), dtype=float)
     for idx, key in enumerate(bud_lst):
         diff[:, idx] = d0[key] - d[key]
     diffmax = np.abs(diff).max()
@@ -457,10 +457,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -472,7 +472,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exfunc=eval_comp,
                                        exe_dict=r_exe,

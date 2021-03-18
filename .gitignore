@@ -7,6 +7,7 @@
 *.u2d
 Debug/
 Release/
+.vs/
 *.pdb
 *.user
 *.list
@@ -72,11 +73,13 @@ autotest/tempbin/
 autotest/*.html
 autotest/notebooks/
 
+distribution/temp/
 distribution/*.zip
 
 mod_temp/
 obj_temp/
 src_temp/
+pymake/dependencies/
 
 trash/
 
@@ -99,3 +102,11 @@ msvs/My Advisor Results*
 
 build/
 CMakeFiles/
+
+# ReadTheDocs
+.doc/_build
+.doc/_mf6io
+.doc/_mf6src
+latex/
+html/
+xml/

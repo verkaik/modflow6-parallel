@@ -37,7 +37,7 @@
 
 \item \texttt{OBS6}---keyword to specify that record corresponds to an observations file.
 
-\item \texttt{obs6\_filename}---name of input file to define observations for the LAK package. See the ``Observation utility'' section for instructions for preparing observation input files. Table \ref{table:obstype} lists observation type(s) supported by the LAK package.
+\item \texttt{obs6\_filename}---name of input file to define observations for the LAK package. See the ``Observation utility'' section for instructions for preparing observation input files. Tables \ref{table:gwf-obstypetable} and \ref{table:gwt-obstypetable} lists observation type(s) supported by the LAK package.
 
 \item \texttt{MOVER}---keyword to indicate that this instance of the LAK Package can be used with the Water Mover (MVR) Package.  When the MOVER option is specified, additional memory is allocated within the package to store the available, provided, and received water.
 
@@ -103,7 +103,7 @@
 
 \item \texttt{FILEIN}---keyword to specify that an input filename is expected next.
 
-\item \texttt{tab6\_filename}---character string that defines the path and filename for the file containing lake table data for the lake connection. The CTABNAME file includes the number of entries in the file and the relation between stage, volume, and surface area for each entry in the file. Lake table files for EMBEDDEDH and EMBEDDEDV lake-GWF connections also include lake-GWF exchange area data for each entry in the file. Input instructions for the CTABNAME file is included at the LAK package lake table file input instructions section.
+\item \texttt{tab6\_filename}---character string that defines the path and filename for the file containing lake table data for the lake connection. The TAB6\_FILENAME file includes the number of entries in the file and the relation between stage, volume, and surface area for each entry in the file. Lake table files for EMBEDDEDH and EMBEDDEDV lake-GWF connections also include lake-GWF exchange area data for each entry in the file. Instructions for creating the TAB6\_FILENAME input file are provided in Lake Table Input File section.
 
 \end{description}
 \item \textbf{Block: OUTLETS}

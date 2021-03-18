@@ -1,12 +1,7 @@
-# MODFLOW 6 version file automatically created using...pre-commit.py
-# created on...February 22, 2018 10:50:04
+# MODFLOW 6 version file automatically created using...make_release.py
+# created on...February 18, 2021 08:23:34
 
 major = 6
-minor = 1
-micro = 0
-build = 0
-commit = 0
-
+minor = 2
+micro = 1
 __version__ = '{:d}.{:d}.{:d}'.format(major, minor, micro)
-__build__ = '{:d}.{:d}.{:d}.{:d}'.format(major, minor, micro, build)
-__git_commit__ = '{:d}'.format(commit)

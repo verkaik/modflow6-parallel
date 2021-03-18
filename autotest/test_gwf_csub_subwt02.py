@@ -1,5 +1,4 @@
 import os
-import sys
 import numpy as np
 
 try:
@@ -18,10 +17,11 @@ except:
     msg += ' pip install flopy'
     raise Exception(msg)
 
-from framework import testing_framework
+from framework import testing_framework, running_on_CI
 from simulation import Simulation
 
 ex = ['csub_subwt02a', 'csub_subwt02b', 'csub_subwt02c', 'csub_subwt02d']
+timeseries = [True, False, True, False]
 exdirs = []
 for s in ex:
     exdirs.append(os.path.join('temp', s))
@@ -39,7 +39,7 @@ ivoid = [0, 1, 0, 1]
 gs0 = [0., 0., 1700., 1700.]
 
 # set travis to True when version 1.13.0 is released
-travis = [True, True, True, True]
+continuous_integration = [True, True, True, True]
 
 # set replace_exe to None to use default executable
 replace_exe = None
@@ -54,6 +54,7 @@ perlen = [1., 21915., 21915.]
 nstp = [1, 60, 60]
 tsmult = [1., 1., 1.]
 steady = [True, False, False]
+ts_times = np.arange(0., 60000, 10000., dtype=float)
 
 # spatial discretization
 nlay, nrow, ncol = 4, ib0.shape[0], ib0.shape[1]
@@ -170,12 +171,12 @@ for idx in range(nper):
     tdis_rc.append((perlen[idx], nstp[idx], tsmult[idx]))
 
 # this used to work
-# ib = np.zeros((nlay, nrow, ncol), dtype=np.int)
+# ib = np.zeros((nlay, nrow, ncol), dtype=int)
 # for k in range(nlay):
 #    ib[k, :, :] = ib0.copy()
 ib = []
 for k in range(nlay):
-    ib.append(ib0.astype(np.int).copy())
+    ib.append(ib0.astype(int).copy())
 
 # subwt data
 cc = 0.25
@@ -242,11 +243,11 @@ def get_model(idx, dir):
 
     # create iterative model solution and register the gwf model with it
     ims = flopy.mf6.ModflowIms(sim, print_option='SUMMARY',
-                               outer_hclose=hclose,
+                               outer_dvclose=hclose,
                                outer_maximum=nouter,
                                under_relaxation='NONE',
                                inner_maximum=ninner,
-                               inner_hclose=hclose, rcloserecord=rclose,
+                               inner_dvclose=hclose, rcloserecord=rclose,
                                linear_acceleration='BICGSTAB',
                                scaling_method='NONE',
                                reordering_method='NONE',
@@ -293,13 +294,22 @@ def get_model(idx, dir):
 
     # csub files
     gg = []
+    if timeseries[idx]:
+        sig0v = 'geostress'
+        ts_methods = ['linearend']
+        ts_data = []
+        for t in ts_times:
+            ts_data.append((t, gs0[idx]))
+    else:
+        sig0v = gs0[idx]
     for i in range(nrow):
         for j in range(ncol):
             if ib0[i, j] > 0:
-                gg.append([(0, i, j), gs0[idx]])
+                gg.append([(0, i, j), sig0v])
     sig0 = {0: gg}
     opth = '{}.csub.obs'.format(name)
     csub = flopy.mf6.ModflowGwfcsub(gwf,
+                                    # print_input=True,
                                     # interbed_stress_offset=True,
                                     boundnames=True,
                                     compression_indices=True,
@@ -314,6 +324,11 @@ def get_model(idx, dir):
                                     packagedata=swt6,
                                     maxsig0=len(gg),
                                     stress_period_data=sig0)
+    if timeseries[idx]:
+        fname = '{}.csub.ts'.format(name)
+        csub.ts.initialize(filename=fname, timeseries=ts_data,
+                           time_series_namerecord=[sig0v],
+                           interpolation_methodrecord=ts_methods)
 
     cobs = [('w1l1', 'interbed-compaction', '01_09_10'),
             ('w1l2', 'interbed-compaction', '02_09_10'),
@@ -355,7 +370,6 @@ def get_model(idx, dir):
             ('sk1l2', 'ske-cell', (1, 8, 9)),
             ('sk2l4', 'ske-cell', (3, 11, 6)),
             ('t1l2', 'theta', '02_09_10')]
-
 
     orecarray = {'csub_obs.csv': cobs}
     csub_obs_package = csub.obs.initialize(filename=opth, digits=10,
@@ -509,7 +523,7 @@ def cbc_compare(sim):
             qout = 0.
             v = cobj.get_data(kstpkper=k, text=text)[0]
             if isinstance(v, np.recarray):
-                vt = np.zeros(size3d, dtype=np.float)
+                vt = np.zeros(size3d, dtype=float)
                 for jdx, node in enumerate(v['node']):
                     vt[node - 1] += v['q'][jdx]
                 v = vt.reshape(shape3d)
@@ -529,7 +543,7 @@ def cbc_compare(sim):
             key = '{}_OUT'.format(text)
             d[key][idx] = qout
 
-    diff = np.zeros((nbud, len(bud_lst)), dtype=np.float)
+    diff = np.zeros((nbud, len(bud_lst)), dtype=float)
     for idx, key in enumerate(bud_lst):
         diff[:, idx] = d0[key] - d[key]
     diffmax = np.abs(diff).max()
@@ -577,10 +591,10 @@ def build_models():
 
 
 def test_mf6model():
-    # determine if running on Travis
-    is_travis = 'TRAVIS' in os.environ
+    # determine if running on Travis or GitHub actions
+    is_CI = running_on_CI()
     r_exe = None
-    if not is_travis:
+    if not is_CI:
         if replace_exe is not None:
             r_exe = replace_exe
 
@@ -592,7 +606,7 @@ def test_mf6model():
 
     # run the test models
     for idx, dir in enumerate(exdirs):
-        if is_travis and not travis[idx]:
+        if is_CI and not continuous_integration[idx]:
             continue
         yield test.run_mf6, Simulation(dir, exe_dict=r_exe,
                                        exfunc=eval_comp,

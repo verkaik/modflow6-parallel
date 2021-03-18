@@ -2,10 +2,11 @@ module GwfDisuModule
 
   use ArrayReadersModule, only: ReadArray
   use KindModule, only: DP, I4B
-  use ConstantsModule, only: LENMODELNAME, LENORIGIN, LINELENGTH
+  use ConstantsModule, only: LENMODELNAME, LINELENGTH
   use ConnectionsModule, only: ConnectionsType, iac_to_ia
   use InputOutputModule, only: URWORD, ulasav, ulaprufw, ubdsv1, ubdsv06
   use SimModule, only: count_errors, store_error, store_error_unit, ustop
+  use SimVariablesModule, only: errmsg
   use BaseDisModule, only: DisBaseType
   use BlockParserModule, only: BlockParserType
   use MemoryManagerModule, only: mem_allocate
@@ -392,18 +393,17 @@ module GwfDisuModule
     ! -- dummy
     class(GwfDisuType) :: this
     ! -- local
-    character(len=LINELENGTH) :: errmsg
     integer(I4B) :: n, m
     integer(I4B) :: ipos
     integer(I4B) :: ihc
     real(DP) :: dz
     ! -- formats
     character(len=*), parameter :: fmtidm = &
-      "('ERROR. INVALID IDOMAIN VALUE ', i0, ' SPECIFIED FOR NODE ', i0)"
+      "('Invalid idomain value ', i0, ' specified for node ', i0)"
     character(len=*), parameter :: fmtdz = &
-      "('ERROR. CELL ', i0, ' WITH THICKNESS <= 0. TOP, BOT: ', 2(1pg24.15))"
+      "('Cell ', i0, ' with thickness <= 0. Top, bot: ', 2(1pg24.15))"
     character(len=*), parameter :: fmtarea = &
-      "('ERROR. CELL ', i0, ' WITH AREA <= 0. AREA: ', 1(1pg24.15))"
+      "('Cell ', i0, ' with area <= 0. Area: ', 1(1pg24.15))"
     character(len=*),parameter :: fmterrmsg =                                  &
       "(' Top elevation (', 1pg15.6, ') for cell ', i0, ' is above bottom &
       &elevation (', 1pg15.6, ') for cell ', i0, '. Based on node numbering &
@@ -537,7 +537,6 @@ module GwfDisuModule
     integer(I4B), intent(in) :: nodeu
     integer(I4B), dimension(:), intent(inout) :: arr
     ! -- local
-    character(len=LINELENGTH) :: errmsg
     integer(I4B) :: isize
 ! ------------------------------------------------------------------------------
     !
@@ -570,7 +569,7 @@ module GwfDisuModule
     use SimModule, only: ustop, count_errors, store_error
     implicit none
     class(GwfDisuType) :: this
-    character(len=LINELENGTH) :: errmsg, keyword
+    character(len=LINELENGTH) :: keyword
     integer(I4B) :: ierr, nerr
     logical :: isfound, endOfBlock
 ! ------------------------------------------------------------------------------
@@ -621,8 +620,7 @@ module GwfDisuModule
             write(this%iout,'(4x,a,1pg24.15)') 'ANGROT SPECIFIED AS ',         &
               this%angrot
           case default
-            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN DIS OPTION: ',         &
-                                     trim(keyword)
+            write(errmsg,'(a)')'Unknown DISU option: ' // trim(keyword)
             call store_error(errmsg)
         end select
       end do
@@ -654,7 +652,7 @@ module GwfDisuModule
     use SimModule, only: ustop, count_errors, store_error
     implicit none
     class(GwfDisuType) :: this
-    character(len=LINELENGTH) :: errmsg, keyword
+    character(len=LINELENGTH) :: keyword
     integer(I4B) :: n, ierr
     logical :: isfound, endOfBlock
 ! ------------------------------------------------------------------------------
@@ -687,48 +685,47 @@ module GwfDisuModule
             write(this%iout,'(3x,a)') 'VERTICES AND CELL2D BLOCKS WILL ' //    &
               'BE READ BELOW. '
           case default
-            write(errmsg,'(4x,a,a)')'****ERROR. UNKNOWN DISU DIMENSION: ',      &
-                                      trim(keyword)
+            write(errmsg,'(a)') 'Unknown DISU dimension: ' // trim(keyword)
             call store_error(errmsg)
-            call this%parser%StoreErrorUnit()
-            call ustop()
         end select
       end do
-      write(this%iout,'(1x,a)')'END OF DISCRETIZATION OPTIONS'
+      write(this%iout,'(1x,a)') 'END OF DISCRETIZATION OPTIONS'
     else
-      call store_error('ERROR.  REQUIRED DIMENSIONS BLOCK NOT FOUND.')
-      call this%parser%StoreErrorUnit()
-      call ustop()
+      call store_error('Required dimensions block not found.')
     end if
     !
     ! -- verify dimensions were set
     if(this%nodesuser < 1) then
       call store_error( &
-          'ERROR.  NODES WAS NOT SPECIFIED OR WAS SPECIFIED INCORRECTLY.')
-      call ustop()
+          'NODES was not specified or was specified incorrectly.')
     endif
     if(this%njausr < 1) then
       call store_error( &
-          'ERROR.  NJA WAS NOT SPECIFIED OR WAS SPECIFIED INCORRECTLY.')
-      call ustop()
+          'NJA was not specified or was specified incorrectly.')
     endif
     !
+    ! -- terminate if errors were detected
+    if (count_errors() > 0) then
+      call this%parser%StoreErrorUnit()
+      call ustop()
+    end if
+    !
     ! -- allocate vectors that are the size of nodesuser
-    call mem_allocate(this%top1d, this%nodesuser, 'TOP1D', this%origin)
-    call mem_allocate(this%bot1d, this%nodesuser, 'BOT1D', this%origin)
-    call mem_allocate(this%area1d, this%nodesuser, 'AREA1D', this%origin)
-    call mem_allocate(this%idomain, this%nodesuser, 'IDOMAIN', this%origin)
-    call mem_allocate(this%vertices, 2, this%nvert, 'VERTICES', this%origin)
-    call mem_allocate(this%iainp, this%nodesuser + 1, 'IAINP', this%origin)
-    call mem_allocate(this%jainp, this%njausr, 'JAINP', this%origin)
-    call mem_allocate(this%ihcinp, this%njausr, 'IHCINP', this%origin)
-    call mem_allocate(this%cl12inp, this%njausr, 'CL12INP', this%origin)
-    call mem_allocate(this%hwvainp, this%njausr, 'HWVAINP', this%origin)
-    call mem_allocate(this%angldegxinp, this%njausr, 'ANGLDEGXINP', this%origin)
+    call mem_allocate(this%top1d, this%nodesuser, 'TOP1D', this%memoryPath)
+    call mem_allocate(this%bot1d, this%nodesuser, 'BOT1D', this%memoryPath)
+    call mem_allocate(this%area1d, this%nodesuser, 'AREA1D', this%memoryPath)
+    call mem_allocate(this%idomain, this%nodesuser, 'IDOMAIN', this%memoryPath)
+    call mem_allocate(this%vertices, 2, this%nvert, 'VERTICES', this%memoryPath)
+    call mem_allocate(this%iainp, this%nodesuser + 1, 'IAINP', this%memoryPath)
+    call mem_allocate(this%jainp, this%njausr, 'JAINP', this%memoryPath)
+    call mem_allocate(this%ihcinp, this%njausr, 'IHCINP', this%memoryPath)
+    call mem_allocate(this%cl12inp, this%njausr, 'CL12INP', this%memoryPath)
+    call mem_allocate(this%hwvainp, this%njausr, 'HWVAINP', this%memoryPath)
+    call mem_allocate(this%angldegxinp, this%njausr, 'ANGLDEGXINP', this%memoryPath)
     if(this%nvert > 0) then
-      call mem_allocate(this%cellxy, 2, this%nodesuser, 'CELLXY', this%origin)
+      call mem_allocate(this%cellxy, 2, this%nodesuser, 'CELLXY', this%memoryPath)
     else
-      call mem_allocate(this%cellxy, 2, 0, 'CELLXY', this%origin)
+      call mem_allocate(this%cellxy, 2, 0, 'CELLXY', this%memoryPath)
     endif
     !
     ! -- initialize all cells to be active (idomain = 1)
@@ -749,12 +746,10 @@ module GwfDisuModule
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate
-    use ConstantsModule, only: LINELENGTH
-    use SimModule, only: ustop, count_errors, store_error, store_error_unit
     ! -- dummy
     class(GwfDisuType) :: this
     ! -- local
-    character(len=LINELENGTH) :: errmsg, keyword
+    character(len=LINELENGTH) :: keyword
     integer(I4B) :: n
     integer(I4B) :: ierr
     logical :: isfound, endOfBlock
@@ -796,33 +791,29 @@ module GwfDisuModule
                             this%ndim, this%nodesuser, this%iout, 0)
             lname(4) = .true.
           case default
-            write(errmsg,'(4x,a,a)')'ERROR. UNKNOWN GRIDDATA TAG: ', &
-                                     trim(keyword)
+            write(errmsg,'(a)') 'Unknown GRIDDATA tag: ' // trim(keyword)
             call store_error(errmsg)
-            call this%parser%StoreErrorUnit()
-            call ustop()
         end select
       end do
       write(this%iout,'(1x,a)')'END PROCESSING GRIDDATA'
     else
-      call store_error('ERROR.  REQUIRED GRIDDATA BLOCK NOT FOUND.')
-      call this%parser%StoreErrorUnit()
-      call ustop()
+      call store_error('Required GRIDDATA block not found.')
     end if
     !
     ! -- verify all items were read
     do n = 1, nname
       if (n == 4) cycle
       if(.not. lname(n)) then
-        write(errmsg,'(1x,a,a)') &
-          'ERROR.  REQUIRED INPUT WAS NOT SPECIFIED: ', aname(n)
+        write(errmsg,'(a)') 'Required input was not specified: ', trim(aname(n))
         call store_error(errmsg)
       endif
     enddo
+    !
+    ! -- terminate if errors were detected
     if (count_errors() > 0) then
       call this%parser%StoreErrorUnit()
       call ustop()
-    endif
+    end if
     !
     ! -- Return
     return
@@ -1140,8 +1131,8 @@ module GwfDisuModule
     end if
     !
     ! -- Convert vertspm into ia/ja form
-    call mem_allocate(this%iavert, this%nodesuser + 1, 'IAVERT', this%origin)
-    call mem_allocate(this%javert, vertspm%nnz, 'JAVERT', this%origin)
+    call mem_allocate(this%iavert, this%nodesuser + 1, 'IAVERT', this%memoryPath)
+    call mem_allocate(this%javert, vertspm%nnz, 'JAVERT', this%memoryPath)
     
     call vertspm%filliaja(this%iavert, this%javert, ierr)
     call vertspm%destroy()
@@ -1306,7 +1297,6 @@ module GwfDisuModule
     class(GwfDisuType), intent(in) :: this
     integer(I4B), intent(in) :: nodeu
     integer(I4B), intent(in) :: icheck
-    character(len=LINELENGTH) :: errmsg
     integer(I4B) :: nodenumber
 ! ------------------------------------------------------------------------------
     !
@@ -1353,7 +1343,6 @@ module GwfDisuModule
     real(DP), intent(inout) :: zcomp
     integer(I4B), intent(in) :: ipos
     ! -- local
-    !integer(I4B) :: ipos
     real(DP) :: angle, dmult
 ! ------------------------------------------------------------------------------
     !
@@ -1419,6 +1408,16 @@ module GwfDisuModule
     real(DP) :: xn, xm, yn, ym, zn, zm
 ! ------------------------------------------------------------------------------
     !
+    ! -- Terminate with error if requesting unit vector components for problems
+    !    without vertex data
+    if (this%nvert < 1) then
+      write(errmsg, '(a)') &
+        'Cannot calculate unit vector components for DISU grid if VERTEX ' //    &
+        'data are not specified'
+      call store_error(errmsg)
+      call ustop()
+    end if
+    !
     ! -- Find xy coords
     call this%get_cellxy(noden, xn, yn)
     call this%get_cellxy(nodem, xm, ym)
@@ -1472,8 +1471,8 @@ module GwfDisuModule
     !
     ! -- return
     return
-  end subroutine get_cellxy_disu                             
-
+  end subroutine get_cellxy_disu
+  
   ! return discretization type
   subroutine get_dis_type(this, dis_type)
     class(GwfDisuType), intent(in)  :: this
@@ -1503,9 +1502,9 @@ module GwfDisuModule
     call this%DisBaseType%allocate_scalars(name_model, dis_type) !PAR
     !
     ! -- Allocate variables for DISU
-    call mem_allocate(this%njausr, 'NJAUSR', this%origin)
-    call mem_allocate(this%nvert, 'NVERT', this%origin)
-    call mem_allocate(this%ndim,  'DNDIM', this%origin) !PAR
+    call mem_allocate(this%njausr, 'NJAUSR', this%memoryPath)
+    call mem_allocate(this%nvert, 'NVERT', this%memoryPath)
+    call mem_allocate(this%ndim,  'DNDIM', this%memoryPath) !PAR
     !
     ! -- Set values
     this%ndim = 1
@@ -1535,12 +1534,11 @@ module GwfDisuModule
     !
     ! -- Allocate arrays in DISU
     if(this%nodes < this%nodesuser) then
-      call mem_allocate(this%nodeuser, this%nodes, 'NODEUSER', this%origin)
-      call mem_allocate(this%nodereduced, this%nodesuser, 'NODEREDUCED',       &
-                        this%origin)
+      call mem_allocate(this%nodeuser, this%nodes, 'NODEUSER', this%memoryPath)
+      call mem_allocate(this%nodereduced, this%nodesuser, 'NODEREDUCED', this%memoryPath)
     else
-      call mem_allocate(this%nodeuser, 1, 'NODEUSER', this%origin)
-      call mem_allocate(this%nodereduced, 1, 'NODEREDUCED', this%origin)
+      call mem_allocate(this%nodeuser, 1, 'NODEUSER', this%memoryPath)
+      call mem_allocate(this%nodereduced, 1, 'NODEREDUCED', this%memoryPath)
     endif
     !
     ! -- Initialize

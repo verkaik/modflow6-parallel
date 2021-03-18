@@ -1,14 +1,14 @@
 module GwfGwfExchangeModule
 
-  use KindModule,              only: DP, I4B
+  use KindModule, only: DP, I4B
   use ConstantsModule,         only: DZERO !HALO2
-  use ArrayHandlersModule,     only: ExpandArray
+  use SimVariablesModule, only: errmsg
   use BaseModelModule,         only: GetBaseModelFromList
   use BaseExchangeModule,      only: BaseExchangeType, AddBaseExchangeToList
   use ConstantsModule,         only: LENBOUNDNAME, NAMEDBOUNDFLAG, LINELENGTH, &
-                                     TABCENTER, TABLEFT,                       &
+                                    TABCENTER, TABLEFT,                       &
                                      LENMODELNAME !HALO2
-  use ListsModule,             only: basemodellist
+  use ListsModule,             only: basemodellist 
   use NumericalExchangeModule, only: NumericalExchangeType
   use NumericalModelModule,    only: NumericalModelType
   use GwfModule,               only: GwfModelType
@@ -106,6 +106,7 @@ contains
     use BaseModelModule, only: BaseModelType, AddBaseModelToList !HALO2
     use ListsModule, only: baseexchangelist, halomodellist !HALO2
     use ObsModule, only: obs_cr
+    use MemoryHelperModule, only: create_mem_path
     use GwfHaloModule, only: gwfhalo_cr !HALO2
     use MpiExchangeModule, only: MpiWorld !PAR
     ! -- dummy
@@ -136,6 +137,7 @@ contains
     exchange%id = id
     write(cint, '(i0)') id
     exchange%name = 'GWF-GWF_' // trim(adjustl(cint))
+    exchange%memoryPath = create_mem_path(exchange%name)
     !
     ! -- allocate scalars and set defaults
     call exchange%allocate_scalars()
@@ -276,7 +278,7 @@ contains
     ! -- call each model and increase the edge count
     call this%gwfmodel1%npf%increase_edge_count(this%nexg)
     if(associated(this%gwfmodel2)) then !HALO2
-      call this%gwfmodel2%npf%increase_edge_count(this%nexg)
+    call this%gwfmodel2%npf%increase_edge_count(this%nexg)
     endif !HALO2
     !
     ! -- Create and read ghost node information
@@ -385,7 +387,6 @@ contains
     real(DP) :: csat
     real(DP) :: fawidth
     real(DP), dimension(3) :: vg
-    character(len=LINELENGTH) :: errmsg
 ! ------------------------------------------------------------------------------
     !
     ! -- halo ar
@@ -399,9 +400,9 @@ contains
     !    GWF-GWF exchange (this%ianglex > 0).
     if(this%gwfhalo%npf%ik22 /= 0) then !HALO2
       if(this%ianglex == 0) then
-        write(errmsg, '(a)') 'Error.  GWF-GWF requires that ANGLDEGX be ' //   &
-                             'specified as an auxiliary variable because ' //  &
-                             'K22 was specified in one or both ' // &
+        write(errmsg, '(a)') 'GWF-GWF requires that ANGLDEGX be ' //             &
+                             'specified as an auxiliary variable because ' //    &
+                             'K22 was specified in one or both ' //              &
                              'groundwater models.'
         call store_error(errmsg)
         call ustop()
@@ -413,17 +414,17 @@ contains
     !    GWF-GWF exchange (this%ianglex > 0).
     if(this%gwfhalo%npf%icalcspdis /= 0) then !HALO2
       if(this%ianglex == 0) then
-        write(errmsg, '(a)') 'Error.  GWF-GWF requires that ANGLDEGX be ' //   &
-                             'specified as an auxiliary variable because ' //  &
-                             'specific discharge is being calculated in' // &
+        write(errmsg, '(a)') 'GWF-GWF requires that ANGLDEGX be ' //             &
+                             'specified as an auxiliary variable because ' //    &
+                             'specific discharge is being calculated in' //      &
                              ' one or both groundwater models.'
         call store_error(errmsg)
         call ustop()
       endif
       if(this%icdist == 0) then
-        write(errmsg, '(a)') 'Error.  GWF-GWF requires that CDIST be ' //   &
-                             'specified as an auxiliary variable because ' //  &
-                             'specific discharge is being calculated in' // &
+        write(errmsg, '(a)') 'GWF-GWF requires that CDIST be ' //                &
+                             'specified as an auxiliary variable because ' //    &
+                             'specific discharge is being calculated in' //      &
                              ' one or both groundwater models.'
         call store_error(errmsg)
         call ustop()
@@ -480,7 +481,7 @@ contains
             hym = this%gwfhalo%npf%hy_eff(m, 0, ihc, vg=vg) !HALO2
           endif
         endif
-        !
+          !
         fawidth = this%hwva(iexg)
         csat = hcond(1, 1, 1, 1, this%inewton, 0, ihc,                        &
                       this%icellavg, 0, 0, DONE,                              &
@@ -528,7 +529,7 @@ contains
     return
   end subroutine gwf_gwf_rp
 
-  subroutine gwf_gwf_ad(this, isolnid, kpicard, isubtime)
+  subroutine gwf_gwf_ad(this)
 ! ******************************************************************************
 ! gwf_gwf_ad -- Initialize package x values to zero for explicit exchanges
 ! ******************************************************************************
@@ -538,20 +539,17 @@ contains
     ! -- modules
     ! -- dummy
     class(GwfExchangeType) :: this
-    integer(I4B), intent(in) :: isolnid
-    integer(I4B), intent(in) :: kpicard
-    integer(I4B), intent(in) :: isubtime
     ! -- local
 ! ------------------------------------------------------------------------------
     !
     ! -- Advance mover
     if(this%inmvr > 0) call this%mvr%mvr_ad()
     !
-    ! -- Push simulated values to preceding time/subtime step
+    ! -- Push simulated values to preceding time step
     call this%obs%obs_ad()
     !
     ! -- advance halo model
-    call this%gwfhalo%model_ad(kpicard, isubtime) !HALO2
+    call this%gwfhalo%model_ad() !HALO2
     !
     ! -- Return
     return
@@ -608,6 +606,14 @@ contains
 ! ------------------------------------------------------------------------------
     !
     !
+    ! -- if gnc is active, then copy cond into gnc cond (might consider a
+    !    pointer here in the future)
+    if(this%ingnc > 0) then
+      do iexg = 1, this%nexg
+        this%gnc%cond(iexg) = this%cond(iexg)
+      enddo
+    endif
+    !
     ! -- Call fill method of parent to put this%cond into amatsln
     !call this%NumericalExchangeType%exg_fc(kiter, iasln, amatsln)
     !
@@ -616,14 +622,14 @@ contains
     !
     if (this%m2_bympi) then !PAR
       do iexg = 1, this%nexg
-        !
+    !
         ! -- initialize terms to zero
         terms(:, :) = DZERO !HALO2
-        !
+    !
         n = this%nodem1(iexg) !HALO2
         nodensln = this%nodem1(iexg) + this%m1%moffset !HALO2
         call this%gwfhalo%gwfhalo_fc_calc(iexg, terms) !HALO2
-        !
+    !
         ! -- row n
         idiagsln = iasln(nodensln) !HALO2
         amatsln(idiagsln) = amatsln(idiagsln) + terms(1, 1) !- this%cond(i) !HALO2
@@ -698,7 +704,7 @@ contains
     return
   end subroutine gwf_gwf_fc
 
-  subroutine gwf_gwf_fn(this, kiter, iasln, amatsln)
+ subroutine gwf_gwf_fn(this, kiter, iasln, amatsln)
 ! ******************************************************************************
 ! gwf_gwf_fn -- Fill amatsln with Newton terms
 ! ******************************************************************************
@@ -912,7 +918,7 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ConstantsModule, only: DZERO, LENBUDTXT, LENPACKAGENAME
-    !use TdisModule, only: kstp, kper
+    use TdisModule, only: kstp, kper
     ! -- dummy
     class(GwfExchangeType) :: this
     integer(I4B), intent(inout) :: icnvg
@@ -948,25 +954,39 @@ contains
       if (this%gwfmodel1%oc%oc_save('BUDGET')) then
         call this%outputtab1%set_title(packname1)
       end if
+      !
+      ! -- set table kstp and kper
+      call this%outputtab1%set_kstpkper(kstp, kper)
+      
+      if (.not.this%m2_bympi) then !PAR
+      ! -- update titles
       if (this%gwfmodel2%oc%oc_save('BUDGET')) then 
         call this%outputtab2%set_title(packname2)
       end if
+      !
+      ! -- set table kstp and kper
+      call this%outputtab2%set_kstpkper(kstp, kper)
+      end if !PAR
       !
       ! -- update maxbound of tables
       ntabrows = 0
       do i = 1, this%nexg
         n1 = this%nodem1(i)
         n2 = this%nodem2(i)
+        n1h = this%gwfhalo%imapnodem1tohalo(i) !HALO2
+        n2h = this%gwfhalo%imapnodem2tohalo(i) + this%gwfhalo%offset !HALO2
         !
         ! -- If both cells are active then calculate flow rate
-        if (this%gwfmodel1%ibound(n1) /= 0 .and.                                  &
-            this%gwfmodel2%ibound(n2) /= 0) then
+        if (this%gwfhalo%ibound(n1h) /= 0 .and.                                   & !HALO2
+            this%gwfhalo%ibound(n1h)) then !HALO2
           ntabrows = ntabrows + 1
         end if
       end do
       if (ntabrows > 0) then
         call this%outputtab1%set_maxbound(ntabrows)
+        if (.not.this%m2_bympi) then !PAR
         call this%outputtab2%set_maxbound(ntabrows)
+        end if !PAR
       end if
     end if
     !
@@ -1157,7 +1177,6 @@ contains
     !
     endif !PAR
     !
-    ! -- Set icbcfl, ibudfl to zero so that flows will be printed and
     !    saved, if the options were set in the MVR package
     icbcfl = 1
     ibudfl = 1
@@ -1257,17 +1276,27 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use ArrayHandlersModule, only: ifind
-    use ConstantsModule, only: LINELENGTH, DEM6
+    use ConstantsModule, only: LINELENGTH, LENAUXNAME, DEM6
+    use MemoryManagerModule, only: mem_allocate
     use InputOutputModule, only: getunit, openfile, urdaux
     use SimModule, only: store_error, store_error_unit, ustop
     ! -- dummy
     class(GwfExchangeType) :: this
     integer(I4B), intent(in) :: iout
     ! -- local
-    character(len=LINELENGTH) :: line, errmsg, keyword, fname
-    integer(I4B) :: istart,istop,lloc,ierr,ival
+    character(len=:), allocatable :: line
+    character(len=LINELENGTH) :: keyword
+    character(len=LINELENGTH) :: fname
+    character(len=LENAUXNAME), dimension(:), allocatable :: caux
+    logical :: isfound
+    logical :: endOfBlock
+    integer(I4B) :: istart
+    integer(I4B) :: istop
+    integer(I4B) :: lloc
+    integer(I4B) :: ierr
+    integer(I4B) :: ival
     integer(I4B) :: inobs
-    logical :: isfound, endOfBlock
+    integer(I4B) :: n
 ! ------------------------------------------------------------------------------
     !
     ! -- get options block
@@ -1279,21 +1308,33 @@ contains
       write(iout,'(1x,a)')'PROCESSING GWF EXCHANGE OPTIONS'
       do
         call this%parser%GetNextLine(endOfBlock)
-        if (endOfBlock) exit
+        if (endOfBlock) then
+          exit
+        end if
         call this%parser%GetStringCaps(keyword)
         select case (keyword)
           case('AUXILIARY')
             call this%parser%GetRemainingLine(line)
             lloc = 1
-            call urdaux(this%naux, this%parser%iuactive, iout, lloc, istart,   &
-                        istop, this%auxname, line, 'GWF_GWF_Exchange')
+            call urdaux(this%naux, this%parser%iuactive, iout, lloc, istart,     &
+                        istop, caux, line, 'GWF_GWF_Exchange')
+            call mem_allocate(this%auxname, LENAUXNAME, this%naux,               &
+                                'AUXNAME', trim(this%memoryPath))
+            do n = 1, this%naux
+              this%auxname(n) = caux(n)
+            end do
+            deallocate(caux)
             !
             ! -- If ANGLDEGX is an auxiliary variable, then anisotropy can be
             !    used in either model.  Store ANGLDEGX position in this%ianglex
             ival = ifind(this%auxname, 'ANGLDEGX')
-            if(ival > 0) this%ianglex = ival
+            if (ival > 0) then
+              this%ianglex = ival
+            end if
             ival = ifind(this%auxname, 'CDIST')
-            if(ival > 0) this%icdist = ival
+            if(ival > 0) then
+              this%icdist = ival
+            end if
           case ('PRINT_INPUT')
             this%iprpak = 1
             write(iout,'(4x,a)') &
@@ -1314,8 +1355,7 @@ contains
             case('AMT-LMK')
               this%icellavg = 2
             case default
-              write(errmsg,'(4x,a,a)')'UNKNOWN CELL AVERAGING METHOD: ',       &
-                                       trim(keyword)
+              errmsg = "Unknown cell averaging method '" // trim(keyword) // "'."
               call store_error(errmsg)
               call this%parser%StoreErrorUnit()
               call ustop()
@@ -1391,14 +1431,13 @@ contains
             call openfile(inobs, iout, this%obs%inputFilename, 'OBS')
             this%obs%inUnitObs = inobs
           case default
-            write(errmsg,'(4x,a,a)')'***ERROR. UNKNOWN GWF EXCHANGE OPTION: ', &
-                                     trim(keyword)
+            errmsg = "Unknown gwf exchange option '" // trim(keyword) // "'."
             call store_error(errmsg)
             call this%parser%StoreErrorUnit()
             call ustop()
         end select
       end do
-      write(iout,'(1x,a)')'END OF GWF EXCHANGE OPTIONS'
+      write(iout,'(1x,a)') 'END OF GWF EXCHANGE OPTIONS'
     end if
     !
     ! -- set omega value used for saturation calculations
@@ -1421,16 +1460,14 @@ contains
     ! -- modules
     use ConstantsModule, only: LINELENGTH
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
-    use BaseModelModule, only: BaseModelType
     use BaseDisModule, only: DisBaseType !PAR
     use MpiExchangeGenModule, only: mpi_is_halo !PAR
     use MpiExchangeGwfModule, only: mpi_set_gwfhalo_world_dis !PAR
-    use MpiExchangeModule, only: MpiWorld !PAR !@@@@
     ! -- dummy
-    class(gwfExchangeType) :: this
+    class(GwfExchangeType) :: this
     integer(I4B), intent(in) :: iout
     ! -- local
-    character(len=LINELENGTH) :: errmsg, nodestr, node1str, node2str, cellid
+    character(len=LINELENGTH) :: nodestr, node1str, node2str, cellid
     character(len=2) :: cnfloat
     integer(I4B) :: lloc, ierr, nerr, iaux
     integer(I4B) :: iexg, nodem1, nodem2, nodeum1, nodeum2
@@ -1450,7 +1487,7 @@ contains
     else !PAR
       m2 => this%m2
     endif !PAR
-    !
+ 
     ! -- get ExchangeData block
     call this%parser%GetBlock('EXCHANGEDATA', isfound, ierr,                   &
                               supportOpenClose=.true.)
@@ -1474,23 +1511,22 @@ contains
             '(1pg16.6), 1x, a)'
         endif
       endif
-      !
       do iexg = 1, this%nexg
         call this%parser%GetNextLine(endOfBlock)
         lloc = 1
         !
         if (.not.this%m1m2_swap) then !PAR
-          ! -- Read and check node 1
-          call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.)
-          nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
-                                                 iout, flag_string=.true.)
-          this%nodem1(iexg) = nodem1
-          !
-          ! -- Read and check node 2
-          call this%parser%GetCellid(m2%dis%ndim, cellid, flag_string=.true.)
-          nodem2 = m2%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
-                                            iout, flag_string=.true.)
-          this%nodem2(iexg) = nodem2
+        ! -- Read and check node 1
+        call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.)
+        nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   &
+                                               iout, flag_string=.true.)
+        this%nodem1(iexg) = nodem1
+        !
+        ! -- Read and check node 2
+          call this%parser%GetCellid(m2%dis%ndim, cellid, flag_string=.true.) !PAR
+          nodem2 = m2%dis%noder_from_cellid(cellid, this%parser%iuactive,   & !PAR
+                                               iout, flag_string=.true.)
+        this%nodem2(iexg) = nodem2
           if (this%m2_bympi) then !PAR
             this%nodeum2(iexg) = nodem2 !PAR
             this%nodem2(iexg) = iexg !PAR
@@ -1505,7 +1541,7 @@ contains
             this%nodeum2(iexg) = nodem2 !PAR
             this%nodem2(iexg) = iexg !PAR
           endif !PAR
-          !
+        !
           ! -- Read and check node 1
           call this%parser%GetCellid(this%m1%dis%ndim, cellid, flag_string=.true.) !HALO2
           nodem1 = this%m1%dis%noder_from_cellid(cellid, this%parser%iuactive,   & !HALO2
@@ -1516,8 +1552,8 @@ contains
         ! -- Read rest of input line
         this%ihc(iexg) = this%parser%GetInteger()
         if (.not.this%m1m2_swap) then !PAR
-          this%cl1(iexg) = this%parser%GetDouble()
-          this%cl2(iexg) = this%parser%GetDouble()
+        this%cl1(iexg) = this%parser%GetDouble()
+        this%cl2(iexg) = this%parser%GetDouble()
         else
           this%cl2(iexg) = this%parser%GetDouble() !PAR
           this%cl1(iexg) = this%parser%GetDouble() !PAR
@@ -1558,20 +1594,20 @@ contains
         ! -- Check to see if nodem1 is outside of active domain
         if(nodem1 <= 0) then
           call this%gwfmodel1%dis%nodeu_to_string(nodeum1, nodestr)
-          write(errmsg, *)                                                     &
-                  trim(adjustl(this%gwfmodel1%name)) //                        &
-                  ' Cell is outside active grid domain: ' //                   &
-                  trim(adjustl(nodestr))
+          write(errmsg, *)                                                       &
+                  trim(adjustl(this%gwfmodel1%name)) //                          &
+                  ' Cell is outside active grid domain ' //                      &
+                  trim(adjustl(nodestr)) // '.'
           call store_error(errmsg)
         endif
         !
         ! -- Check to see if nodem2 is outside of active domain
         if(nodem2 <= 0) then
           call this%gwfmodel2%dis%nodeu_to_string(nodeum2, nodestr)
-          write(errmsg, *)                                                     &
-                  trim(adjustl(this%gwfmodel2%name)) //                        &
-                  ' Cell is outside active grid domain: ' //                   &
-                  trim(adjustl(nodestr))
+          write(errmsg, *)                                                       &
+                  trim(adjustl(this%gwfmodel2%name)) //                          &
+                  ' Cell is outside active grid domain ' //                      &
+                  trim(adjustl(nodestr)) // '.'
           call store_error(errmsg)
         endif
       enddo
@@ -1586,7 +1622,7 @@ contains
       !
       write(iout,'(1x,a)')'END OF EXCHANGEDATA'
     else
-      write(errmsg, '(1x,a)')'ERROR.  REQUIRED EXCHANGEDATA BLOCK NOT FOUND.'
+      errmsg = 'Required exchangedata block not found.'
       call store_error(errmsg)
       call this%parser%StoreErrorUnit()
       call ustop()
@@ -1596,7 +1632,6 @@ contains
       call m2%dis%dis_da() !PAR
       deallocate(m2) !PAR
     endif !PAR
-    !
     ! -- return
     return
   end subroutine read_data
@@ -1616,7 +1651,6 @@ contains
     integer(I4B), intent(in) :: iout
     ! -- local
     integer(I4B) :: i, nm1, nm2, nmgnc1, nmgnc2
-    character(len=LINELENGTH) :: errmsg
     character(len=*), parameter :: fmterr = &
       "('EXCHANGE NODES ', i0, ' AND ', i0,"  // &
       "' NOT CONSISTENT WITH GNC NODES ', i0, ' AND ', i0)"
@@ -1681,8 +1715,14 @@ contains
     ! -- local
 ! ------------------------------------------------------------------------------
     !
-    ! -- Create and initialize the mover object
-    call mvr_cr(this%mvr, this%name, this%inmvr, iout, iexgmvr=1)
+    ! -- Create and initialize the mover object  Here, dis is set to the one
+    !    for gwfmodel1 so that a call to save flows has an associated dis
+    !    object.  Because the conversion flags for the mover are both false,
+    !    the dis object does not convert from reduced to user node numbers. 
+    !    So in this case, the dis object is just writing unconverted package
+    !    numbers to the binary budget file.
+    call mvr_cr(this%mvr, this%name, this%inmvr, iout, this%gwfmodel1%dis,     &
+                iexgmvr=1)
     !
     ! -- Return
     return
@@ -1713,7 +1753,7 @@ contains
        &' FOR ITER. ',I0, ' STEP ',I0, ' PERIOD ', I0)"
 ! ------------------------------------------------------------------------------
     !
-    ! -- Use model 1 to rewet model 2 and vice versa
+   ! -- Use model 1 to rewet model 2 and vice versa
     do iexg = 1, this%nexg
       n = this%gwfhalo%imapnodem1tohalo(iexg) !HALO2
       m = this%gwfhalo%imapnodem2tohalo(iexg) + this%gwfhalo%offset !HALO2
@@ -1761,6 +1801,103 @@ contains
     return
   end subroutine rewet
 
+  subroutine condcalc(this)
+! ******************************************************************************
+! condcalc -- Calculate the conductance
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------
+    ! -- modules
+    use ConstantsModule, only: DHALF, DZERO, DONE
+    use GwfNpfModule, only: hcond, vcond
+    ! -- dummy
+    class(GwfExchangeType) :: this
+    ! -- local
+    integer(I4B) :: iexg
+    integer(I4B) :: n, m, ihc
+    integer(I4B) :: ibdn, ibdm
+    integer(I4B) :: ictn, ictm
+    real(DP) :: topn, topm
+    real(DP) :: botn, botm
+    real(DP) :: satn, satm
+    real(DP) :: hyn, hym
+    real(DP) :: angle
+    real(DP) :: hn, hm
+    real(DP) :: cond
+    real(DP) :: fawidth
+    real(DP), dimension(3) :: vg
+! ------------------------------------------------------------------------------
+    !
+    ! -- Calculate conductance and put into amat
+    do iexg = 1, this%nexg
+      ihc = this%ihc(iexg)
+      n = this%nodem1(iexg)
+      m = this%nodem2(iexg)
+      ibdn = this%gwfmodel1%ibound(n)
+      ibdm = this%gwfmodel2%ibound(m)
+      ictn = this%gwfmodel1%npf%icelltype(n)
+      ictm = this%gwfmodel2%npf%icelltype(m)
+      topn = this%gwfmodel1%dis%top(n)
+      topm = this%gwfmodel2%dis%top(m)
+      botn = this%gwfmodel1%dis%bot(n)
+      botm = this%gwfmodel2%dis%bot(m)
+      satn = this%gwfmodel1%npf%sat(n)
+      satm = this%gwfmodel2%npf%sat(m)
+      hn = this%gwfmodel1%x(n)
+      hm = this%gwfmodel2%x(m)
+      !
+      ! -- Calculate conductance depending on connection orientation
+      if(ihc == 0) then
+        !
+        ! -- Vertical connection
+        vg(1) = DZERO
+        vg(2) = DZERO
+        vg(3) = DONE
+        hyn = this%gwfmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
+        hym = this%gwfmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
+        cond = vcond(ibdn, ibdm, ictn, ictm, this%inewton, this%ivarcv,        &
+                     this%idewatcv, this%condsat(iexg), hn, hm, hyn, hym,      &
+                     satn, satm, topn, topm, botn, botm, this%hwva(iexg))
+      else
+        !
+        ! -- Horizontal Connection
+        hyn = this%gwfmodel1%npf%k11(n)
+        hym = this%gwfmodel2%npf%k11(m)
+        !
+        ! -- Check for anisotropy in models, and recalculate hyn and hym
+        if(this%ianglex > 0) then
+          angle = this%auxvar(this%ianglex, iexg)
+          vg(1) = abs(cos(angle))
+          vg(2) = abs(sin(angle))
+          vg(3) = DZERO
+          !
+          ! -- anisotropy in model 1
+          if(this%gwfmodel1%npf%ik22 /= 0) then
+            hyn = this%gwfmodel1%npf%hy_eff(n, 0, ihc, vg=vg)
+          endif
+          !
+          ! -- anisotropy in model 2
+          if(this%gwfmodel2%npf%ik22 /= 0) then
+            hym = this%gwfmodel2%npf%hy_eff(m, 0, ihc, vg=vg)
+          endif
+        endif
+        !
+        fawidth = this%hwva(iexg)
+        cond = hcond(ibdn, ibdm, ictn, ictm, this%inewton, this%inewton,       &
+                     this%ihc(iexg), this%icellavg, 0, 0, this%condsat(iexg),  &
+                     hn, hm, satn, satm, hyn, hym, topn, topm, botn, botm,     &
+                     this%cl1(iexg), this%cl2(iexg), fawidth, this%satomega)
+      endif
+      !
+      this%cond(iexg) = cond
+      !
+    enddo
+    !
+    ! -- Return
+    return
+  end subroutine condcalc
+
   subroutine allocate_scalars(this)
 ! ******************************************************************************
 ! allocate_scalars
@@ -1770,30 +1907,26 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate
-    use ConstantsModule, only: LENORIGIN, DZERO
+    use ConstantsModule, only: DZERO
     ! -- dummy
     class(GwfExchangeType) :: this
     ! -- local
-    character(len=LENORIGIN) :: origin
 ! ------------------------------------------------------------------------------
-    !
-    ! -- create the origin name
-    origin = trim(this%name)
     !
     ! -- Call parent type allocate_scalars
     call this%NumericalExchangeType%allocate_scalars()
     !
-    call mem_allocate(this%icellavg, 'ICELLAVG', origin)
-    call mem_allocate(this%ivarcv, 'IVARCV', origin)
-    call mem_allocate(this%idewatcv, 'IDEWATCV', origin)
-    call mem_allocate(this%inewton, 'INEWTON', origin)
-    call mem_allocate(this%ianglex, 'IANGLEX', origin)
-    call mem_allocate(this%icdist, 'ICDIST', origin)
-    call mem_allocate(this%ingnc, 'INGNC', origin)
-    call mem_allocate(this%inmvr, 'INMVR', origin)
-    call mem_allocate(this%inobs, 'INOBS', origin)
-    call mem_allocate(this%inamedbound, 'INAMEDBOUND', origin)
-    call mem_allocate(this%satomega, 'SATOMEGA', origin)
+    call mem_allocate(this%icellavg, 'ICELLAVG', this%memoryPath)
+    call mem_allocate(this%ivarcv, 'IVARCV', this%memoryPath)
+    call mem_allocate(this%idewatcv, 'IDEWATCV', this%memoryPath)
+    call mem_allocate(this%inewton, 'INEWTON', this%memoryPath)
+    call mem_allocate(this%ianglex, 'IANGLEX', this%memoryPath)
+    call mem_allocate(this%icdist, 'ICDIST', this%memoryPath)
+    call mem_allocate(this%ingnc, 'INGNC', this%memoryPath)
+    call mem_allocate(this%inmvr, 'INMVR', this%memoryPath)
+    call mem_allocate(this%inobs, 'INOBS', this%memoryPath)
+    call mem_allocate(this%inamedbound, 'INAMEDBOUND', this%memoryPath)
+    call mem_allocate(this%satomega, 'SATOMEGA', this%memoryPath)
     this%icellavg = 0
     this%ivarcv = 0
     this%idewatcv = 0
@@ -1887,26 +2020,21 @@ contains
 ! ------------------------------------------------------------------------------
     ! -- modules
     use MemoryManagerModule, only: mem_allocate
-    use ConstantsModule, only: LENORIGIN
     ! -- dummy
     class(GwfExchangeType) :: this
     ! -- local
     character(len=LINELENGTH) :: text
-    character(len=LENORIGIN) :: origin
     integer(I4B) :: ntabcol
 ! ------------------------------------------------------------------------------
-    !
-    ! -- create the origin name
-    origin = trim(this%name)
     !
     ! -- Call parent type allocate_scalars
     call this%NumericalExchangeType%allocate_arrays()
     !
-    call mem_allocate(this%ihc, this%nexg, 'IHC', origin)
-    call mem_allocate(this%cl1, this%nexg, 'CL1', origin)
-    call mem_allocate(this%cl2, this%nexg, 'CL2', origin)
-    call mem_allocate(this%hwva, this%nexg, 'HWVA', origin)
-    call mem_allocate(this%condsat, this%nexg, 'CONDSAT', origin)
+    call mem_allocate(this%ihc, this%nexg, 'IHC', this%memoryPath)
+    call mem_allocate(this%cl1, this%nexg, 'CL1', this%memoryPath)
+    call mem_allocate(this%cl2, this%nexg, 'CL2', this%memoryPath)
+    call mem_allocate(this%hwva, this%nexg, 'HWVA', this%memoryPath)
+    call mem_allocate(this%condsat, this%nexg, 'CONDSAT', this%memoryPath)
     !
     ! -- Allocate boundname
     if(this%inamedbound==1) then
@@ -1940,6 +2068,7 @@ contains
         text = 'NAME'
         call this%outputtab1%initialize_column(text, 20, alignment=TABLEFT)
       end if
+      if (.not.this%m2_bympi) then !PAR
       !    outouttab2
       call table_cr(this%outputtab2, this%name, '    ')
       call this%outputtab2%table_df(this%nexg, ntabcol, this%gwfmodel2%iout,     &
@@ -1954,6 +2083,7 @@ contains
         text = 'NAME'
         call this%outputtab2%initialize_column(text, 20, alignment=TABLEFT)
       end if
+      end if !PAR
     end if
     !
     ! -- return
@@ -1997,7 +2127,8 @@ contains
     ! -- dummy
     class(GwfExchangeType) :: this
     ! -- local
-    integer(I4B) :: i, j, n
+    integer(I4B) :: i
+    integer(I4B) :: j
     class(ObserveType), pointer :: obsrv => null()
     character(len=LENBOUNDNAME) :: bname
     character(len=1000) :: ermsg
@@ -2007,16 +2138,13 @@ contains
            '" is invalid in package "',a,'"')
 ! ------------------------------------------------------------------------------
     !
-    do i=1,this%obs%npakobs
+    do i = 1, this%obs%npakobs
       obsrv => this%obs%pakobs(i)%obsrv
       !
-      ! -- indxbnds needs to be deallocated and reallocated (using
-      !    ExpandArray) each stress period because list of boundaries
-      !    can change each stress period.
+      ! -- indxbnds needs to be reset each stress period because 
+      !    list of boundaries can change each stress period.
       ! -- Not true for exchanges, but leave this in for now anyway.
-      if (allocated(obsrv%indxbnds)) then
-        deallocate(obsrv%indxbnds)
-      endif
+      call obsrv%ResetObsIndex()
       obsrv%BndFound = .false.
       !
       bname = obsrv%FeatureName
@@ -2030,9 +2158,7 @@ contains
             jfound = .true.
             obsrv%BndFound = .true.
             obsrv%CurrentTimeStepEndValue = DZERO
-            call ExpandArray(obsrv%indxbnds)
-            n = size(obsrv%indxbnds)
-            obsrv%indxbnds(n) = j
+            call obsrv%AddObsIndex(j)
           endif
         enddo
         if (.not. jfound) then
@@ -2045,15 +2171,14 @@ contains
           jfound = .true.
           obsrv%BndFound = .true.
           obsrv%CurrentTimeStepEndValue = DZERO
-          call ExpandArray(obsrv%indxbnds)
-          n = size(obsrv%indxbnds)
-          obsrv%indxbnds(n) = obsrv%intPak1
+          call obsrv%AddObsIndex(obsrv%intPak1)
         else
           jfound = .false.
         endif
       endif
     enddo
     !
+    ! -- write summary of error messages
     if (count_errors() > 0) then
       call store_error_unit(this%inobs)
       call ustop()
@@ -2165,7 +2290,10 @@ contains
     use ObserveModule, only: ObserveType
     class(GwfExchangeType), intent(inout) :: this
     ! -- local
-    integer(I4B) :: i, j, n1, n2, nbndobs
+    integer(I4B) :: i
+    integer(I4B) :: j
+    integer(I4B) :: n1
+    integer(I4B) :: n2
     integer(I4B) :: iexg
     real(DP) :: v
     character(len=100) :: msg
@@ -2177,8 +2305,7 @@ contains
       call this%obs%obs_bd_clear()
       do i = 1, this%obs%npakobs
         obsrv => this%obs%pakobs(i)%obsrv
-        nbndobs = size(obsrv%indxbnds)
-        do j = 1,  nbndobs
+        do j = 1,  obsrv%indxbnds_count
           iexg = obsrv%indxbnds(j)
           v = DZERO
           select case (obsrv%ObsTypeId)
@@ -2295,7 +2422,7 @@ contains
     call xt3d_cr(this%xt3d, this%name, in_dum, iout_dum)
     call gnc_cr(this%gnc, this%name, in_dum, iout_dum)
     call ic_cr(this%ic, this%name, in_dum, iout_dum, this%dis)
-    call mvr_cr(this%mvr, this%name, in_dum, iout_dum)
+    call mvr_cr(this%mvr, this%name, in_dum, iout_dum, this%npf%dis)
     !
     ! -- return
     return
@@ -2471,7 +2598,7 @@ subroutine gwf_mpi_halo_init() !PAR
     !
     ! -- set arrays
     call MpiWorld%mpi_local_exchange('', 'HALO_INIT_CON_A', .true.) !PAR
-    
+    !
     deallocate(iwrk)
     !
     ! -- return
