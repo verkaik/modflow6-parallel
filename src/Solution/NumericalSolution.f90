@@ -3621,6 +3621,11 @@ contains
       call mp%model_fc(kiter, this%amat, this%nja, 0)
     end do
     !
+     ! -- MPI parallel: point-to-point of mover data
+    if (parallelrun) then !PAR
+      call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !PAR
+    endif !PAR
+    !
     ! -- calculate initial l2 norm
     if (kiter == 1) then
       call this%sln_l2norm(this%neq, this%nja,                                 &
