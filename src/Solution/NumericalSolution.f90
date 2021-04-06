@@ -3621,7 +3621,7 @@ contains
       call mp%model_fc(kiter, this%amat, this%nja, 0)
     end do
     !
-     ! -- MPI parallel: point-to-point of mover data
+    ! -- MPI parallel: point-to-point of mover data
     if (parallelrun) then !PAR
       call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !PAR
     endif !PAR
@@ -3689,6 +3689,11 @@ contains
             mp => GetNumericalModelFromList(this%modellist, im)
             call mp%model_fc(kiter, this%amat, this%nja, 0)
           end do
+          !
+          ! -- MPI parallel: point-to-point of mover data
+          if (parallelrun) then !PAR
+            call this%MpiMvr%mpi_local_exchange(this%name, 'MOVER', .true.) !PAR
+          endif !PAR
           !
           ! -- calculate updated l2norm
           call this%sln_l2norm(this%neq, this%nja,                             &
