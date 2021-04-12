@@ -323,7 +323,7 @@ contains
     class(BaseSolutionType), pointer :: sp => null() !PAR
     class(BaseModelType), pointer :: mp => null()
     class(BaseExchangeType), pointer :: ep => null()
-    class(NumericalSolutionType), pointer :: nsp !PAR
+    class(NumericalSolutionType), pointer :: nsp => null() !PAR
     character(len=LINELENGTH) :: line
     character(len=LINELENGTH) :: fmt
     integer(I4B) :: im

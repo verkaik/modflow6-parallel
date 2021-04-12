@@ -2970,43 +2970,45 @@ contains
       class is (GwfpExchangeType)
         cp => cb
       end select
-      mvrmpi => cp%mvr%mvrmpi
-      ! -- loop over global movers
-      do imvr = 1, mvrmpi%ngmvr
-        ! -- get mover names
-        call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameSrc, mname1, id)
-        call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameTgt, mname2, id)
-        ! -- check existence
-        i1 = ifind(MpiWorld%gmodelnames, mname1)
-        i2 = ifind(MpiWorld%gmodelnames, mname2)
-        if (i1 <= 0 .or. i2 <= 0) then 
-          write(errmsg,'(a)') 'Program error 2 in slnmpimvrinit.'
-          call store_error(errmsg)
-          call ustop()
-        endif
-        if (allocated(this%MpiMvr%lmodelnames)) then
-          i = ifind(this%MpiMvr%lmodelnames, mname1)
-        else
-          i = 0
-        endif
-        if (i <= 0) then
-          call this%MpiMvr%mpi_addmodel(2,mname1)
-          isub = MpiWorld%gsubs(i1)
-          call this%MpiMvr%mpi_addsub(2, isub)
-          !write(*,*) '@@@@ Added 1:',MpiWorld%myrank, trim(mname1), isub
-        endif
-        if (allocated(this%MpiMvr%lmodelnames)) then
-          i = ifind(this%MpiMvr%lmodelnames, mname2)
-        else
-          i = 0
-        endif
-        if (i <= 0) then
-          call this%MpiMvr%mpi_addmodel(2,mname2)
-          isub = MpiWorld%gsubs(i2)
-          call this%MpiMvr%mpi_addsub(2, isub)
-          !write(*,*) '@@@@ Added 2:',MpiWorld%myrank, trim(mname2), isub
-        endif
-      enddo
+      if (cp%inmvr > 0) then
+        mvrmpi => cp%mvr%mvrmpi
+        ! -- loop over global movers
+        do imvr = 1, mvrmpi%ngmvr
+          ! -- get mover names
+          call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameSrc, mname1, id)
+          call split_mem_path_ff(mvrmpi%gmvr(imvr)%pckNameTgt, mname2, id)
+          ! -- check existence
+          i1 = ifind(MpiWorld%gmodelnames, mname1)
+          i2 = ifind(MpiWorld%gmodelnames, mname2)
+          if (i1 <= 0 .or. i2 <= 0) then 
+            write(errmsg,'(a)') 'Program error 2 in slnmpimvrinit.'
+            call store_error(errmsg)
+            call ustop()
+          endif
+          if (allocated(this%MpiMvr%lmodelnames)) then
+            i = ifind(this%MpiMvr%lmodelnames, mname1)
+          else
+            i = 0
+          endif
+          if (i <= 0) then
+            call this%MpiMvr%mpi_addmodel(2,mname1)
+            isub = MpiWorld%gsubs(i1)
+            call this%MpiMvr%mpi_addsub(2, isub)
+            !write(*,*) '@@@@ Added 1:',MpiWorld%myrank, trim(mname1), isub
+          endif
+          if (allocated(this%MpiMvr%lmodelnames)) then
+            i = ifind(this%MpiMvr%lmodelnames, mname2)
+          else
+            i = 0
+          endif
+          if (i <= 0) then
+            call this%MpiMvr%mpi_addmodel(2,mname2)
+            isub = MpiWorld%gsubs(i2)
+            call this%MpiMvr%mpi_addsub(2, isub)
+            !write(*,*) '@@@@ Added 2:',MpiWorld%myrank, trim(mname2), isub
+          endif
+        enddo
+      end if
     enddo
     do i = 1, this%MpiSol%gnmodel
       call this%MpiMvr%mpi_addmodel(1, this%MpiSol%gmodelnames(i))
@@ -3023,36 +3025,38 @@ contains
       class is (GwfpExchangeType)
         cp => cb
       end select
-      mvr => cp%mvr
-      ! -- loop over local movers
-      do imvr = 1, mvr%nmvr
-        call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
-        call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
-        i1 = ifind(this%MpiSol%lmodelnames, mname1)
-        i2 = ifind(this%MpiSol%lmodelnames, mname2)
-        laddvar1 = .false.
-        laddvar2 = .false.
-        ! mname1 belongs to my models; mname2 is halo
-        if (i1 > 0 .and. i2 <= 0) then
-          laddvar1 = .true.
-          i = ifind(MpiWorld%gmodelnames, mname2)
-        endif
-        ! mname1 is halo; mname2 belongs to my models
-        if (i1 <= 0 .and. i2 > 0) then
-          laddvar2 = .true.
-          i = ifind(MpiWorld%gmodelnames, mname1)
-        endif
-        if (laddvar1 .or. laddvar2) then
-          isub = MpiWorld%gsubs(i)
-          isub = this%MpiMvr%procmap(isub)
-          if(isub < 0) then
-            write(errmsg,'(a)') 'Program error 3 in slnmpimvrinit.'
-            call store_error(errmsg)
-            call ustop()
+      if (cp%inmvr > 0) then
+        mvr => cp%mvr
+        ! -- loop over local movers
+        do imvr = 1, mvr%nmvr
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
+          call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
+          i1 = ifind(this%MpiSol%lmodelnames, mname1)
+          i2 = ifind(this%MpiSol%lmodelnames, mname2)
+          laddvar1 = .false.
+          laddvar2 = .false.
+          ! mname1 belongs to my models; mname2 is halo
+          if (i1 > 0 .and. i2 <= 0) then
+            laddvar1 = .true.
+            i = ifind(MpiWorld%gmodelnames, mname2)
           endif
-          iwrk(isub) = iwrk(isub) + 1
-        endif
-      enddo
+          ! mname1 is halo; mname2 belongs to my models
+          if (i1 <= 0 .and. i2 > 0) then
+            laddvar2 = .true.
+            i = ifind(MpiWorld%gmodelnames, mname1)
+          endif
+          if (laddvar1 .or. laddvar2) then
+            isub = MpiWorld%gsubs(i)
+            isub = this%MpiMvr%procmap(isub)
+            if(isub < 0) then
+              write(errmsg,'(a)') 'Program error 3 in slnmpimvrinit.'
+              call store_error(errmsg)
+              call ustop()
+            endif
+            iwrk(isub) = iwrk(isub) + 1
+          endif
+        enddo
+      endif
     enddo
     this%MpiMvr%nrxp = 0
     do ip = 1, this%MpiMvr%nrproc
@@ -3091,82 +3095,84 @@ contains
         class is (GwfpExchangeType)
           cp => cb
         end select
-        mvr => cp%mvr
-        ! -- loop over local movers
-        do imvr = 1, mvr%nmvr
-          call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
-          call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
-          !write(*,*) '@@@@ mvr: "'//trim(mvr%mvr(imvr)%pname1)//'" "'//trim(mvr%mvr(imvr)%pname2)//'"'
-          i1 = ifind(this%MpiSol%lmodelnames, mname1)
-          i2 = ifind(this%MpiSol%lmodelnames, mname2)
-          laddvar1 = .false.
-          laddvar2 = .false.
-          ! -- mname1 belongs to my models; mname2 is halo
-          if (i1 > 0 .and. i2 <= 0) then
-            laddvar1 = .true.
-            i = ifind(MpiWorld%gmodelnames, mname2)
-          endif
-          ! -- mname1 is halo; mname2 belongs to my models
-          if (i1 <= 0 .and. i2 > 0) then
-            laddvar2 = .true.
-            i = ifind(MpiWorld%gmodelnames, mname1)
-          endif
-          ! -- check if interface already exists
-          laddex = .false.
-          if (laddvar1 .or. laddvar2) then
-            isub = MpiWorld%gsubs(i)
-            isub = this%MpiMvr%procmap(isub)
-            ixp = iwrk(isub)
-            nex = this%MpiMvr%lxch(ixp)%nexchange
-            if (iwrk2(isub) == 0) then
-              laddex = .true.
-              iwrk2(isub) = 1
+        if (cp%inmvr > 0) then
+          mvr => cp%mvr
+          ! -- loop over local movers
+          do imvr = 1, mvr%nmvr
+            call split_mem_path_ff(mvr%mvr(imvr)%pckNameSrc_read, mname1, id)
+            call split_mem_path_ff(mvr%mvr(imvr)%pckNameTgt_read, mname2, id)
+            !write(*,*) '@@@@ mvr: "'//trim(mvr%mvr(imvr)%pname1)//'" "'//trim(mvr%mvr(imvr)%pname2)//'"'
+            i1 = ifind(this%MpiSol%lmodelnames, mname1)
+            i2 = ifind(this%MpiSol%lmodelnames, mname2)
+            laddvar1 = .false.
+            laddvar2 = .false.
+            ! -- mname1 belongs to my models; mname2 is halo
+            if (i1 > 0 .and. i2 <= 0) then
+              laddvar1 = .true.
+              i = ifind(MpiWorld%gmodelnames, mname2)
             endif
-          endif
-          if (laddex) then
-            nex = nex + 1
-            if (iact == 1) then
-              ! -- set pointer to exchange
-              !write(*,*) '@@@@@@ Adding:',trim(mname1), ' ', trim(mname2),nex
-              this%MpiMvr%lxch(ixp)%exchange(nex)%name = cp%name
-              this%MpiMvr%lxch(ixp)%exchange(nex)%m1_name = trim(mname1)
-              this%MpiMvr%lxch(ixp)%exchange(nex)%m2_name = trim(mname2)
-              this%MpiMvr%lxch(ixp)%nexchange = nex
+            ! -- mname1 is halo; mname2 belongs to my models
+            if (i1 <= 0 .and. i2 > 0) then
+              laddvar2 = .true.
+              i = ifind(MpiWorld%gmodelnames, mname1)
             endif
-          endif
-          !set the variables
-          if ((laddvar1 .or. laddvar2) .and. iact == 2) then
-            vgvar => this%MpiMvr%lxch(ixp)%exchange(nex)%vgvar(ivg)
-            if (.not.associated(vgvar)) then
-              !write(*,*) '@@@@',ixp,nex,ivg
-              write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
-              call store_error(errmsg)
-              call ustop()
+            ! -- check if interface already exists
+            laddex = .false.
+            if (laddvar1 .or. laddvar2) then
+              isub = MpiWorld%gsubs(i)
+              isub = this%MpiMvr%procmap(isub)
+              ixp = iwrk(isub)
+              nex = this%MpiMvr%lxch(ixp)%nexchange
+              if (iwrk2(isub) == 0) then
+                laddex = .true.
+                iwrk2(isub) = 1
+              endif
             endif
-            iv = vgvar%nvar
-            iv = iv + 1
-            if (iv > size(vgvar%var)) then
-              write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
-              call store_error(errmsg)
-              call ustop()
+            if (laddex) then
+              nex = nex + 1
+              if (iact == 1) then
+                ! -- set pointer to exchange
+                !write(*,*) '@@@@@@ Adding:',trim(mname1), ' ', trim(mname2),nex
+                this%MpiMvr%lxch(ixp)%exchange(nex)%name = cp%name
+                this%MpiMvr%lxch(ixp)%exchange(nex)%m1_name = trim(mname1)
+                this%MpiMvr%lxch(ixp)%exchange(nex)%m2_name = trim(mname2)
+                this%MpiMvr%lxch(ixp)%nexchange = nex
+              endif
             endif
-            vgvar%nvar = iv
-            vgvar%var(iv)%path = mvr%mvr(imvr)%pckNameSrc
-            vgvar%var(iv)%name   = 'QFORMVR'
-            vgvar%var(iv)%nameext = ''
-            vgvar%var(iv)%srctype = isrcmvr
-            vgvar%var(iv)%pcktype = ipckmvr
-            vgvar%var(iv)%tgttype = itgtmvr
-            vgvar%var(iv)%unptype = iunpmvr
-            vgvar%var(iv)%id      = mvr%mvr(imvr)%iRchNrSrc
-            if (laddvar1) then
-              vgvar%var(iv)%lrcv = .false.
+            !set the variables
+            if ((laddvar1 .or. laddvar2) .and. iact == 2) then
+              vgvar => this%MpiMvr%lxch(ixp)%exchange(nex)%vgvar(ivg)
+              if (.not.associated(vgvar)) then
+                !write(*,*) '@@@@',ixp,nex,ivg
+                write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
+                call store_error(errmsg)
+                call ustop()
+              endif
+              iv = vgvar%nvar
+              iv = iv + 1
+              if (iv > size(vgvar%var)) then
+                write(errmsg,'(a)') 'Program error 4 in slnmpimvrinit.'
+                call store_error(errmsg)
+                call ustop()
+              endif
+              vgvar%nvar = iv
+              vgvar%var(iv)%path = mvr%mvr(imvr)%pckNameSrc
+              vgvar%var(iv)%name   = 'QFORMVR'
+              vgvar%var(iv)%nameext = ''
+              vgvar%var(iv)%srctype = isrcmvr
+              vgvar%var(iv)%pcktype = ipckmvr
+              vgvar%var(iv)%tgttype = itgtmvr
+              vgvar%var(iv)%unptype = iunpmvr
+              vgvar%var(iv)%id      = mvr%mvr(imvr)%iRchNrSrc
+              if (laddvar1) then
+                vgvar%var(iv)%lrcv = .false.
+              endif
+              if (laddvar2) then
+                vgvar%var(iv)%lsnd = .false.
+              endif
             endif
-            if (laddvar2) then
-              vgvar%var(iv)%lsnd = .false.
-            endif
-          endif
-        enddo
+          enddo
+        endif
       enddo
       if (iact == 1) then
         this%MpiMvr%linit = .true.
