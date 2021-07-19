@@ -11,10 +11,7 @@ module MpiExchangeGenModule
   public :: mpi_initialize
   public :: mpi_finalize
   public :: mpi_append_fname
-  public :: mpi_is_halo
   ! -- Public variables
-  public :: nhalo
-  public :: modelname_halo
 
   ! -- Global variables based of the world communicator
   logical, public :: parallelrun = .false.
@@ -22,8 +19,6 @@ module MpiExchangeGenModule
   logical, public :: writestd    = .true.
   character(len=50), public :: partstr
   
-  integer(I4B) :: nhalo = 0
-  character(len=LENMODELNAME), allocatable, dimension(:) :: modelname_halo !PAR
   character(len=LINELENGTH) :: errmsg
   
   save
@@ -87,49 +82,5 @@ module MpiExchangeGenModule
     ! -- return
     return
   end subroutine mpi_append_fname
-
-  function mpi_is_halo(modelname) result(flag_halo)
-! ******************************************************************************
-! Check if a model name is of type halo
-! ******************************************************************************
-!
-!    SPECIFICATIONS:
-! ------------------------------------------------------------------------------
-    ! -- modules
-    ! -- return
-    logical :: flag_halo
-    ! -- dummy
-    character(len=*), intent(in) :: modelname
-    ! -- local
-    integer(I4B) :: m, i
-! ------------------------------------------------------------------------------
-    !
-    flag_halo = .false.
-    if (serialrun) then
-      return 
-    end if
-    !
-    ! -- check
-    if (.not.allocated(modelname_halo)) then
-      !write(errmsg,'(a)') 'Program error in mpi_is_halo.'
-      !call store_error(errmsg)
-      !call ustop()
-    end if
-    !
-    m = -1
-    findloop: do i=1,size(modelname_halo)
-      if(modelname_halo(i) == modelname) then
-        m = i
-        exit findloop
-      endif
-    enddo findloop
-    !
-    if (m > 0) then
-      flag_halo = .true.
-    end if
-    !
-    ! -- return
-    return
-  end function mpi_is_halo
   
 end module MpiExchangeGenModule

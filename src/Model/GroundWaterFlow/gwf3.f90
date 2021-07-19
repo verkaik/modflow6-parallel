@@ -428,23 +428,16 @@ module GwfModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeGenModule, only: mpi_is_halo !PAR
     ! -- dummy
     class(GwfModelType) :: this
     ! -- locals
     integer(I4B) :: ip
     class(BndType), pointer :: packobj
-    logical :: flag_halo !PAR
 ! ------------------------------------------------------------------------------
     !
-    ! -- Get flag indicating that the model is of type halo
-    flag_halo = mpi_is_halo(this%name) !PAR
-    !
     ! -- Allocate and read modules attached to model
-    if(this%inic  > 0) call this%ic%ic_ar(this%x, flag_halo) !PAR
-    if(this%innpf > 0) call this%npf%npf_ar(this%ic,                           &
-                                            this%ibound, this%x,               &
-                                            flag_halo) !PAR
+    if(this%inic  > 0) call this%ic%ic_ar(this%x)
+    if(this%innpf > 0) call this%npf%npf_ar(this%ic, this%ibound, this%x)
     if(this%inbuy > 0) call this%buy%buy_ar(this%npf, this%ibound)
     if(this%inhfb > 0) call this%hfb%hfb_ar(this%ibound, this%xt3d, this%dis)
     if(this%insto > 0) call this%sto%sto_ar(this%dis, this%ibound)
@@ -453,14 +446,10 @@ module GwfModule
     if(this%inobs > 0) call this%obs%gwf_obs_ar(this%ic, this%x, this%flowja)
     !
     ! -- Call dis_ar to write binary grid file
-    if (.not.flag_halo) then !PAR
     call this%dis%dis_ar(this%npf%icelltype)
-    endif !PAR
     !
     ! -- set up output control
-    if (.not.flag_halo) then !PAR
     call this%oc%oc_ar(this%x, this%dis, this%npf%hnoflo)
-    endif !PAR
     !
     ! -- Package input files now open, so allocate and read
     do ip = 1,this%bndlist%Count()

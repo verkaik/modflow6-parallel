@@ -1240,7 +1240,7 @@
                             THIS%NWLU, THIS%JLU, THIS%JW, THIS%WLU,             & !SOL
                             THIS%IBJFLAG, CONVNMOD, CONVMODSTART) !BJ
 !-------UPDATE COARSE GRID PRECONDITIONER
-      if (this%icgc) then !CGC
+      if (this%icgc == 1) then !CGC
         call this%imslinearsub_pcc(convnmod, convmodstart) !CGC
       end if !CGC
 !      
@@ -2235,7 +2235,7 @@
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, D, Z, APC, JLU, IW) 
           END SELECT 
-          IF (THIS%ICGC) THEN !CGC
+          IF (THIS%ICGC == 1) THEN !CGC
 !----------APPLY COARSE GRID PRECONDITIONER
             CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, D, Z) !CGC
           END IF !CGC
@@ -2554,7 +2554,7 @@
             CASE (3,4)
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, P, PHAT, APC, JLU, IW) 
           END SELECT 
-          IF (THIS%ICGC) THEN !CGC
+          IF (THIS%ICGC == 1) THEN !CGC
 !----------APPLY COARSE GRID PRECONDITIONER
             CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, P, PHAT) !CGC
           END IF !CGC
@@ -2607,7 +2607,7 @@
               CALL IMSLINEARSUB_PCMILUT_LUSOL(NEQ, Q, QHAT, APC, JLU, IW)
           END SELECT
 !----------APPLY COARSE GRID PRECONDITIONER
-          IF (THIS%ICGC) THEN !CGC
+          IF (THIS%ICGC == 1) THEN !CGC
             CALL THIS%IMSLINEARSUB_PCC_SOL(NEQ, CONVNMOD, CONVMODSTART, Q, QHAT) !CGC
           END IF !CGC
 !           UPDATE T WITH A AND QHAT                                    

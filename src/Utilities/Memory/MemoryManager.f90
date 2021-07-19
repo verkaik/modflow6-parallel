@@ -2686,11 +2686,17 @@ module MemoryManagerModule
     !
     ! -- Store ipos for caching and sort
     nipos = nipos + 1
-    if (size(iposarr) /= size(iposidx)) then
-      call store_error('Program error mem_get_ptr 2')
-      call ustop()
+    if (allocated(iposarr).and.allocated(iposidx)) then
+      if (size(iposarr) /= size(iposidx)) then
+        call store_error('Program error mem_get_ptr 2')
+        call ustop()
+      end if
     end if
-    n = size(iposarr)
+    if (allocated(iposarr)) then
+      n = size(iposarr)
+    else
+      n = 0
+    end if
     if (nipos > n) then
       allocate(iwrk(n))
       do i = 1, n

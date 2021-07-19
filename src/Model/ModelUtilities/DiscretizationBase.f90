@@ -770,7 +770,6 @@ module BaseDisModule
 !    SPECIFICATIONS:
 ! ------------------------------------------------------------------------------
     ! -- modules
-    use MpiExchangeGenModule, only: mpi_is_halo !PAR
     use ArrayHandlersModule, only: ifind !PAR
     ! -- return
     integer(I4B) :: noder
@@ -803,7 +802,7 @@ module BaseDisModule
                                    allowzerolocal)
     !
     ! -- Convert user-based nodenumber to reduced node number   
-    if (nodeu > 0 .and. .not. mpi_is_halo(this%name_model)) then !PAR
+    if (nodeu > 0) then !PAR
       noder = this%get_nodenumber(nodeu, 0)
     else
       noder = nodeu

@@ -978,7 +978,7 @@ contains
         !
         ! -- If both cells are active then calculate flow rate
         if (this%gwfhalo%ibound(n1h) /= 0 .and.                                   & !HALO2
-            this%gwfhalo%ibound(n1h)) then !HALO2
+            this%gwfhalo%ibound(n1h) /= 0) then !HALO2
           ntabrows = ntabrows + 1
         end if
       end do
@@ -1461,7 +1461,6 @@ contains
     use ConstantsModule, only: LINELENGTH
     use SimModule, only: ustop, store_error, store_error_unit, count_errors
     use BaseDisModule, only: DisBaseType !PAR
-    use MpiExchangeGenModule, only: mpi_is_halo !PAR
     use MpiExchangeGwfModule, only: mpi_set_gwfhalo_world_dis !PAR
     ! -- dummy
     class(GwfExchangeType) :: this

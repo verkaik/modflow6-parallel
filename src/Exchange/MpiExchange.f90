@@ -63,8 +63,8 @@
   integer, parameter :: iunpmvr = 3
   !
   type MpiGwfBuf
-    integer(I4B)                                :: nsnd = 0         ! total number of variables to send
-    integer(I4B)                                :: nrcv = 0         ! total number of variables to receive
+    integer(I4B)                                :: nsnd             ! total number of variables to send
+    integer(I4B)                                :: nrcv             ! total number of variables to receive
     type(MemoryType), dimension(:), pointer     :: sndmt => null()  ! send data
     type(MemoryType), dimension(:), pointer     :: rcvmt => null()  ! receive data
     type(MetaMemoryType), dimension(:), pointer :: sndmmt => null() ! send meta data
@@ -72,8 +72,8 @@
   end type MpiGwfBuf
 
   type VarType
-    logical                   :: lsnd = .true.
-    logical                   :: lrcv = .true.
+    logical                   :: lsnd
+    logical                   :: lrcv
     character(len=LENMEMPATH) :: path
     character(len=LENVARNAME) :: name
     character(len=LENVARNAME) :: nameext
@@ -81,12 +81,11 @@
     integer(I4B)              :: pcktype
     integer(I4B)              :: tgttype
     integer(I4B)              :: unptype
-    !logical                   :: lhalonode = .true.
-    integer(I4B), dimension(1) :: id = 0
+    integer(I4B), dimension(1) :: id
   end type Vartype
 
   type VarGroupType
-    integer(I4B)                      :: nvar = 0
+    integer(I4B)                      :: nvar
     type(VarType), dimension(MAXNVAR) :: var
   end type VarGroupType
 
@@ -112,19 +111,19 @@
   end type MpiGwfCommInt
 
   type :: MpiExchangeType
-    logical                                                :: linit = .false.
+    logical                                                :: linit
     character(len=LENPACKAGENAME)                          :: name          ! name (origin)
     character(len=LENMEMPATH)                              :: memoryPath    ! path for memory allocation
     character(len=LENPACKAGENAME)                          :: solname       ! solution name (origin)
-    integer(I4B)                                           :: gnmodel = 0   ! number of global models
+    integer(I4B)                                           :: gnmodel       ! number of global models
     character(len=LENMODELNAME), dimension(:), allocatable :: gmodelnames   ! global model names
-    integer(I4B)                                           :: gnsub = 0     ! number of global subdomains
+    integer(I4B)                                           :: gnsub         ! number of global subdomains
     integer(I4B), dimension(:), allocatable                :: gsubs         ! global subdomains
-    integer(I4B)                                           :: lnmodel = 0   ! number of local models
+    integer(I4B)                                           :: lnmodel       ! number of local models
     character(len=LENMODELNAME), dimension(:), allocatable :: lmodelnames   ! local model names
-    integer(I4B)                                           :: lnsub = 0     ! number of local subdomains
+    integer(I4B)                                           :: lnsub         ! number of local subdomains
     integer(I4B), dimension(:), allocatable                :: lsubs         ! model local subdomains
-    integer(I4B)                                           :: hnmodel = 0   ! number of halo models
+    integer(I4B)                                           :: hnmodel       ! number of halo models
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelnames   ! halo model names
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm1names   ! halo model m1 names
     character(len=LENMODELNAME), dimension(:), allocatable :: hmodelm2names   ! halo model m2 names
@@ -137,19 +136,20 @@
     type(MpiGwfCommInt), dimension(:), pointer             :: lxch => null() ! Point to-point communication structure
     integer(I4B)                                           :: nvg  ! number of variable groups
     character(len=LINELENGTH), dimension(MAXNVG)           :: vg   ! variable groups
-    logical,  dimension(MAXNVG)                            :: lxchmeta = .true. ! exchange meta data
+    logical,  dimension(MAXNVG)                            :: lxchmeta            ! exchange meta data
     character(len=50), pointer                             :: nrprocstr => null() ! Number of processes string
     integer(I4B), pointer                                  :: npdigits  => null() ! Number of digits for nrproc
     character(len=50), pointer                             :: partstr   => null() ! Partition string
-    logical                                                :: lp2p = .true. ! flag indicating if point-to-point communication is necessary
-    real(DP)                                               :: ttgasum = DZERO
-    real(DP)                                               :: ttgmsum = DZERO
-    real(DP)                                               :: ttgamax = DZERO
-    real(DP)                                               :: ttgamin = DZERO
-    real(DP)                                               :: ttbarr = DZERO
-    real(DP)                                               :: ttpack = DZERO
-    real(DP)                                               :: ttupck = DZERO
+    logical                                                :: lp2p ! flag indicating if point-to-point communication is necessary
+    real(DP)                                               :: ttgasum
+    real(DP)                                               :: ttgmsum
+    real(DP)                                               :: ttgamax
+    real(DP)                                               :: ttgamin
+    real(DP)                                               :: ttbarr
+    real(DP)                                               :: ttpack
+    real(DP)                                               :: ttupck
   contains
+    procedure :: mpi_init
     procedure :: mpi_barrier
     procedure :: mpi_create_output_str
     procedure :: mpi_is_iproc
@@ -203,7 +203,7 @@
   save
 
   contains
-
+  
   subroutine mpi_initialize_world()
 ! ******************************************************************************
 ! MPI initialization for the world communicator.
@@ -262,6 +262,9 @@
     call MpiWorld%mpi_create_output_str()
     partstr = MpiWorld%partstr
     !
+    ! -- Initialize counters and flags
+    call MpiWorld%mpi_init()
+    !
     ! -- return
     return
   end subroutine mpi_initialize_world
@@ -290,6 +293,43 @@
     return
   end subroutine mpi_world_da
 
+  subroutine mpi_init(this)
+! ******************************************************************************
+! Initialization of MpiExchangeType
+! ******************************************************************************
+!
+!    SPECIFICATIONS:
+! ------------------------------------------------------------------------------  
+     ! -- dummy
+    class(MpiExchangeType) :: this
+    ! -- local
+! ------------------------------------------------------------------------------
+    !
+    if (serialrun) then
+      return
+    end if
+    !
+    this%linit = .false.
+    this%gnmodel = 0
+    this%gnsub = 0
+    this%lnmodel = 0
+    this%lnsub = 0
+    this%hnmodel = 0
+    this%nvg = 0
+    this%lxchmeta = .true.
+    this%lp2p = .true.
+    this%ttgasum = DZERO
+    this%ttgmsum = DZERO
+    this%ttgamax = DZERO
+    this%ttgamin = DZERO
+    this%ttbarr = DZERO
+    this%ttpack = DZERO
+    this%ttupck = DZERO
+    !
+    ! -- return
+    return
+  end subroutine mpi_init
+  
   subroutine mpi_barrier(this)
 ! ******************************************************************************
 ! MPI barrier.
@@ -456,7 +496,9 @@
     class(MpiExchangeType) :: this
     character(len=*), intent(in) :: vgname
     ! -- local
-    integer(I4B) :: ivg, n, ixp, iex
+    type(MpiGwfBuf), pointer :: vgbuf => null()
+    type(VarGroupType), pointer :: vgvar => null()
+    integer(I4B) :: ivg, n, ixp, iex, ivar
 ! ------------------------------------------------------------------------------
     !
     if (serialrun) then
@@ -483,10 +525,24 @@
     do ixp = 1, this%nrxp
       if (.not.associated(this%lxch(ixp)%vgbuf)) then
         allocate(this%lxch(ixp)%vgbuf(MAXNVG))
+        do ivg = 1, MAXNVG
+          vgbuf => this%lxch(ixp)%vgbuf(ivg)
+          vgbuf%nsnd = 0
+          vgbuf%nrcv = 0
+        end do
       end if
       do iex = 1, this%lxch(ixp)%nexchange
         if (.not.associated(this%lxch(ixp)%exchange(iex)%vgvar)) then
           allocate(this%lxch(ixp)%exchange(iex)%vgvar(MAXNVG))
+          do ivg = 1, MAXNVG
+            vgvar => this%lxch(ixp)%exchange(iex)%vgvar(ivg)
+            vgvar%nvar = 0
+            do ivar = 1, MAXNVAR
+              vgvar%var(ivar)%id = 0
+              vgvar%var(ivar)%lsnd = .true.
+              vgvar%var(ivar)%lrcv = .true.
+            end do
+          end do
         end if
       end do
     end do
@@ -512,7 +568,6 @@
     character(len=*), intent(in) :: pcktype
     character(len=*), intent(in) :: tgttype
     character(len=*), intent(in) :: unptype
-    !logical, intent(in), optional :: lhalonode
     ! -- local
     type(VarGroupType), pointer :: vgvar
     integer(I4B) :: ivg, ixp, iex, iv
@@ -546,9 +601,6 @@
         vgvar%nvar = iv
         vgvar%var(iv)%name    = trim(name)
         vgvar%var(iv)%nameext = trim(nameext)
-        !if (present(lhalonode)) then
-        !  vgvar%var(iv)%lhalonode = lhalonode
-        !end if
         select case(srctype)
           case('SOL')
             vgvar%var(iv)%srctype = isrcsol
@@ -766,7 +818,7 @@ subroutine mpi_clean_vg(this, vgname)
     !
     integer(I4B) :: ivg
     integer(I4B) :: nexg
-    integer(I4B), dimension(:), pointer :: nodem1
+    integer(I4B), dimension(:), contiguous, pointer :: nodem1
     integer(I4B) ::  moffset
     integer(I4B), pointer :: tmp
 
@@ -1153,11 +1205,11 @@ subroutine mpi_clean_vg(this, vgname)
     character(len=LENMEMPATH) :: sol_mempath
     integer(I4B) :: ivg, ixp, ix, iv, iexg, n
     integer(I4B), pointer :: nexg
-    integer(I4B), dimension(:), pointer :: nodem1
-    integer(I4B), dimension(:), pointer :: active
+    integer(I4B), dimension(:), contiguous, pointer :: nodem1
+    integer(I4B), dimension(:), contiguous, pointer :: active
     integer(I4B), pointer :: moffset
-    real(DP), dimension(:), pointer :: cond
-    real(DP), dimension(:), pointer :: newtonterm
+    real(DP), dimension(:), contiguous, pointer :: cond
+    real(DP), dimension(:), contiguous, pointer :: newtonterm
     real(DP) :: v
     logical :: lm2_id !CGC
 ! ------------------------------------------------------------------------------
@@ -1954,7 +2006,7 @@ subroutine mpi_clean_vg(this, vgname)
     integer(I4B) :: n
 ! ------------------------------------------------------------------------------
     if (serialrun) then
-       return
+      return
     end if
     !
     select case(iopt)

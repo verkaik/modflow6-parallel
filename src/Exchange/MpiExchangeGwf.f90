@@ -252,11 +252,11 @@ module MpiExchangeGwfModule
         if (MpiWorld%myrank == rank) then
           write(*,*) '=== send myrank', rank
           do i = 1, n_send
-            write(*,'(a,1x,a,1x,i)') trim(cmt_send(i)%name), trim(cmt_send(i)%path), cmt_send(i)%intsclr  
+            write(*,'(a,1x,a,1x,i0)') trim(cmt_send(i)%name), trim(cmt_send(i)%path), cmt_send(i)%intsclr  
           end do
           write(*,*) '=== recv myrank', rank
           do i = 1, n_recv
-            write(*,'(a,1x,a,1x,i)') trim(cmt_recv(i)%name), trim(cmt_recv(i)%path), cmt_recv(i)%intsclr 
+            write(*,'(a,1x,a,1x,i0)') trim(cmt_recv(i)%name), trim(cmt_recv(i)%path), cmt_recv(i)%intsclr 
           end do
         end if
         call MpiWorld%mpi_barrier()

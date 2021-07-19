@@ -41,8 +41,8 @@ module NumericalSolutionModule
   type, extends(BaseSolutionType) :: NumericalSolutionType
     character(len=LENMEMPATH)                            :: memoryPath !< the path for storing solution variables in the memory manager
     character(len=LINELENGTH)                            :: fname
-    type(ListType), pointer                              :: modellist !PAR
-    type(ListType), pointer                              :: exchangelist !PAR
+    type(ListType), pointer                              :: modellist => NULL() !PAR
+    type(ListType), pointer                              :: exchangelist => NULL() !PAR
     integer(I4B), pointer                                :: id
     integer(I4B), pointer                                :: iu
     real(DP), pointer                                    :: ttform
@@ -266,6 +266,8 @@ contains
     if (parallelrun) then !PAR
       allocate(solution%MpiSol) !PAR
       allocate(solution%MpiMvr) !PAR
+      call solution%MpiSol%mpi_init() !PAR
+      call solution%MpiMvr%mpi_init() !PAR
     end if !PAR
     !
     ! -- return
@@ -2884,7 +2886,6 @@ contains
     use SimModule, only: ustop, store_error
     use MpiExchangeModule, only: MpiWorld, VarGroupType, &
       isrcmvr, ipckmvr, itgtmvr, iunpmvr
-    !use MpiExchangeGenModule, only: mpi_destroy_modelname_halo
     use MpiMvrModule,         only: MpiMvrType !PAR
     use MemoryHelperModule, only: split_mem_path_ff
     !

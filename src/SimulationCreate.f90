@@ -366,12 +366,7 @@ module SimulationCreateModule
             if (isimdd == 1) then !PAR
               isub = parser%GetInteger() !PAR
               if (isub < 0 .or. isub > nddsub) then
-                write(*,'(a,1x,i)') '****ERROR. INVALID SUBDOMAIN:', isub
-
-
-
-
-
+                write(*,'(a,1x,i0)') '****ERROR. INVALID SUBDOMAIN:', isub
                 call store_error(errmsg)
                 call parser%StoreErrorUnit()
                 call ustop()
@@ -706,10 +701,10 @@ module SimulationCreateModule
                 if(mid <= 0) then
                   write(errmsg, '(a,a)') 'Error.  Invalid modelname: ', &
                     trim(mname)
-            call store_error(errmsg)
-            call parser%StoreErrorUnit()
-            call ustop()
-      endif
+                 call store_error(errmsg)
+                 call parser%StoreErrorUnit()
+                 call ustop()
+                endif
               endif !PAR
               add = .false. !PAR
               mid = ifind(modelname, mname) !PAR

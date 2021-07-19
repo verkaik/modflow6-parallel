@@ -29,15 +29,15 @@ module GwfHaloModule
     integer(I4B), dimension(:), pointer :: nodem2 => null()
     type(ConnectionsType), pointer :: m1con => null()
     type(ConnectionsType), pointer :: m2con => null()
-    integer(I4B), dimension(:), pointer :: m1nbnod => null()
-    integer(I4B), dimension(:), pointer :: m2nbnod => null()
+    integer(I4B), dimension(:), pointer, contiguous :: m1nbnod => null()
+    integer(I4B), dimension(:), pointer, contiguous :: m2nbnod => null()
     integer(I4B), pointer :: offset => null()
-    integer(I4B), dimension(:), pointer :: imapnodem1tohalo => null()
-    integer(I4B), dimension(:), pointer :: imapnodem2tohalo => null()
-    integer(I4B), dimension(:), pointer :: imapm1tohalo => null()
-    integer(I4B), dimension(:), pointer :: imapm2tohalo => null()
-    integer(I4B), dimension(:), pointer :: m1nodes => null()
-    integer(I4B), dimension(:), pointer :: m2nodes => null()
+    integer(I4B), dimension(:), pointer, contiguous :: imapnodem1tohalo => null()
+    integer(I4B), dimension(:), pointer, contiguous :: imapnodem2tohalo => null()
+    integer(I4B), dimension(:), pointer, contiguous :: imapm1tohalo => null()
+    integer(I4B), dimension(:), pointer, contiguous :: imapm2tohalo => null()
+    integer(I4B), dimension(:), pointer, contiguous :: m1nodes => null()
+    integer(I4B), dimension(:), pointer, contiguous :: m2nodes => null()
   contains
   
     procedure :: gwfhalo_df1
@@ -420,11 +420,11 @@ module GwfHaloModule
     type(ConnectionsType), intent(out), pointer :: con !out
     type(GwfModelType), intent(in), target :: gwf
     integer(I4B), dimension(:), intent(in), target :: nodem
-    integer(I4B), dimension(:), intent(out), pointer :: nbnodes !out
+    integer(I4B), dimension(:), intent(out), pointer, contiguous :: nbnodes !out
     integer(I4B), intent(in) :: nband
-    integer(I4B), dimension(:), intent(out), pointer :: imapnodemtohalo !out
-    integer(I4B), dimension(:), intent(out), pointer :: imapmtohalo !out
-    integer(I4B), dimension(:), intent(out), pointer :: mnodes !out
+    integer(I4B), dimension(:), intent(out), pointer, contiguous :: imapnodemtohalo !out
+    integer(I4B), dimension(:), intent(out), pointer, contiguous :: imapmtohalo !out
+    integer(I4B), dimension(:), intent(out), pointer, contiguous :: mnodes !out
     character(len=*), intent(in) :: name
     character(len=*), intent(in) :: mstr
     
