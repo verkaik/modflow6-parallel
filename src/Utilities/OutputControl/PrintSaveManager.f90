@@ -222,6 +222,8 @@ module PrintSaveManagerModule
 ! ------------------------------------------------------------------------------
     !
     kstp_to_print = .false.
+    return !PAR
+    
     if(this%print_all) kstp_to_print = .true.
     if(kstp == 1 .and. this%print_first) kstp_to_print = .true.
     if(kstp == nstp .and. this%print_last) kstp_to_print = .true.
