@@ -2704,6 +2704,7 @@ contains
     endif
     !
     this%MpiSol%name = 'MPI'//trim(sname)
+    this%MpiSol%memoryPath = create_mem_path(this%MpiSol%name)
     this%MpiSol%solname = trim(sname)
     !
     ! -- loop over my local models within this solution
