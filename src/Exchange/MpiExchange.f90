@@ -1221,7 +1221,7 @@ subroutine mpi_clean_vg(this, vgname)
     if (present(m2_id)) then !CGC
       lm2_id = .true. !CGC
     else !CGC
-      lm2_id = .false. !CG
+      lm2_id = .false. !CGC
     end if !CGC
     !
     ! -- find the variable group name
