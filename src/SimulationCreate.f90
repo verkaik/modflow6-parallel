@@ -362,7 +362,7 @@ module SimulationCreateModule
         select case (keyword)
           case ('GWF6')
             call parser%GetString(fname)
-           call read_modelname(mname) !PAR
+            call read_modelname(mname) !PAR
             if (isimdd == 1) then !PAR
               isub = parser%GetInteger() !PAR
               if (isub < 0 .or. isub > nddsub) then

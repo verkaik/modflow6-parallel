@@ -39,9 +39,9 @@
             ccompiler = 'GFORTRAN'
           else if (icompiler == 2) then
             ccompiler = 'IFORT'
-            write(cversion,'(i4)') iversion
-            read(cversion(1:2), '(i2)') imajor
-            read(cversion(3:4), '(i2)') iminor
+            !write(cversion,'(i4)') iversion
+            !read(cversion(1:2), '(i2)') imajor
+            !read(cversion(3:4), '(i2)') iminor
             write(cversion,'(i0,2(".",i0))') imajor, iminor, imicro
           end if
           

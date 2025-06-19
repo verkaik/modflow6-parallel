@@ -27,7 +27,7 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
-		<Configuration Name="Debug|x64" UseCompiler="ifxCompiler" OutputDirectory="../bin" TargetName="$(ProjectName)d">
+		<Configuration Name="Debug|x64" UseCompiler="ifxCompiler" OutputDirectory="../bin" TargetName="$(ProjectName)_ifx_2024.2.1_impi_2021.13.1_deb">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" HeapArrays="0" ErrorLimit="1" WarnUncalled="true" WarnInterfaces="true" FloatingPointExceptionHandling="fpe0" Traceback="true" NullPointerCheck="true" BoundsCheck="true" UninitializedVariablesCheck="true" ArgTempCreatedCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebug"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="c:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64\" IgnoreDefaultLibraryNames="MSVCRTD" GenerateDebugInformation="true" ProgramDatabaseFile="$(IntDir)\$(TargetName).pdb" SubSystem="subSystemConsole" AdditionalDependencies="msmpi.lib msmpifec.lib"/>
 			<Tool Name="VFResourceCompilerTool"/>
@@ -38,7 +38,7 @@
 			<Tool Name="VFPostBuildEventTool"/>
 			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
 		</Configuration>
-		<Configuration Name="Release|x64" UseCompiler="ifxCompiler" OutputDirectory="../bin/">
+		<Configuration Name="Release|x64" UseCompiler="ifxCompiler" OutputDirectory="../bin/" TargetName="$(ProjectName)_ifx_2024.2.1_impi_2021.13.1_rel">
 			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" BufferedIO="true" HeapArrays="0" ErrorLimit="1" OptDiagFile="optrpt" FloatingPointExceptionHandling="fpe0"/>
 			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" AdditionalLibraryDirectories="c:\Program Files (x86)\Microsoft SDKs\MPI\Lib\x64\" ProgramDatabaseFile="$(IntDir)\$(TargetName).pdb" SubSystem="subSystemConsole" AdditionalDependencies="msmpi.lib msmpifec.lib"/>
 			<Tool Name="VFResourceCompilerTool"/>
